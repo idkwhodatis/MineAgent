@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # MineAgent migrations are independently gated. These never reinterpret old
     # TradeGrad schemas/checkpoints or change the legacy execution profile.
     factor_library_enabled: bool = False
+    factor_import_enabled: bool = False
+    factor_parser_image_id: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+    factor_owner_max_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
+    factor_installation_max_bytes: int = Field(default=2 * 1024**3, ge=1024)
+    factor_max_files: int = Field(default=10_000, ge=1, le=100_000)
     rdagent_research_enabled: bool = False
     openevolve_research_enabled: bool = False
 

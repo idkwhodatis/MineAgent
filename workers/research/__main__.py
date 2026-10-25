@@ -54,6 +54,23 @@ def main():
 
         thread = threading.Thread(target=keep_alive, daemon=True)
         thread.start()
+        import_thread = None
+        if settings.factor_library_enabled and settings.factor_import_enabled:
+
+            def process_factor_imports():
+                from workers.research.factor_import import process_one
+
+                while not done.is_set():
+                    try:
+                        process_one(settings)
+                    except Exception:  # noqa: BLE001 - durable admission/journal retains uncertain state
+                        logger.error(
+                            "Factor import cycle failed; inspect durable admission state"
+                        )
+                    done.wait(2)
+
+            import_thread = threading.Thread(target=process_factor_imports, daemon=True)
+            import_thread.start()
         app = create_queue_app(settings)
         try:
             with app.open():
@@ -64,6 +81,12 @@ def main():
         finally:
             done.set()
             thread.join(timeout=20)
+            if import_thread is not None:
+                import_thread.join(timeout=25)
+                if import_thread.is_alive():
+                    logger.error(
+                        "Factor import shutdown remains uncertain; journal recovery is required"
+                    )
         return
     runner = portable = None
 
@@ -112,6 +135,14 @@ def main():
                             settings=settings,
                         )
                     recover_stalled_jobs(session)
+            if (
+                args.role == "reconciler"
+                and settings.factor_library_enabled
+                and settings.factor_import_enabled
+            ):
+                from workers.research.factor_import import reconcile_imports
+
+                reconcile_imports(settings)
         except Exception:  # noqa: BLE001 - service loop must remain available after transient outages
             # Do not serialize SQLAlchemy exceptions/connection strings into logs.
             logger.error(

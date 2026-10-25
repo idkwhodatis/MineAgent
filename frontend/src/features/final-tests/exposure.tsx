@@ -4,6 +4,14 @@ import { Panel } from "@/components/common";
 import { label } from "@/lib/format";
 import { exposureNotice } from "./protocol";
 
+export function exposureClassificationNotice(
+  classification: string,
+): string | null {
+  return classification === "unknown_import_history"
+    ? "Imported factor history is incomplete or unresolved. No matching local record does not mean these data are unseen; do not treat this interval as a clean holdout."
+    : null;
+}
+
 export function ExposurePanel({
   snapshot,
   title = "Platform-recorded prior exposure",
@@ -11,11 +19,19 @@ export function ExposurePanel({
   snapshot: ExposureSnapshot;
   title?: string;
 }) {
+  const classificationNotice = exposureClassificationNotice(
+    snapshot.classification,
+  );
   return (
     <Panel title={title}>
       <p className="notice" data-testid="holdout-exposure-warning">
         {exposureNotice}
       </p>
+      {classificationNotice && (
+        <p className="notice" data-testid="import-history-warning">
+          {classificationNotice}
+        </p>
+      )}
       <Metadata
         values={{
           "Tracking classification": label(snapshot.classification),

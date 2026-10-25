@@ -45,8 +45,17 @@ REVISIONS = {
     "009_independent_evaluations",
     "010_research_notes",
     "011_note_pin_trigger",
+    "012_factor_library",
+    "013_factor_import",
 }
-NAMESPACES = {"datasets", "runs", "data-checkpoints", "uploads", "strategy-packages"}
+NAMESPACES = {
+    "datasets",
+    "runs",
+    "data-checkpoints",
+    "uploads",
+    "strategy-packages",
+    "factors",
+}
 HEX = re.compile(r"[a-f0-9]{64}\Z")
 APP_REF = re.compile(r"(?:[a-f0-9]{40}|[a-f0-9]{64})\Z")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,62}\Z")
@@ -503,6 +512,18 @@ class PostgresDatabase:
                     "Active, queued, leased or unstopped execution/imports must be resolved first"
                 )
 
+            if (
+                revisions[0] == "013_factor_import"
+                and connection.execute(
+                    text(
+                        "SELECT count(*) FROM factor_import_admissions WHERE status NOT IN ('succeeded','failed') OR lease_token IS NOT NULL OR lease_expires_at IS NOT NULL"
+                    )
+                ).scalar_one()
+            ):
+                raise BackupError(
+                    "Queued or uncontained factor imports must be resolved first"
+                )
+
             def rows(query):
                 result = [
                     dict(row)
@@ -539,11 +560,18 @@ class PostgresDatabase:
                 "009_independent_evaluations",
                 "010_research_notes",
                 "011_note_pin_trigger",
+                "012_factor_library",
+                "013_factor_import",
             }:
                 references += rows(
                     "SELECT storage_key AS path, archive_sha256 AS sha256, size_bytes FROM strategy_packages ORDER BY storage_key"
                 )
-            if revisions[0] in {"010_research_notes", "011_note_pin_trigger"}:
+            if revisions[0] in {
+                "010_research_notes",
+                "011_note_pin_trigger",
+                "012_factor_library",
+                "013_factor_import",
+            }:
                 # Historical note revisions retain exact artifacts independently
                 # of a mutable/current resource pointer. Never JOIN these pins to
                 # artifacts: deliberate metadata cleanup must not silently drop
@@ -565,6 +593,24 @@ class PostgresDatabase:
                         for row in references
                     }.values()
                 )
+            factor_closure = None
+            if revisions[0] in {"012_factor_library", "013_factor_import"}:
+                from backend.app.factor_backup import canonical, read_closure
+
+                try:
+                    factor_closure = read_closure(
+                        connection,
+                        limits.max_files,
+                        revision=revisions[0],
+                        maximum_bytes=limits.max_manifest_bytes,
+                    )
+                    if len(canonical(factor_closure)) > limits.max_manifest_bytes:
+                        raise ValueError("Factor closure exceeds metadata budget")
+                except (ValueError, TypeError, KeyError):
+                    raise BackupError("Invalid factor restore closure") from None
+                references += rows(
+                    "SELECT storage_key AS path, sha256, size_bytes FROM factor_objects ORDER BY storage_key"
+                )
             datasets = rows(
                 "SELECT storage_key AS path, content_sha256 AS sha256, manifest FROM dataset_versions ORDER BY storage_key"
             )
@@ -576,6 +622,11 @@ class PostgresDatabase:
                 "references": references,
                 "datasets": datasets,
                 "checkpoints": checkpoints,
+                **(
+                    {"factor_closure": factor_closure}
+                    if factor_closure is not None
+                    else {}
+                ),
             }
 
         return self._inspect(inspect)
@@ -754,6 +805,38 @@ def _validate_references(
                 "Database reference is missing or differs from immutable storage bytes"
             )
 
+    def read_factor_archive(key):
+        stream, info = _open_file(root, key)
+        with stream:
+            if info.st_size > 10_000_000:
+                raise BackupError("Factor archive exceeds admission profile")
+            return stream.read(10_000_001)
+
+    factor_revision = snapshot.get("schema_revision") in {
+        "012_factor_library",
+        "013_factor_import",
+    }
+    if factor_revision != ("factor_closure" in snapshot):
+        raise BackupError("Factor closure capability does not match schema")
+    if factor_revision:
+        from backend.app.factor_backup import validate_closure
+
+        try:
+            expected_closure = {
+                "012_factor_library": "mineagent.factor-restore-closure.v1",
+                "013_factor_import": "mineagent.factor-restore-closure.v2",
+            }[snapshot["schema_revision"]]
+            if snapshot["factor_closure"]["schema_version"] != expected_closure:
+                raise ValueError("Factor closure revision mismatch")
+            validate_closure(
+                snapshot["factor_closure"],
+                check,
+                lambda path: _read_json(root, path, limits)[0],
+                limits.max_files,
+                read_archive=read_factor_archive,
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise BackupError("Factor restore closure failed verification") from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:
@@ -853,7 +936,18 @@ def _shared_storage_reader(function):
                 "Explicit acknowledgement that API, all workers and writers are stopped is required"
             )
         root = _directory(kwargs["storage_root"])
-        with storage_guard(root):
+        with storage_guard(root, exclusive=True):
+            from runtimes.factor_parser.supervisor import (
+                ParserIsolationError,
+                assert_quiescent,
+            )
+
+            try:
+                assert_quiescent(root)
+            except ParserIsolationError:
+                raise BackupError(
+                    "Unconfirmed factor parser must be resolved first"
+                ) from None
             return function(*args, **kwargs)
 
     return guarded

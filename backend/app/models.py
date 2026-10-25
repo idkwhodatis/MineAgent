@@ -959,3 +959,8 @@ class ResearchNoteEvidencePin(Base):
         ),
         CheckConstraint("jsonb_typeof(details) = 'object'"),
     )
+
+
+# Register independent MineAgent tables only after legacy declarations exist.
+from backend.app import factor_models as _factor_models  # noqa: E402,F401
+from backend.app import factor_import_models as _factor_import_models  # noqa: E402,F401

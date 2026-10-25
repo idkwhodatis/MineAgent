@@ -4,6 +4,12 @@ import { defineConfig, devices } from "@playwright/test";
 // They deliberately contain no page.route mocks or in-memory service substitutes.
 export default defineConfig({
   testDir: "./tests/e2e",
+  // The disabled-by-default independent factor slice has its own strict hosted
+  // acceptance. Existing strategy regression jobs must not silently enable it.
+  testIgnore:
+    process.env.E2E_FACTOR_ACCEPTANCE === "1"
+      ? []
+      : ["**/factor-workbench.spec.ts"],
   timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

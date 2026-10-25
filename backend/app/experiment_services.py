@@ -11,7 +11,7 @@ import hashlib
 from datetime import date
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 
 from backend.app.experiment_schemas import (
     ExperimentCreate,
@@ -286,7 +286,9 @@ def identities_overlap(first, second):
     return False
 
 
-def classify_exposures(identities, window, exposures, *, as_of=None):
+def classify_exposures(
+    identities, window, exposures, *, as_of=None, unknown_import_history=False
+):
     matches = [
         row
         for row in exposures
@@ -300,7 +302,13 @@ def classify_exposures(identities, window, exposures, *, as_of=None):
     return ExposureSnapshot(
         classification="previously_exposed"
         if matches
-        else ("unknown_identity" if unknown else "no_tracked_overlap"),
+        else (
+            "unknown_identity"
+            if unknown
+            else "unknown_import_history"
+            if unknown_import_history
+            else "no_tracked_overlap"
+        ),
         matching_exposure_ids=[row.id for row in matches[:1000]],
         matching_purposes=sorted({row.purpose for row in matches}),
         matching_count=len(matches),
@@ -308,6 +316,57 @@ def classify_exposures(identities, window, exposures, *, as_of=None):
         identities=identities,
         as_of=as_of or utcnow(),
     ).model_dump(mode="json")
+
+
+def has_unknown_import_history(session, owner_id):
+    """Explicit revision capability protects pre-import backup/read schemas.
+
+    No invented market window or identity is inserted for unbounded external
+    history. The owner-wide uncertainty changes only an otherwise-clean-looking
+    classification; actual overlapping exposure evidence always takes precedence.
+    """
+    revision = session.scalar(text("SELECT version_num FROM alembic_version"))
+    if revision not in {"013_factor_import"}:
+        return False
+    tables = session.execute(
+        text(
+            "SELECT to_regclass(format('%I.factor_import_envelopes',current_schema())), to_regclass(format('%I.factor_import_admissions',current_schema()))"
+        )
+    ).one()
+    if tables[0] is None or tables[1] is None:
+        raise DomainError(
+            "factor_schema_integrity", "Import history metadata is unavailable", 409
+        )
+    from backend.app.factor_import_models import (
+        FactorImportAdmission,
+        FactorImportEnvelope,
+    )
+
+    return bool(
+        session.scalar(
+            select(FactorImportEnvelope.id)
+            .join(
+                FactorImportAdmission,
+                (FactorImportAdmission.result_envelope_id == FactorImportEnvelope.id)
+                & (FactorImportAdmission.owner_id == FactorImportEnvelope.owner_id)
+                & (FactorImportAdmission.status == "succeeded"),
+            )
+            .where(
+                FactorImportEnvelope.owner_id == owner_id,
+                or_(
+                    FactorImportEnvelope.exposure_history[
+                        "completeness"
+                    ].astext.is_distinct_from("local_observed"),
+                    FactorImportEnvelope.exposure_history["unresolved_reasons"] != [],
+                    FactorImportEnvelope.local_bindings["exposure_admissions"][
+                        "unresolved"
+                    ]
+                    != [],
+                ),
+            )
+            .limit(1)
+        )
+    )
 
 
 def get_exposure_snapshot(session, owner_id, split, *, exclude_run_id=None):
@@ -337,9 +396,14 @@ def get_exposure_snapshot(session, owner_id, split, *, exclude_run_id=None):
             )
         )
     exposures = session.scalars(query).all()
-    return classify_exposures(
+    snapshot = classify_exposures(
         _identities(session, dataset, universe), window, exposures
     )
+    if snapshot[
+        "classification"
+    ] == "no_tracked_overlap" and has_unknown_import_history(session, owner_id):
+        snapshot["classification"] = "unknown_import_history"
+    return snapshot
 
 
 def record_exposure(

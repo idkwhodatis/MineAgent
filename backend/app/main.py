@@ -674,4 +674,12 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     from backend.app.operations_routes import router as operations_router
 
     app.include_router(operations_router, prefix=PREFIX)
+    from backend.app.factor_routes import router as factor_router
+
+    app.include_router(factor_router, prefix=PREFIX)
+    from backend.app.factor_import_services import FactorImportIngressMiddleware
+
+    app.add_middleware(
+        FactorImportIngressMiddleware, max_bytes=settings.max_upload_bytes
+    )
     return app

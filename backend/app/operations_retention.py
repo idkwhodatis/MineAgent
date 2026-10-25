@@ -98,6 +98,12 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             "datasets",
             "checkpoints",
         }
+        | (
+            {"factor_closure"}
+            if snapshot.get("schema_revision")
+            in {"012_factor_library", "013_factor_import"}
+            else set()
+        )
         or snapshot["schema_revision"] not in REVISIONS
         or type(snapshot["postgres_major"]) is not int
         or not 14 <= snapshot["postgres_major"] <= 99
@@ -126,6 +132,32 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             raise RetentionError("Unknown dataset manifest shape")
         keys.add(_key(item["path"] + "/manifest.json", storage=True))
     keys.update(item["path"] for item in snapshot["checkpoints"])
+    if "factor_closure" in snapshot:
+        try:
+            expected_closure = {
+                "012_factor_library": "mineagent.factor-restore-closure.v1",
+                "013_factor_import": "mineagent.factor-restore-closure.v2",
+            }[snapshot["schema_revision"]]
+            if snapshot["factor_closure"]["schema_version"] != expected_closure:
+                raise RetentionError("Factor closure revision mismatch")
+            for obj in snapshot["factor_closure"]["tables"]["factor_objects"]:
+                if obj["object_kind"] == "snapshot_manifest":
+                    keys.add(_key(obj["storage_key"], storage=True))
+            objects = {
+                obj["id"]: obj
+                for obj in snapshot["factor_closure"]["tables"]["factor_objects"]
+            }
+            for envelope in snapshot["factor_closure"]["tables"].get(
+                "factor_import_envelopes", []
+            ):
+                keys.add(
+                    _key(
+                        objects[envelope["archive_object_id"]]["storage_key"],
+                        storage=True,
+                    )
+                )
+        except (KeyError, TypeError):
+            raise RetentionError("Invalid factor closure manifest inventory") from None
     return keys
 
 
@@ -285,6 +317,21 @@ def _protected(snapshot, files, manifests, deadline):
             )
         exact.add(key)
 
+    if "factor_closure" in snapshot:
+        from backend.app.factor_backup import validate_closure
+
+        try:
+            validate_closure(
+                snapshot["factor_closure"],
+                check,
+                lambda key: _json_manifest(manifests[key]),
+                100_000,
+                read_archive=lambda key: manifests[key],
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise RetentionError(
+                "Factor retention closure failed verification"
+            ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:

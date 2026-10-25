@@ -23,6 +23,10 @@ import {
 } from "@/lib/session";
 import "./styles.css";
 import { comparisonSearch } from "@/lib/navigation";
+import {
+  factorLibrarySearch,
+  factorSearch,
+} from "@/features/factor-workbench/selection";
 import { workbenchSearch } from "@/lib/workbench-selection";
 
 function Root() {
@@ -170,6 +174,24 @@ const strategiesRoute = createRoute({
   component: lazyRouteComponent(
     () => import("@/features/catalogs"),
     "StrategiesPage",
+  ),
+});
+const factorsRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/factors",
+  validateSearch: factorLibrarySearch,
+  component: lazyRouteComponent(
+    () => import("@/features/factor-workbench/page"),
+    "FactorLibraryPage",
+  ),
+});
+const factorVersionRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/factors/$factorId/versions/$versionId",
+  validateSearch: factorSearch,
+  component: lazyRouteComponent(
+    () => import("@/features/factor-workbench/page"),
+    "FactorVersionPage",
   ),
 });
 const researchWorkbenchRoute = createRoute({
@@ -327,6 +349,8 @@ const routeTree = rootRoute.addChildren([
     uploadRoute,
     universesRoute,
     strategiesRoute,
+    factorsRoute,
+    factorVersionRoute,
     researchWorkbenchRoute,
     runsRoute,
     newRunRoute,

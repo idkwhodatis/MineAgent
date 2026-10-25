@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { currentUserOptions, queryClient } from "@/lib/api";
+import { factorCapabilitiesOptions } from "@/lib/factor-api";
 import { clearSession } from "@/lib/session";
 
 const navigation = [
@@ -35,14 +36,16 @@ export function AppLayout() {
     select: (state) => state.location.pathname,
   });
   const user = useQuery(currentUserOptions);
-  const activeTitle =
-    navigation.find((item) =>
-      item.to === "/"
-        ? pathname === "/"
-        : pathname.startsWith(
-            item.to === "/portable/new" ? "/portable/" : item.to,
-          ),
-    )?.label ?? "Experiment";
+  const factorCapabilities = useQuery(factorCapabilitiesOptions);
+  const activeTitle = pathname.startsWith("/factors")
+    ? "Factor library"
+    : (navigation.find((item) =>
+        item.to === "/"
+          ? pathname === "/"
+          : pathname.startsWith(
+              item.to === "/portable/new" ? "/portable/" : item.to,
+            ),
+      )?.label ?? "Experiment");
   function signOut() {
     clearSession();
     queryClient.clear();
@@ -71,6 +74,15 @@ export function AppLayout() {
         <nav aria-label="Main navigation">
           <span className="eyebrow">Workspace</span>
           <div className="nav-list">
+            {factorCapabilities.data?.enabled && (
+              <Link
+                to="/factors"
+                className={`nav-link ${pathname.startsWith("/factors") ? "active" : ""}`}
+              >
+                <Layers />
+                Factor library
+              </Link>
+            )}
             {navigation.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}

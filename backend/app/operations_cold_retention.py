@@ -128,6 +128,17 @@ def exclusive_maintenance(database: PostgresDatabase, storage_root: Path):
             connection.execute(text("SET TRANSACTION READ ONLY"))
             _lock(connection, exclusive=True)
             with storage_guard(storage_root, exclusive=True) as fd:
+                from runtimes.factor_parser.supervisor import (
+                    ParserIsolationError,
+                    assert_quiescent,
+                )
+
+                try:
+                    assert_quiescent(storage_root)
+                except ParserIsolationError:
+                    raise RetentionError(
+                        "Unconfirmed factor parser must be resolved first"
+                    ) from None
                 yield LockedDatabase(database, connection), fd
     finally:
         engine.dispose()

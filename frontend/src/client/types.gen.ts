@@ -165,7 +165,7 @@ export type BackupReceipt = {
     /**
      * Schema Revision
      */
-    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger';
+    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger' | '012_factor_library' | '013_factor_import';
 };
 
 /**
@@ -303,6 +303,20 @@ export type BudgetConfig = {
      * Max Tokens
      */
     max_tokens?: number;
+};
+
+/**
+ * BundleMember
+ */
+export type BundleMember = {
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
 };
 
 /**
@@ -1438,6 +1452,20 @@ export type ComparisonSectionSummary = {
      * Unavailable
      */
     unavailable?: number;
+};
+
+/**
+ * ComparisonSide
+ */
+export type ComparisonSide = {
+    /**
+     * Snapshot Id
+     */
+    snapshot_id?: string | null;
+    /**
+     * Version Id
+     */
+    version_id: string;
 };
 
 /**
@@ -2987,7 +3015,7 @@ export type ExposureSnapshot = {
     /**
      * Classification
      */
-    classification: 'previously_exposed' | 'no_tracked_overlap' | 'unknown_identity';
+    classification: 'previously_exposed' | 'no_tracked_overlap' | 'unknown_identity' | 'unknown_import_history';
     /**
      * Evidence Truncated
      */
@@ -3022,6 +3050,182 @@ export type ExposureSnapshot = {
      * Tracking Coverage
      */
     tracking_coverage?: 'historical tracking incomplete/external use unknown';
+};
+
+/**
+ * FactorBundleCreate
+ */
+export type FactorBundleCreate = {
+    /**
+     * Members
+     */
+    members: Array<BundleMember>;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Usage Constraints
+     */
+    usage_constraints?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * FactorComparisonCreate
+ */
+export type FactorComparisonCreate = {
+    left: ComparisonSide;
+    right: ComparisonSide;
+};
+
+/**
+ * FactorCreate
+ */
+export type FactorCreate = {
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Change Note
+     */
+    change_note?: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    definition: FactorDefinition;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Parent Version Id
+     */
+    parent_version_id?: string | null;
+};
+
+/**
+ * FactorDefinition
+ */
+export type FactorDefinition = {
+    /**
+     * Calculation Universe Policy
+     */
+    calculation_universe_policy?: 'frozen_universe' | 'dataset_inventory';
+    /**
+     * Code Sha256
+     */
+    code_sha256: string;
+    /**
+     * Factor Kind
+     */
+    factor_kind: 'cross_sectional' | 'time_series';
+    /**
+     * Frequency
+     */
+    frequency?: '1d';
+    /**
+     * Input Fields
+     */
+    input_fields: Array<InputField>;
+    /**
+     * Interpretation
+     */
+    interpretation?: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+    /**
+     * Lag Sessions
+     */
+    lag_sessions?: number;
+    /**
+     * Lookback Sessions
+     */
+    lookback_sessions: number;
+    /**
+     * Missing Policy
+     */
+    missing_policy?: 'explicit_missing';
+    /**
+     * Output Unit
+     */
+    output_unit: string;
+    /**
+     * Parameters
+     */
+    parameters?: Array<Parameter>;
+    /**
+     * Preprocessing
+     */
+    preprocessing?: ({
+        kind: 'none';
+    } & NoPreprocessing) | ({
+        kind: 'fitted';
+    } & FittedPreprocessing);
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.factor-definition.v1';
+};
+
+/**
+ * FactorExportCreate
+ */
+export type FactorExportCreate = {
+    /**
+     * Evaluation Ids
+     */
+    evaluation_ids?: Array<string>;
+    /**
+     * Include Values
+     */
+    include_values?: boolean;
+    /**
+     * Snapshot Ids
+     */
+    snapshot_ids?: Array<string>;
+};
+
+/**
+ * FactorPatch
+ */
+export type FactorPatch = {
+    /**
+     * Bookmarked
+     */
+    bookmarked?: boolean | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Expected Presentation Revision
+     */
+    expected_presentation_revision: number;
+    /**
+     * Name
+     */
+    name?: string | null;
+};
+
+/**
+ * FactorVersionCreate
+ */
+export type FactorVersionCreate = {
+    /**
+     * Change Note
+     */
+    change_note?: string | null;
+    /**
+     * Code
+     */
+    code: string;
+    definition: FactorDefinition;
+    /**
+     * Parent Version Id
+     */
+    parent_version_id?: string | null;
 };
 
 /**
@@ -3666,6 +3870,71 @@ export type FinalSelectionPublic = {
      * Strategy Version Id
      */
     strategy_version_id: string;
+};
+
+/**
+ * FittedPreprocessing
+ */
+export type FittedPreprocessing = {
+    /**
+     * Available At
+     */
+    available_at: string;
+    /**
+     * Code Sha256
+     */
+    code_sha256: string;
+    fit_window: DateWindow;
+    /**
+     * Fitted Artifact Sha256
+     */
+    fitted_artifact_sha256: string;
+    /**
+     * Kind
+     */
+    kind?: 'fitted';
+    /**
+     * Last Input At
+     */
+    last_input_at: string;
+    /**
+     * Parameters Sha256
+     */
+    parameters_sha256: string;
+    /**
+     * Transform Id
+     */
+    transform_id: string;
+};
+
+/**
+ * FixedFixtureCreate
+ */
+export type FixedFixtureCreate = {
+    /**
+     * Factor Id
+     */
+    factor_id?: string | null;
+    /**
+     * Kind
+     */
+    kind?: string;
+    /**
+     * Lag Sessions
+     */
+    lag_sessions?: number;
+    /**
+     * Lookback Sessions
+     */
+    lookback_sessions?: number;
+    /**
+     * Name
+     */
+    name?: string;
+    /**
+     * Parent Version Id
+     */
+    parent_version_id?: string | null;
 };
 
 /**
@@ -4474,6 +4743,32 @@ export type IndicatorSeries = {
     warmup_excluded: number;
 };
 
+/**
+ * InputField
+ */
+export type InputField = {
+    /**
+     * Dtype
+     */
+    dtype?: 'float64' | 'int64';
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Price Semantics
+     */
+    price_semantics: 'not_price' | 'unadjusted' | 'split_adjusted' | 'total_return';
+    /**
+     * Role
+     */
+    role?: 'market_input';
+    /**
+     * Unit
+     */
+    unit: string;
+};
+
 export type JsonValue = unknown;
 
 /**
@@ -5153,6 +5448,16 @@ export type NativeStrategyContract = {
      * Warmup Bars
      */
     warmup_bars: number;
+};
+
+/**
+ * NoPreprocessing
+ */
+export type NoPreprocessing = {
+    /**
+     * Kind
+     */
+    kind?: 'none';
 };
 
 /**
@@ -6097,6 +6402,20 @@ export type PageWorkbenchSpec = {
      * Data
      */
     data: Array<WorkbenchSpec>;
+};
+
+/**
+ * Parameter
+ */
+export type Parameter = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Value
+     */
+    value: boolean | number | number | string;
 };
 
 /**
@@ -14367,6 +14686,886 @@ export type ReadExperimentResponses = {
 };
 
 export type ReadExperimentResponse = ReadExperimentResponses[keyof ReadExperimentResponses];
+
+export type CreateFactorBundleData = {
+    body: FactorBundleCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/factor-bundles';
+};
+
+export type CreateFactorBundleErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateFactorBundleError = CreateFactorBundleErrors[keyof CreateFactorBundleErrors];
+
+export type CreateFactorBundleResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type CreateFactorComparisonData = {
+    body: FactorComparisonCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/factor-comparisons';
+};
+
+export type CreateFactorComparisonErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateFactorComparisonError = CreateFactorComparisonErrors[keyof CreateFactorComparisonErrors];
+
+export type CreateFactorComparisonResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type GetFactorComparisonData = {
+    body?: never;
+    path: {
+        /**
+         * Comparison Id
+         */
+        comparison_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factor-comparisons/{comparison_id}';
+};
+
+export type GetFactorComparisonErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetFactorComparisonError = GetFactorComparisonErrors[keyof GetFactorComparisonErrors];
+
+export type GetFactorComparisonResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type FactorComparisonValuesData = {
+    body?: never;
+    path: {
+        /**
+         * Comparison Id
+         */
+        comparison_id: string;
+    };
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/factor-comparisons/{comparison_id}/values';
+};
+
+export type FactorComparisonValuesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FactorComparisonValuesError = FactorComparisonValuesErrors[keyof FactorComparisonValuesErrors];
+
+export type FactorComparisonValuesResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateFixedFactorFixtureData = {
+    body: FixedFixtureCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/factor-fixtures';
+};
+
+export type CreateFixedFactorFixtureErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateFixedFactorFixtureError = CreateFixedFactorFixtureErrors[keyof CreateFixedFactorFixtureErrors];
+
+export type CreateFixedFactorFixtureResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type GetFactorImportStatusData = {
+    body?: never;
+    path: {
+        /**
+         * Admission Id
+         */
+        admission_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factor-imports/{admission_id}';
+};
+
+export type GetFactorImportStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetFactorImportStatusError = GetFactorImportStatusErrors[keyof GetFactorImportStatusErrors];
+
+export type GetFactorImportStatusResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ImportFactorPackageData = {
+    body?: never;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/factor-packages/import';
+};
+
+export type ImportFactorPackageErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ImportFactorPackageError = ImportFactorPackageErrors[keyof ImportFactorPackageErrors];
+
+export type ImportFactorPackageResponses = {
+    /**
+     * Successful Response
+     */
+    202: unknown;
+};
+
+export type DownloadFactorPackageData = {
+    body?: never;
+    path: {
+        /**
+         * Package Id
+         */
+        package_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factor-packages/{package_id}/download';
+};
+
+export type DownloadFactorPackageErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type DownloadFactorPackageError = DownloadFactorPackageErrors[keyof DownloadFactorPackageErrors];
+
+export type DownloadFactorPackageResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type GetFactorSnapshotData = {
+    body?: never;
+    path: {
+        /**
+         * Snapshot Id
+         */
+        snapshot_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factor-snapshots/{snapshot_id}';
+};
+
+export type GetFactorSnapshotErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetFactorSnapshotError = GetFactorSnapshotErrors[keyof GetFactorSnapshotErrors];
+
+export type GetFactorSnapshotResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type FactorSnapshotSampleData = {
+    body?: never;
+    path: {
+        /**
+         * Snapshot Id
+         */
+        snapshot_id: string;
+    };
+    query: {
+        /**
+         * Listing Id
+         */
+        listing_id: string;
+        /**
+         * Session Date
+         */
+        session_date?: string;
+    };
+    url: '/api/v1/factor-snapshots/{snapshot_id}/sample';
+};
+
+export type FactorSnapshotSampleErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FactorSnapshotSampleError = FactorSnapshotSampleErrors[keyof FactorSnapshotSampleErrors];
+
+export type FactorSnapshotSampleResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type FactorSnapshotValuesData = {
+    body?: never;
+    path: {
+        /**
+         * Snapshot Id
+         */
+        snapshot_id: string;
+    };
+    query?: {
+        /**
+         * Listing Id
+         */
+        listing_id?: string | null;
+        /**
+         * Start
+         */
+        start?: string | null;
+        /**
+         * End
+         */
+        end?: string | null;
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/factor-snapshots/{snapshot_id}/values';
+};
+
+export type FactorSnapshotValuesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FactorSnapshotValuesError = FactorSnapshotValuesErrors[keyof FactorSnapshotValuesErrors];
+
+export type FactorSnapshotValuesResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ExportFactorPackageData = {
+    body: FactorExportCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Version Id
+         */
+        version_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factor-versions/{version_id}/exports';
+};
+
+export type ExportFactorPackageErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ExportFactorPackageError = ExportFactorPackageErrors[keyof ExportFactorPackageErrors];
+
+export type ExportFactorPackageResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type ListFactorsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Search
+         */
+        search?: string | null;
+        /**
+         * Bookmarked
+         */
+        bookmarked?: boolean | null;
+        /**
+         * Kind
+         */
+        kind?: 'cross_sectional' | 'time_series' | null;
+    };
+    url: '/api/v1/factors';
+};
+
+export type ListFactorsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListFactorsError = ListFactorsErrors[keyof ListFactorsErrors];
+
+export type ListFactorsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateFactorData = {
+    body: FactorCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/factors';
+};
+
+export type CreateFactorErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateFactorError = CreateFactorErrors[keyof CreateFactorErrors];
+
+export type CreateFactorResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type FactorCapabilitiesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/factors/capabilities';
+};
+
+export type FactorCapabilitiesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FactorCapabilitiesError = FactorCapabilitiesErrors[keyof FactorCapabilitiesErrors];
+
+export type FactorCapabilitiesResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type GetFactorData = {
+    body?: never;
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factors/{factor_id}';
+};
+
+export type GetFactorErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetFactorError = GetFactorErrors[keyof GetFactorErrors];
+
+export type GetFactorResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type PatchFactorData = {
+    body: FactorPatch;
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factors/{factor_id}';
+};
+
+export type PatchFactorErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type PatchFactorError = PatchFactorErrors[keyof PatchFactorErrors];
+
+export type PatchFactorResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type ListFactorVersionsData = {
+    body?: never;
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+    };
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/factors/{factor_id}/versions';
+};
+
+export type ListFactorVersionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListFactorVersionsError = ListFactorVersionsErrors[keyof ListFactorVersionsErrors];
+
+export type ListFactorVersionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CreateFactorVersionData = {
+    body: FactorVersionCreate;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factors/{factor_id}/versions';
+};
+
+export type CreateFactorVersionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateFactorVersionError = CreateFactorVersionErrors[keyof CreateFactorVersionErrors];
+
+export type CreateFactorVersionResponses = {
+    /**
+     * Successful Response
+     */
+    201: unknown;
+};
+
+export type GetFactorVersionData = {
+    body?: never;
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+        /**
+         * Version Id
+         */
+        version_id: string;
+    };
+    query?: never;
+    url: '/api/v1/factors/{factor_id}/versions/{version_id}';
+};
+
+export type GetFactorVersionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetFactorVersionError = GetFactorVersionErrors[keyof GetFactorVersionErrors];
+
+export type GetFactorVersionResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
 
 export type ListFinalEvaluationsData = {
     body?: never;

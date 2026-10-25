@@ -75,7 +75,10 @@ class FinalSelectionCreate(BaseModel):
 class ExposureSnapshot(FrozenModel):
     schema_version: Literal["tradegrad.exposure.v1"] = "tradegrad.exposure.v1"
     classification: Literal[
-        "previously_exposed", "no_tracked_overlap", "unknown_identity"
+        "previously_exposed",
+        "no_tracked_overlap",
+        "unknown_identity",
+        "unknown_import_history",
     ]
     matching_exposure_ids: list[UUID]
     matching_purposes: list[str]
