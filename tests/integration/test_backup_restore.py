@@ -1,0 +1,1895 @@
+"""Opt-in, real PostgreSQL cold-restore and genuine M3-through-I6 upgrade drill.
+
+RUN_BACKUP_RESTORE_DRILL=1 is mandatory. TEST_DATABASE_URL is a maintenance
+connection on a dedicated test server; its role must have CREATEDB. Only two
+random databases created by this fixture are dropped, never with FORCE or by
+terminating connections. No SQLite, mock database, create_all, Alembic stamp,
+local PostgreSQL startup, or local Docker fallback constitutes drill evidence.
+
+Client overrides are executable paths (not shell commands); CI may supply narrow
+pg_dump/pg_restore wrappers using streamed stdin/stdout. Never upload this test's
+temporary archives: they contain database and filesystem contents. Collection
+and explicit skips are not evidence that the configured hosted drill passed.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import shutil
+from collections.abc import Iterator
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import Engine, create_engine, inspect, select, text
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError, DBAPIError, SQLAlchemyError
+from sqlalchemy.pool import NullPool
+
+ROOT = Path(__file__).resolve().parents[2]
+APPLICATION_REF = "a" * 40
+DATABASE_NAME = re.compile(r"tradegrad_backup_test_[0-9a-f]{32}\Z")
+pytestmark = pytest.mark.postgres
+
+
+def _sha(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _json(value: object) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _engine(url: URL) -> Engine:
+    from backend.app.operations_backup import PostgresDatabase
+
+    # Apply the production profile before even the fixture's CREATE DATABASE:
+    # never let ambient libpq selectors redirect the maintenance connection.
+    PostgresDatabase(url.render_as_string(hide_password=False)).environment()
+    return create_engine(
+        url.set(port=5432 if url.port is None else url.port),
+        poolclass=NullPool,
+        connect_args={
+            "connect_timeout": 10,
+            "passfile": "/dev/null",
+            "sslmode": url.query.get("sslmode", "prefer"),
+            "options": "-csearch_path=public -cstatement_timeout=30000",
+        },
+        echo=False,
+        hide_parameters=True,
+    )
+
+
+@dataclass(frozen=True)
+class DrillDatabases:
+    source: URL
+    restored: URL
+    pg_dump: str
+    pg_restore: str
+
+
+@pytest.fixture
+def drill_databases() -> Iterator[DrillDatabases]:
+    # Do not depend on postgres_url: its unset-URL skip must not turn an opted-in
+    # but misconfigured release gate green.
+    if os.environ.get("RUN_BACKUP_RESTORE_DRILL") != "1":
+        pytest.skip(
+            "RUN_BACKUP_RESTORE_DRILL=1 is required; real PostgreSQL "
+            "backup/restore drill was not run"
+        )
+    value = os.environ.get("TEST_DATABASE_URL")
+    if not value:
+        pytest.fail(
+            "Opted-in backup/restore drill requires TEST_DATABASE_URL",
+            pytrace=False,
+        )
+    try:
+        maintenance_url = make_url(value)
+    except (ArgumentError, ValueError):
+        pytest.fail("TEST_DATABASE_URL is not a valid PostgreSQL URL", pytrace=False)
+    # Credentials stay inside the URL object and never become diagnostic text.
+    del value
+    if maintenance_url.get_backend_name() != "postgresql":
+        pytest.fail("Backup/restore drill requires real PostgreSQL", pytrace=False)
+    if not maintenance_url.database:
+        pytest.fail("TEST_DATABASE_URL must name a maintenance database", pytrace=False)
+    if set(maintenance_url.query) - {"sslmode"}:
+        pytest.fail(
+            "Backup/restore drill supports only sslmode URL query configuration; "
+            "database, service and search-path overrides are forbidden",
+            pytrace=False,
+        )
+    maintenance_url = maintenance_url.set(drivername="postgresql+psycopg")
+    executable_paths = []
+    for setting, default in (
+        ("PG_DUMP_EXECUTABLE", "pg_dump"),
+        ("PG_RESTORE_EXECUTABLE", "pg_restore"),
+    ):
+        executable = os.environ.get(setting, default)
+        if not executable or shutil.which(executable) is None:
+            pytest.fail(
+                f"Opted-in backup/restore drill requires an executable {setting}",
+                pytrace=False,
+            )
+        executable_paths.append(executable)
+
+    names = [f"tradegrad_backup_test_{uuid4().hex}" for _ in range(2)]
+    assert len(set(names)) == 2
+    assert all(DATABASE_NAME.fullmatch(name) for name in names)
+    assert maintenance_url.database not in names
+    created: list[str] = []
+    admin = _engine(maintenance_url).execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        try:
+            with admin.connect() as connection:
+                assert (
+                    connection.execute(text("SELECT version()"))
+                    .scalar_one()
+                    .startswith("PostgreSQL")
+                )
+                can_create = connection.execute(
+                    text(
+                        "SELECT rolsuper OR rolcreatedb FROM pg_roles "
+                        "WHERE rolname = current_user"
+                    )
+                ).scalar_one()
+                if not can_create:
+                    pytest.fail(
+                        "Opted-in backup/restore drill requires a CREATEDB role",
+                        pytrace=False,
+                    )
+                for name in names:
+                    connection.execute(
+                        text(f'CREATE DATABASE "{name}" TEMPLATE template0')
+                    )
+                    # Never clean up a name whose CREATE did not complete.
+                    created.append(name)
+        except SQLAlchemyError:
+            pytest.fail(
+                "Could not create drill databases; check the configured "
+                "PostgreSQL service and CREATEDB role (connection details withheld)",
+                pytrace=False,
+            )
+        yield DrillDatabases(
+            source=maintenance_url.set(database=names[0]),
+            restored=maintenance_url.set(database=names[1]),
+            pg_dump=executable_paths[0],
+            pg_restore=executable_paths[1],
+        )
+    finally:
+        failed_cleanup = []
+        for name in reversed(created):
+            assert DATABASE_NAME.fullmatch(name)
+            try:
+                with admin.connect() as connection:
+                    # No FORCE and no pg_terminate_backend, including on failure.
+                    connection.execute(text(f'DROP DATABASE "{name}"'))
+            except SQLAlchemyError:
+                failed_cleanup.append(name)
+        admin.dispose()
+        if failed_cleanup:
+            pytest.fail(
+                "Could not drop these fixture-created databases; no sessions "
+                "were terminated: " + ", ".join(failed_cleanup),
+                pytrace=False,
+            )
+
+
+def _upgrade(engine: Engine, revision: str) -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config(str(ROOT / "backend" / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "backend" / "alembic"))
+    with engine.begin() as connection:
+        assert (
+            connection.execute(text("SELECT current_schema()")).scalar_one() == "public"
+        )
+        config.attributes["connection"] = connection
+        command.upgrade(config, revision)
+
+
+def _downgrade(engine: Engine, revision: str) -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config(str(ROOT / "backend" / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "backend" / "alembic"))
+    with engine.begin() as connection:
+        assert (
+            connection.execute(text("SELECT current_schema()")).scalar_one() == "public"
+        )
+        config.attributes["connection"] = connection
+        command.downgrade(config, revision)
+
+
+def _seed_m3(engine: Engine, storage: Path) -> dict[str, bytes]:
+    """Insert genuine historical rows, without importing current ORM models."""
+    from backend.app.core.atomic_storage import provision_directory, sync_tree
+    from packages.tradegrad_adapter.config import MarketConfig, RunConfig
+
+    ids = {
+        name: uuid4()
+        for name in (
+            "owner",
+            "dataset",
+            "strategy",
+            "universe",
+            "run",
+            "attempt",
+            "artifact",
+            "checkpoint",
+            "candidate",
+            "event",
+            "listing",
+        )
+    }
+    dataset_key = f"datasets/{ids['owner']}/{ids['dataset']}"
+    run_key = f"runs/{ids['run']}/{ids['attempt']}"
+    checkpoint_key = f"{run_key}/checkpoints/{ids['checkpoint']}"
+    listing = str(ids["listing"])
+    dataset_files = {
+        "data/INDEX.csv": (
+            b"date,open,high,low,close,volume\n"
+            b"2024-01-02,10,11,9,10.5,100\n"
+            b"2024-01-03,10.5,12,10,11,120\n"
+        ),
+        "universe/fixed_list_2024-01.csv": (
+            "updateDate,code,code_name\n2024-01-01,INDEX,Synthetic 演练\n".encode()
+        ),
+        "raw.json": _json({"source": "synthetic_fixture", "prices": [10.5, 11]}),
+        f"preview/{listing}/0.json": _json(
+            [{"session_date": "2024-01-02", "close": 10.5}]
+        ),
+    }
+    universe = {"state": "user_fixed", "members": [{"listing_id": listing}]}
+    universe_hash = _sha(_json(universe))
+    manifest = {
+        "schema_version": 2,
+        "is_synthetic": True,
+        "ready": True,
+        "files": {
+            name: _sha(content)
+            for name, content in dataset_files.items()
+            if name.endswith(".csv")
+        },
+        "artifact_files": {"raw.json": _sha(dataset_files["raw.json"])},
+        "preview_files": {
+            listing: [
+                {
+                    "path": f"preview/{listing}/0.json",
+                    "sha256": _sha(dataset_files[f"preview/{listing}/0.json"]),
+                    "start_date": "2024-01-02",
+                    "end_date": "2024-01-03",
+                }
+            ]
+        },
+        "listings": [{"listing_id": listing}],
+        "evaluator_symbol_mapping": {listing: "INDEX"},
+        "universe": {
+            "id": str(ids["universe"]),
+            "content_sha256": universe_hash,
+            "state": "user_fixed",
+        },
+        "evaluation_compatibility": {"compatible": True},
+        "quality": {"unknown_flags": []},
+    }
+    manifest["content_hash"] = _sha(_json(manifest))
+    manifest_bytes = _json(manifest)
+    dataset_hash = _sha(manifest_bytes)
+    code = "# Historical synthetic strategy: 演练. Never executed.\nLOOKBACK = 20\n"
+    code_hash = _sha(code.encode())
+    config = RunConfig.model_validate(
+        {
+            "task": "cn_time",
+            "execution_mode": "optimization",
+            "dataset": {"id": str(ids["dataset"]), "sha256": dataset_hash},
+            "seed_strategy": {"id": str(ids["strategy"]), "sha256": code_hash},
+            "universe": {"id": str(ids["universe"]), "sha256": universe_hash},
+            "windows": {
+                "train": {"start": "2024-02-01", "end": "2024-02-10"},
+                "validation": {"start": "2024-02-15", "end": "2024-02-20"},
+                "holdout": {"start": "2024-03-01", "end": "2024-03-05"},
+            },
+            "warmup": {"sessions": 20},
+            "market_profile": MarketConfig.for_market("CN").model_dump(mode="json"),
+            "optimizer": {"max_iterations": 0},
+            "environment_digest": _sha(b"synthetic-old-environment"),
+        }
+    )
+    artifact = _json({"schema_version": 1, "synthetic": True, "value": 0.125})
+    checkpoint_state = _json({"complete": True, "next_stage": "complete"})
+    checkpoint_manifest = _json(
+        {
+            "schema_version": 1,
+            "complete": True,
+            "input_digest": config.sha256,
+            "files": [
+                {
+                    "path": "state.json",
+                    "sha256": _sha(checkpoint_state),
+                    "size_bytes": len(checkpoint_state),
+                }
+            ],
+        }
+    )
+    files = {
+        **{f"{dataset_key}/{name}": content for name, content in dataset_files.items()},
+        f"{dataset_key}/manifest.json": manifest_bytes,
+        f"{run_key}/metrics.json": artifact,
+        f"{checkpoint_key}/manifest.json": checkpoint_manifest,
+        f"{checkpoint_key}/state.json": checkpoint_state,
+        # Preserve owned, unreferenced immutable bytes too, not only DB pointers.
+        f"uploads/{ids['owner']}/historical.csv": b"date,close\n2024-01-02,10.5\n",
+        f"data-checkpoints/{uuid4().hex}/block.json": _json({"rows": [10.5]}),
+    }
+    provision_directory(storage, durable_parent=storage.parent)
+    for namespace in (
+        "datasets",
+        "runs",
+        "data-checkpoints",
+        "uploads",
+        "strategy-packages",
+    ):
+        provision_directory(storage / namespace, durable_parent=storage)
+    for key, content in files.items():
+        path = storage / key
+        provision_directory(path.parent, durable_parent=storage)
+        path.write_bytes(content)
+        path.chmod(0o400)
+    sync_tree(storage)
+    now = datetime(2024, 4, 1, tzinfo=UTC)
+    values = {
+        **ids,
+        "now": now,
+        "manifest": manifest_bytes.decode(),
+        "dataset_key": dataset_key,
+        "dataset_hash": dataset_hash,
+        "code": code,
+        "code_hash": code_hash,
+        "universe_hash": universe_hash,
+        "members": _json(universe["members"]).decode(),
+        "config": config.canonical_bytes().decode(),
+        "config_hash": config.sha256,
+        "artifact_key": f"{run_key}/metrics.json",
+        "artifact_hash": _sha(artifact),
+        "artifact_size": len(artifact),
+        "checkpoint_key": f"{checkpoint_key}/manifest.json",
+        "checkpoint_hash": _sha(checkpoint_manifest),
+    }
+    statements = [
+        """INSERT INTO users (id, email, hashed_password, full_name, is_active,
+            is_superuser, created_at) VALUES (:owner, 'restore-drill@example.invalid',
+            'not-an-authentication-credential', 'Historical 演练', true, false, :now)""",
+        """INSERT INTO dataset_versions (id, owner_id, name, market, start_date,
+            end_date, source, is_synthetic, content_sha256, manifest, storage_key,
+            created_at) VALUES (:dataset, :owner, 'Historical synthetic snapshot',
+            'CN', '2024-01-01', '2024-04-01', 'synthetic_fixture', true,
+            :dataset_hash, CAST(:manifest AS jsonb), :dataset_key, :now)""",
+        """INSERT INTO strategy_versions (id, owner_id, name, task, mode,
+            content_sha256, code, created_at) VALUES (:strategy, :owner,
+            'Historical native strategy', 'cn_time', 'native_akquant', :code_hash,
+            :code, :now)""",
+        """INSERT INTO universe_versions (id, owner_id, name, state, as_of,
+            members, evidence, content_sha256, created_at) VALUES (:universe,
+            :owner, 'Historical fixed universe', 'user_fixed', :now,
+            CAST(:members AS jsonb), '[]', :universe_hash, :now)""",
+        """INSERT INTO research_runs (id, owner_id, idempotency_key, request_sha256,
+            config, dataset_version_id, strategy_version_id, status, generation,
+            active_attempt_id, next_event_seq, result, research_image_digest,
+            created_at, updated_at) VALUES (:run, :owner, 'historical-cold-restore',
+            :config_hash, CAST(:config AS jsonb), :dataset, :strategy, 'succeeded',
+            1, NULL, 2, '{"synthetic": true}', 'sha256:' || repeat('b', 64), :now, :now)""",
+        """INSERT INTO execution_attempts (id, run_id, generation, worker_id,
+            lease_token, lease_expires_at, heartbeat_at, status, sandbox_id,
+            sandbox_stopped, exit_code, started_at, finished_at) VALUES (:attempt,
+            :run, 1, 'stopped-historical-worker', :attempt, :now, :now, 'succeeded',
+            'stopped-historical-sandbox', true, 0, :now, :now)""",
+        """INSERT INTO artifacts (id, run_id, attempt_id, name, media_type,
+            storage_key, sha256, size_bytes, created_at) VALUES (:artifact,
+            :run, :attempt, 'metrics.json', 'application/json', :artifact_key,
+            :artifact_hash, :artifact_size, :now)""",
+        """INSERT INTO research_candidates (id, run_id, attempt_id, generation,
+            candidate_key, kind, iteration, repair_index, code, code_sha256,
+            created_at) VALUES (:candidate, :run, :attempt, 1, 'seed', 'seed',
+            0, 0, :code, :code_hash, :now)""",
+        """INSERT INTO research_checkpoints (id, run_id, attempt_id, generation,
+            sequence, schema_version, manifest_storage_key, manifest_sha256,
+            input_digest, config_sha256, summary, next_stage, iteration, complete,
+            created_at) VALUES (:checkpoint, :run, :attempt, 1, 1, 1,
+            :checkpoint_key, :checkpoint_hash, :config_hash, :config_hash,
+            '{"synthetic": true}', 'complete', 0, true, :now)""",
+        """UPDATE research_runs SET latest_checkpoint_id = :checkpoint WHERE id = :run""",
+        """INSERT INTO run_events (id, run_id, attempt_id, seq, schema_version,
+            occurred_at, type, payload) VALUES (:event, :run, :attempt, 1, 1,
+            :now, 'succeeded', '{"synthetic": true}')""",
+    ]
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement), values)
+    return files
+
+
+def _historical_snapshot(engine: Engine) -> dict[str, tuple[list[str], list[tuple]]]:
+    """Capture all old columns/rows, including immutable config and FK pointers."""
+    schema = inspect(engine)
+    result = {}
+    with engine.connect() as connection:
+        for table in sorted(
+            set(schema.get_table_names(schema="public")) - {"alembic_version"}
+        ):
+            columns = [
+                column["name"] for column in schema.get_columns(table, schema="public")
+            ]
+            result[table] = (columns, _rows(connection, table, columns))
+    return result
+
+
+def _rows(connection, table: str, columns: list[str]) -> list[tuple]:
+    # Names originate in PostgreSQL's inspector, not user-controlled identifiers.
+    quote = connection.dialect.identifier_preparer.quote
+    projection = ", ".join(quote(column) for column in columns)
+    # Include every composite-key component: owner alone does not order multiple
+    # comparison submission aliases or bookmarks deterministically after restore.
+    keys = (
+        inspect(connection)
+        .get_pk_constraint(table, schema="public")
+        .get("constrained_columns")
+        or columns
+    )
+    ordering = ", ".join(quote(key) for key in keys)
+    return [
+        tuple(row)
+        for row in connection.execute(
+            text(f"SELECT {projection} FROM public.{quote(table)} ORDER BY {ordering}")
+        )
+    ]
+
+
+def _assert_historical_snapshot(engine: Engine, expected: dict) -> None:
+    with engine.connect() as connection:
+        for table, (columns, rows) in expected.items():
+            assert _rows(connection, table, columns) == rows, table
+
+
+def _config_identity(engine: Engine) -> tuple[str, str, str]:
+    with engine.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT config::text, request_sha256 FROM public.research_runs "
+                "WHERE idempotency_key = 'historical-cold-restore'"
+            )
+        ).one()
+    config_text, request_hash = row
+    assert json.loads(config_text)["schema_version"] == "tradegrad.run.v1"
+    assert _sha(_json(json.loads(config_text))) == request_hash
+    return config_text, _sha(config_text.encode()), request_hash
+
+
+def _assert_storage(storage: Path, expected: dict[str, bytes]) -> None:
+    for namespace in (
+        "datasets",
+        "runs",
+        "data-checkpoints",
+        "uploads",
+        "strategy-packages",
+    ):
+        assert (storage / namespace).is_dir()
+    actual = {
+        path.relative_to(storage).as_posix(): path.read_bytes()
+        for path in storage.rglob("*")
+        if path.is_file()
+    }
+    assert actual == expected
+    assert not any(path.is_symlink() for path in storage.rglob("*"))
+
+
+def test_real_m3_backup_restore_then_current_upgrade_preserves_history(
+    drill_databases: DrillDatabases,
+    tmp_path: Path,
+) -> None:
+    # Import only after the explicit opt-in fixture has checked prerequisites.
+    from backend.app.operations_backup import (
+        BackupLimits,
+        PgTools,
+        PostgresDatabase,
+        create_backup,
+        restore_backup,
+        verify_backup,
+    )
+
+    source = _engine(drill_databases.source)
+    restored = _engine(drill_databases.restored)
+    storage = tmp_path / "source-storage"
+    restored_storage = tmp_path / "restored-storage"
+    backup = tmp_path / "private-backup"
+    tools = PgTools(
+        pg_dump=(drill_databases.pg_dump,),
+        pg_restore=(drill_databases.pg_restore,),
+    )
+    limits = BackupLimits()
+    try:
+        _upgrade(source, "003_m3")
+        with source.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "003_m3"
+            )
+        assert "experiments" not in inspect(source).get_table_names()
+        assert "manifest" not in {
+            column["name"]
+            for column in inspect(source).get_columns("strategy_versions")
+        }
+        expected_files = _seed_m3(source, storage)
+        old_rows = _historical_snapshot(source)
+        config_identity = _config_identity(source)
+        _assert_storage(storage, expected_files)
+        assert inspect(restored).get_table_names(schema="public") == []
+
+        manifest = create_backup(
+            database=PostgresDatabase(
+                drill_databases.source.render_as_string(hide_password=False)
+            ),
+            storage_root=storage,
+            destination=backup,
+            durable_parent=tmp_path,
+            application_ref=APPLICATION_REF,
+            quiesced=True,
+            tools=tools,
+            limits=limits,
+        )
+        assert manifest["format"] == "tradegrad.cold-backup.v1"
+        assert manifest["schema_revision"] == "003_m3"
+        assert manifest["application_ref"] == APPLICATION_REF
+        assert manifest["postgres_major"] >= 14
+        assert (
+            verify_backup(backup, application_ref=APPLICATION_REF, limits=limits)
+            == manifest
+        )
+        assert (backup / "database.dump").read_bytes().startswith(b"PGDMP")
+        inventory = {item["path"]: item for item in manifest["files"]}
+        assert set(inventory) == {"database.dump"} | {
+            f"storage/{key}" for key in expected_files
+        }
+        for key, content in expected_files.items():
+            assert inventory[f"storage/{key}"]["sha256"] == _sha(content)
+            assert inventory[f"storage/{key}"]["size_bytes"] == len(content)
+        assert not restored_storage.exists()
+
+        restored_manifest = restore_backup(
+            database=PostgresDatabase(
+                drill_databases.restored.render_as_string(hide_password=False)
+            ),
+            backup_root=backup,
+            storage_root=restored_storage,
+            durable_parent=tmp_path,
+            application_ref=APPLICATION_REF,
+            quiesced=True,
+            trust_backup=True,
+            tools=tools,
+            limits=limits,
+        )
+        assert restored_manifest == manifest
+        # Operator receipt evidence is emitted only after the actual operation
+        # completed. Exact private manifest bytes are bound; paths are absent.
+        from backend.app.operations_receipts import write_success_receipt
+
+        created_receipt = write_success_receipt(
+            operation="create",
+            manifest=manifest,
+            backup_root=backup,
+            destination=tmp_path / "created-receipt.json",
+        )
+        restored_receipt = write_success_receipt(
+            operation="restore",
+            manifest=restored_manifest,
+            backup_root=backup,
+            destination=tmp_path / "restored-receipt.json",
+        )
+        assert (
+            created_receipt.operation == "create"
+            and restored_receipt.operation == "restore"
+        )
+        assert created_receipt.manifest_sha256 == _sha(
+            (backup / "manifest.json").read_bytes()
+        )
+        assert created_receipt.manifest_sha256 == restored_receipt.manifest_sha256
+        assert str(backup) not in (tmp_path / "restored-receipt.json").read_text()
+        verified_manifest = verify_backup(
+            backup, application_ref=APPLICATION_REF, limits=limits
+        )
+        verified_receipt = write_success_receipt(
+            operation="verify",
+            manifest=verified_manifest,
+            backup_root=backup,
+            destination=tmp_path / "verified-receipt.json",
+        )
+        assert (
+            verified_receipt.operation == "verify"
+            and verified_receipt.manifest_sha256 == created_receipt.manifest_sha256
+        )
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "003_m3"
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM data_imports")
+                ).scalar_one()
+                == 0
+            )
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT bool_and(sandbox_stopped AND status = 'succeeded') FROM execution_attempts"
+                    )
+                ).scalar_one()
+                is True
+            )
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+
+        # Upgrade the restored, genuinely old schema, not an M5 database stamped M3.
+        _upgrade(restored, "004_m5")
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "004_m5"
+            )
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT experiment_id, split_version_id, final_selection_id, submission_binding, portable_policy_image_digest FROM research_runs"
+                    )
+                ).one()
+                == (None,) * 5
+            )
+            assert connection.execute(
+                text("SELECT manifest, parameters FROM strategy_versions")
+            ).one() == (None, None)
+            assert (
+                connection.execute(
+                    text("SELECT definition FROM universe_versions")
+                ).scalar_one()
+                is None
+            )
+        assert {
+            "experiments",
+            "split_versions",
+            "final_selections",
+            "data_usage_exposures",
+            "strategy_packages",
+        } <= set(inspect(restored).get_table_names())
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+        # Continue through the genuine additive Settings revision. Defaults and
+        # quotas are mutable management state, never historical RunConfig edits.
+        _upgrade(restored, "005_settings")
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "005_settings"
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM user_workspace_settings")
+                ).scalar_one()
+                == 0
+            )
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+        # ProviderConnection adds configuration history without backfilling or
+        # relabeling any existing job/provenance or published manifest.
+        _upgrade(restored, "006_provider_connections")
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "006_provider_connections"
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM provider_connections")
+                ).scalar_one()
+                == 0
+            )
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+        # I2 adds descriptions/bookmarks without inventing old generation context.
+        _upgrade(restored, "007_research_specs")
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "007_research_specs"
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM strategy_spec_revisions")
+                ).scalar_one()
+                == 0
+            )
+            assert (
+                connection.execute(
+                    text("SELECT count(*) FROM candidate_bookmarks")
+                ).scalar_one()
+                == 0
+            )
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT bool_and(lineage_context IS NULL) FROM research_candidates"
+                    )
+                ).scalar_one()
+                is True
+            )
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+        # I4 adds comparison business history, not fabricated historical jobs or
+        # source evaluations. The genuine M3 rows and every stored byte survive.
+        _upgrade(restored, "008_comparisons")
+        with restored.connect() as connection:
+            assert (
+                connection.execute(
+                    text("SELECT version_num FROM alembic_version")
+                ).scalar_one()
+                == "008_comparisons"
+            )
+            for table in ("comparisons", "comparison_submissions"):
+                assert (
+                    connection.execute(
+                        text(f"SELECT count(*) FROM {table}")
+                    ).scalar_one()
+                    == 0
+                )
+        _assert_historical_snapshot(restored, old_rows)
+        assert _config_identity(restored) == config_identity
+        _assert_storage(restored_storage, expected_files)
+        # Original database and immutable backup remain usable and unchanged.
+        _assert_historical_snapshot(source, old_rows)
+        assert (
+            verify_backup(backup, application_ref=APPLICATION_REF, limits=limits)
+            == manifest
+        )
+    finally:
+        source.dispose()
+        restored.dispose()
+
+
+def _settings_seed_statement():
+    return text("""INSERT INTO user_workspace_settings
+        (owner_id, defaults, max_active_runs, max_active_imports, disabled_model_profiles)
+        SELECT id, CAST(:defaults AS jsonb), 1, 2,
+        CAST(:disabled_profiles AS jsonb) FROM users""").bindparams(
+        defaults=json.dumps({"initial_cash": 250000, "model_profile_id": "fixture"}),
+        disabled_profiles=json.dumps(["existing-disabled-profile"]),
+    )
+
+
+def test_settings_seed_uses_explicit_json_bindings():
+    """Pure SQL compilation only; no engine, database or backup is started."""
+    statement = _settings_seed_statement()
+    parameters = statement.compile().params
+    assert set(parameters) == {"defaults", "disabled_profiles"}
+    assert json.loads(parameters["defaults"]) == {
+        "initial_cash": 250000,
+        "model_profile_id": "fixture",
+    }
+    assert json.loads(parameters["disabled_profiles"]) == ["existing-disabled-profile"]
+    assert "CAST(:defaults AS jsonb)" in str(statement)
+
+
+def test_supported_backup_revisions_are_receiptable():
+    """Pure receipt-schema coverage, not evidence of a PostgreSQL restore."""
+    from typing import get_args
+
+    from backend.app.operations_backup import REVISIONS
+    from backend.app.operations_schemas import BackupReceipt
+
+    assert set(get_args(BackupReceipt.model_fields["schema_revision"].annotation)) == (
+        REVISIONS
+    )
+    for revision in REVISIONS:
+        receipt = BackupReceipt(
+            operation="restore",
+            application_ref=APPLICATION_REF,
+            schema_revision=revision,
+            manifest_sha256="b" * 64,
+            backup_created_at=datetime(2024, 4, 1, tzinfo=UTC),
+            observed_at=datetime(2024, 4, 2, tzinfo=UTC),
+        )
+        assert receipt.schema_revision == revision
+
+
+def _seed_workbench_evidence(engine):
+    """Persist real append-only revisions, a bookmark and new bounded context."""
+    from sqlalchemy.orm import Session
+
+    from backend.app.models import Candidate, ResearchRun
+    from backend.app.workbench_schemas import SpecRevisionCreate
+    from backend.app.workbench_services import (
+        create_spec_revision,
+        read_spec,
+        set_bookmark,
+    )
+
+    with Session(engine) as session:
+        seed = session.scalar(select(Candidate))
+        run = session.get(ResearchRun, seed.run_id)
+        feedback = (
+            "Synthetic persisted generation suggestion for cold-restore acceptance."
+        )
+        source = seed.code + "\n# retained derived candidate\n"
+        child = Candidate(
+            run_id=run.id,
+            attempt_id=seed.attempt_id,
+            generation=seed.generation,
+            candidate_key="restore-derived",
+            parent_id=seed.id,
+            kind="generated",
+            iteration=1,
+            repair_index=0,
+            code=source,
+            code_sha256=_sha(source.encode()),
+            lineage_context={
+                "schema_version": "tradegrad.candidate-context.v1",
+                "reference_candidate_keys": [seed.candidate_key],
+                "feedback": feedback,
+                "feedback_sha256": _sha(feedback.encode()),
+                "feedback_truncated": False,
+                "revision_mode": "small",
+                "generation_status": "generated",
+                "model_call_ids": [],
+            },
+        )
+        session.add(child)
+        session.flush()
+        initial = read_spec(session, "candidate", child.id, run.owner_id)
+        create_spec_revision(
+            session,
+            "candidate",
+            child.id,
+            run.owner_id,
+            SpecRevisionCreate(
+                code_sha256=initial.code_sha256,
+                base_revision=initial.revision,
+                base_spec_sha256=initial.spec_sha256,
+                rules=[
+                    {
+                        "rule_id": initial.spec.rules[0].rule_id,
+                        "title": "Retained human revision",
+                        "description": "Append-only description survives actual pg_dump/pg_restore.",
+                    }
+                ],
+            ),
+            "restore-description",
+        )
+        set_bookmark(session, child.id, run.owner_id, True)
+        session.commit()
+    with engine.connect() as connection:
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM strategy_spec_revisions")
+            ).scalar_one()
+            == 2
+        )
+        assert (
+            connection.execute(
+                text("SELECT count(*) FROM candidate_bookmarks")
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM research_candidates WHERE lineage_context IS NOT NULL"
+                )
+            ).scalar_one()
+            == 1
+        )
+
+
+def _comparison_boundary_records(source, body, diagnostic_hash, now):
+    """Build inert historical rows, not admitted source evidence or a result.
+
+    Keep the business envelope canonical and pin its historical algorithm
+    explicitly. The diagnostic hash is still synthetic; nothing here invokes
+    source admission, schedules execution, or creates publication pointers.
+    """
+    from backend.app.comparison_schemas import ComparisonConfig
+    from backend.app.models import Comparison, ResearchRun
+    from packages.research_trace.comparison_contracts import (
+        DEFAULT_LIMITS,
+        LEGACY_ALGORITHM_VERSION,
+        TOLERANCE_VERSION,
+    )
+    from packages.research_trace.contracts import digest
+
+    snapshot = {
+        "schema_version": "tradegrad.comparison-input.v1",
+        "owner_id": str(source.owner_id),
+        "request": body.model_dump(mode="json"),
+        "request_sha256": body.sha256,
+        "engine_input_sha256": diagnostic_hash,
+        "algorithm_version": LEGACY_ALGORITHM_VERSION,
+        "tolerance_version": TOLERANCE_VERSION,
+        "limits": DEFAULT_LIMITS.model_dump(mode="json"),
+        "synthetic": True,
+        "engine_executed": False,
+        "result_available": False,
+    }
+    config = ComparisonConfig(
+        comparison_id=uuid4(),
+        input_sha256=digest(snapshot),
+        engine_input_sha256=diagnostic_hash,
+        request=body,
+        algorithm_version=LEGACY_ALGORITHM_VERSION,
+        tolerance_version=TOLERANCE_VERSION,
+        limits=DEFAULT_LIMITS,
+    )
+    run = ResearchRun(
+        id=uuid4(),
+        owner_id=source.owner_id,
+        idempotency_key="restore-comparison-z-submit",
+        request_sha256=config.sha256,
+        config=config.model_dump(mode="json"),
+        dataset_version_id=source.dataset_version_id,
+        strategy_version_id=source.strategy_version_id,
+        status="cancelled",
+        generation=1,
+        next_event_seq=1,
+        error="Synthetic cancelled comparison; no engine result",
+        created_at=now,
+        updated_at=now,
+    )
+    comparison = Comparison(
+        id=config.comparison_id,
+        owner_id=source.owner_id,
+        run_id=run.id,
+        left_evaluation_id=body.left.evaluation_id,
+        right_evaluation_id=body.right.evaluation_id,
+        input_sha256=config.input_sha256,
+        engine_input_sha256=config.engine_input_sha256,
+        input_snapshot=snapshot,
+        created_at=now,
+    )
+    return config, run, comparison
+
+
+def _seed_comparison_boundary(engine: Engine, storage: Path) -> dict[str, bytes]:
+    """Synthetic persistence boundary only, never an engine/admission success.
+
+    The historical fixture has no real Evaluation/ResultBundle. Explicitly
+    cancelled, stopped source registrations therefore anchor this cancelled
+    Comparison and its two aliases. The registered diagnostic is NOT a comparison
+    result/manifest, and the comparison's publication pointers remain NULL.
+    """
+    from sqlalchemy.orm import Session
+
+    from backend.app.comparison_schemas import ComparisonCreate
+    from backend.app.comparison_services import comparison_config
+    from backend.app.core.atomic_storage import publish_bytes
+    from backend.app.models import (
+        Artifact,
+        Candidate,
+        ComparisonSubmission,
+        Evaluation,
+        ExecutionAttempt,
+        ResearchRun,
+        RunEvent,
+    )
+    from packages.research_trace.contracts import digest
+
+    now = datetime(2024, 4, 2, tzinfo=UTC)
+    diagnostic = _json(
+        {
+            "schema_version": "tradegrad.synthetic-backup-boundary.v1",
+            "synthetic": True,
+            "engine_executed": False,
+            "result_available": False,
+            "reason": "Cancelled persistence fixture, not an observed comparison result",
+        }
+    )
+    diagnostic_hash = _sha(diagnostic)
+    with Session(engine) as session:
+        source = session.scalar(
+            select(ResearchRun).where(
+                ResearchRun.idempotency_key == "historical-cold-restore"
+            )
+        )
+        evaluations = []
+        for key in ("seed", "restore-derived"):
+            candidate = session.scalar(
+                select(Candidate).where(
+                    Candidate.run_id == source.id, Candidate.candidate_key == key
+                )
+            )
+            window = source.config["windows"]["train"]
+            evaluation = Evaluation(
+                id=uuid4(),
+                run_id=source.id,
+                attempt_id=candidate.attempt_id,
+                generation=candidate.generation,
+                candidate_id=candidate.id,
+                candidate_key=candidate.candidate_key,
+                code_sha256=candidate.code_sha256,
+                split="train",
+                window=window,
+                window_sha256=digest(window),
+                image_digest=source.research_image_digest,
+                sandbox_id=f"synthetic-not-launched-{uuid4().hex}",
+                sandbox_stopped=True,
+                status="cancelled",
+                error="Synthetic backup boundary; no engine was launched",
+                created_at=now,
+                finished_at=now,
+            )
+            session.add(evaluation)
+            evaluations.append(evaluation)
+        session.flush()
+        body = ComparisonCreate.model_validate(
+            {
+                side: {
+                    "evaluation_id": str(evaluation.id),
+                    "execution_attempt_id": str(evaluation.attempt_id),
+                    # Intentionally synthetic pins, not an admitted ResultBundle.
+                    "result_manifest_sha256": diagnostic_hash,
+                    "trace_manifest_sha256": None,
+                    "source_kind": "candidate",
+                    "source_id": str(evaluation.candidate_id),
+                    "code_sha256": evaluation.code_sha256,
+                }
+                for side, evaluation in zip(("left", "right"), evaluations, strict=True)
+            }
+        )
+        config, run, comparison = _comparison_boundary_records(
+            source, body, diagnostic_hash, now
+        )
+        session.add(run)
+        session.flush()
+        attempt = ExecutionAttempt(
+            id=uuid4(),
+            run_id=run.id,
+            generation=1,
+            worker_id="synthetic-backup-boundary-worker",
+            lease_token=uuid4(),
+            lease_expires_at=now,
+            heartbeat_at=now,
+            status="cancelled",
+            sandbox_id=f"synthetic-not-launched-{uuid4().hex}",
+            sandbox_stopped=True,
+            started_at=now,
+            finished_at=now,
+        )
+        session.add(attempt)
+        session.flush()
+        storage_key = f"runs/{run.id}/{attempt.id}/comparison-boundary.json"
+        publish_bytes(
+            storage / storage_key,
+            diagnostic,
+            sha256=diagnostic_hash,
+            durable_root=storage,
+        )
+        session.add(
+            Artifact(
+                run_id=run.id,
+                attempt_id=attempt.id,
+                name="comparison-boundary.json",
+                media_type="application/json",
+                storage_key=storage_key,
+                sha256=diagnostic_hash,
+                size_bytes=len(diagnostic),
+                created_at=now,
+            )
+        )
+        session.add(
+            RunEvent(
+                run_id=run.id,
+                attempt_id=attempt.id,
+                seq=0,
+                type="cancelled",
+                payload={"synthetic": True, "engine_executed": False},
+                occurred_at=now,
+            )
+        )
+        session.add(comparison)
+        session.flush()
+        assert comparison_config(run, comparison) == config
+        # Reverse lexical insertion order makes owner-only ordering insufficient.
+        for key in (run.idempotency_key, "restore-comparison-a-cache-hit"):
+            session.add(
+                ComparisonSubmission(
+                    owner_id=source.owner_id,
+                    idempotency_key=key,
+                    comparison_id=comparison.id,
+                    request_sha256=body.sha256,
+                    created_at=now,
+                )
+            )
+            session.flush()
+        session.commit()
+    return {storage_key: diagnostic}
+
+
+def _seed_independent_boundary(engine: Engine) -> None:
+    """Cancelled persistence-only I5 graph; no source/result admission is claimed.
+
+    This deliberately unexecutable synthetic source lets cold restore prove new
+    owner/family/source/arm foreign keys and immutable config bytes survive,
+    without inventing a successful engine evaluation or parity report.
+    """
+    from sqlalchemy.orm import Session
+
+    from backend.app.experiment_schemas import (
+        ExperimentCreate,
+        SplitDefinition,
+        SplitVersionCreate,
+    )
+    from backend.app.experiment_services import create_experiment, create_split_version
+    from backend.app.independent_schemas import (
+        ControlledExperimentCreate,
+        DiagnosticReplayCreate,
+    )
+    from backend.app.models import (
+        ControlledArm,
+        ControlledExperiment,
+        Evaluation,
+        ExecutionAttempt,
+        IndependentEvaluation,
+        ResearchRun,
+        StrategyVersion,
+    )
+    from packages.research_trace.contracts import digest
+    from packages.tradegrad_adapter.config import RunConfig, VersionRef
+    from packages.tradegrad_adapter.independent_config import (
+        IndependentEvaluationConfig,
+        IndependentSourcePin,
+    )
+
+    now = datetime(2024, 4, 3, tzinfo=UTC)
+    synthetic = {
+        "schema_version": "tradegrad.synthetic-independent-backup-boundary.v1",
+        "synthetic": True,
+        "engine_executed": False,
+        "result_available": False,
+        "reason": "Cancelled persistence fixture, never a readable independent result",
+    }
+    with Session(engine) as session:
+        historical = session.scalar(
+            select(ResearchRun).where(
+                ResearchRun.idempotency_key == "historical-cold-restore"
+            )
+        )
+        config = RunConfig.model_validate(historical.config)
+        strategy = session.get(StrategyVersion, historical.strategy_version_id)
+        owner = historical.owner_id
+        parent = create_experiment(
+            session,
+            owner,
+            ExperimentCreate(name="Synthetic cancelled I5 backup parent"),
+        )
+        definition = SplitDefinition(
+            dataset=config.dataset, universe=config.universe, windows=config.windows
+        )
+        parent_split = create_split_version(
+            session,
+            owner,
+            SplitVersionCreate(experiment_id=parent.id, definition=definition),
+        )
+        child = create_experiment(
+            session,
+            owner,
+            ExperimentCreate(
+                name="Synthetic cancelled I5 backup child",
+                parent_experiment_id=parent.id,
+            ),
+        )
+        child_split = create_split_version(
+            session,
+            owner,
+            SplitVersionCreate(experiment_id=child.id, definition=definition),
+        )
+
+        def cancelled_leaf(frozen, key, experiment, split):
+            run = ResearchRun(
+                id=uuid4(),
+                owner_id=owner,
+                idempotency_key=key,
+                request_sha256=frozen.sha256,
+                config=frozen.model_dump(mode="json"),
+                dataset_version_id=historical.dataset_version_id,
+                strategy_version_id=strategy.id,
+                experiment_id=experiment.id,
+                split_version_id=split.id,
+                research_image_digest=historical.research_image_digest,
+                status="cancelled",
+                generation=1,
+                next_event_seq=0,
+                error=synthetic["reason"],
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(run)
+            session.flush()
+            attempt = ExecutionAttempt(
+                id=uuid4(),
+                run_id=run.id,
+                generation=1,
+                worker_id="synthetic-not-executed",
+                lease_token=uuid4(),
+                lease_expires_at=now,
+                heartbeat_at=now,
+                status="cancelled",
+                sandbox_id=f"synthetic-not-launched-{uuid4().hex}",
+                sandbox_stopped=True,
+                started_at=now,
+                finished_at=now,
+            )
+            session.add(attempt)
+            session.flush()
+            window = config.windows.train.model_dump(mode="json")
+            evaluation = Evaluation(
+                id=uuid4(),
+                run_id=run.id,
+                attempt_id=attempt.id,
+                generation=1,
+                candidate_key="synthetic-never-executed",
+                code_sha256=strategy.content_sha256,
+                split="train",
+                window=window,
+                window_sha256=digest(window),
+                image_digest=run.research_image_digest,
+                sandbox_id=attempt.sandbox_id,
+                sandbox_stopped=True,
+                status="cancelled",
+                error=synthetic["reason"],
+                created_at=now,
+                finished_at=now,
+            )
+            session.add(evaluation)
+            session.flush()
+            return run, evaluation
+
+        source, source_eval = cancelled_leaf(
+            config, "restore-i5-synthetic-source", parent, parent_split
+        )
+        pin = IndependentSourcePin(
+            evaluation_id=source_eval.id,
+            execution_attempt_id=source_eval.attempt_id,
+            result_manifest_sha256=digest(synthetic),
+            trace_manifest_sha256=None,
+            source_kind="strategy_version",
+            source_id=strategy.id,
+            code_sha256=strategy.content_sha256,
+        )
+        request = DiagnosticReplayCreate(source=pin)
+        controls = ControlledExperimentCreate(
+            source=pin,
+            name="Cancelled manual backup protocol",
+            hypothesis="Synthetic boundary only",
+            planned_change="No executed changes or causal claim",
+            arms=[
+                {"name": "baseline", "code": strategy.code},
+                {"name": "unchanged", "code": strategy.code},
+            ],
+        )
+        control = ControlledExperiment(
+            id=uuid4(),
+            owner_id=owner,
+            idempotency_key="restore-i5-control",
+            experiment_id=child.id,
+            split_version_id=child_split.id,
+            source_evaluation_id=source_eval.id,
+            request_sha256=controls.sha256,
+            request=controls.model_dump(mode="json"),
+            protocol=synthetic,
+            protocol_sha256=digest(synthetic),
+            exposure_snapshot=synthetic,
+            created_at=now,
+        )
+        session.add(control)
+        session.flush()
+        for ordinal, purpose in enumerate(("diagnostic", "controlled", "controlled")):
+            identifier = uuid4()
+            frozen = IndependentEvaluationConfig(
+                independent_id=identifier,
+                purpose=purpose,
+                source=pin,
+                source_run_id=source.id,
+                original_config_sha256=config.sha256,
+                source_config=config,
+                source_config_sha256=config.sha256,
+                selected_strategy=VersionRef(
+                    id=str(strategy.id), sha256=strategy.content_sha256
+                ),
+                split="train",
+                reconstruction_window=config.windows.train,
+                environment_digest=config.environment_digest,
+                research_image_digest=source.research_image_digest,
+                protocol_sha256=digest(synthetic),
+            )
+            run, _ = cancelled_leaf(
+                frozen,
+                f"restore-i5-{ordinal}",
+                parent if ordinal == 0 else child,
+                parent_split if ordinal == 0 else child_split,
+            )
+            item = IndependentEvaluation(
+                id=identifier,
+                owner_id=owner,
+                run_id=run.id,
+                source_evaluation_id=source_eval.id,
+                purpose=purpose,
+                request_sha256=request.sha256,
+                request=request.model_dump(mode="json"),
+                source_snapshot=synthetic,
+                source_snapshot_sha256=digest(synthetic),
+                protocol=synthetic,
+                protocol_sha256=digest(synthetic),
+                created_at=now,
+            )
+            session.add(item)
+            session.flush()
+            if ordinal:
+                arm = controls.arms[ordinal - 1]
+                session.add(
+                    ControlledArm(
+                        id=uuid4(),
+                        controlled_experiment_id=control.id,
+                        independent_id=item.id,
+                        ordinal=ordinal - 1,
+                        name=arm.name,
+                        changed_fields=[],
+                        interpretation="baseline" if ordinal == 1 else "unchanged",
+                    )
+                )
+                session.flush()
+        session.commit()
+
+
+def _note_settings(engine, storage):
+    import secrets
+
+    from backend.app.core.config import Settings
+
+    return Settings(
+        database_url=engine.url.render_as_string(hide_password=False),
+        secret_key=secrets.token_urlsafe(48),
+        storage_root=storage,
+        model_profiles_enabled=False,
+    )
+
+
+def _seed_note_boundary(engine, storage):
+    """Real note services over genuine old code/spec rows, not invented results."""
+    from sqlalchemy.orm import Session
+
+    from backend.app.models import (
+        Artifact,
+        Candidate,
+        ResearchNote,
+        ResearchNoteEvidencePin,
+        ResearchNoteRevision,
+        ResearchRun,
+        StrategySpecRevision,
+    )
+    from backend.app.research_note_schemas import (
+        ResearchNoteContent,
+        ResearchNoteCreate,
+        ResearchNoteEdit,
+    )
+    from backend.app.research_note_services import (
+        create_note,
+        create_revision,
+        read_revision,
+        revision_hash,
+        search_text,
+    )
+    from backend.app.workbench_services import read_spec
+    from packages.research_trace.contracts import digest
+
+    settings = _note_settings(engine, storage)
+    with Session(engine) as session:
+        candidate = session.scalar(
+            select(Candidate).where(Candidate.candidate_key == "restore-derived")
+        )
+        run = session.get(ResearchRun, candidate.run_id)
+        row = session.scalar(
+            select(StrategySpecRevision).where(
+                StrategySpecRevision.candidate_id == candidate.id,
+                StrategySpecRevision.revision == 1,
+            )
+        )
+        spec = read_spec(
+            session,
+            "candidate",
+            candidate.id,
+            run.owner_id,
+            revision=1,
+            expected_spec_sha256=row.spec_sha256,
+        )
+        rule = spec.spec.rules[0]
+        content = ResearchNoteContent(
+            title="Historical source mechanism 待验证",
+            tags=["retained", "mechanism"],
+            hypothesis="Human source-code hypothesis, not a successful engine result.",
+            counterexamples="No live or synthetic runtime result is asserted by this note.",
+            evidence=[
+                {
+                    "kind": "source",
+                    "label": "Exact original code and rule revision",
+                    "source_kind": "candidate",
+                    "source_id": str(candidate.id),
+                    "code_sha256": candidate.code_sha256,
+                    "spec_revision": 1,
+                    "spec_sha256": row.spec_sha256,
+                    "rule_id": rule.rule_id,
+                    "source_ref": rule.source_ref,
+                }
+            ],
+            restore={
+                "strategy_version_id": str(run.strategy_version_id),
+                "selection": {
+                    "candidate_id": str(candidate.id),
+                    "code_sha256": candidate.code_sha256,
+                    "spec_revision": 1,
+                    "spec_sha256": row.spec_sha256,
+                    "rule_id": rule.rule_id,
+                    **({"stage_id": rule.stage_id} if rule.stage_id else {}),
+                    "tab": "description",
+                },
+            },
+        )
+        first = create_note(
+            session,
+            run.owner_id,
+            ResearchNoteCreate(content=content),
+            "restore-note-create",
+            settings,
+        )
+        edited = content.model_copy(
+            update={
+                "title": "Historical source mechanism mixed",
+                "status": "mixed",
+                "next_steps": "Collect new evidence without replacing the original source.",
+            }
+        )
+        second = create_revision(
+            session,
+            first.note_id,
+            run.owner_id,
+            ResearchNoteEdit(
+                content=edited,
+                base_revision=first.revision,
+                base_revision_sha256=first.revision_sha256,
+                change_note="Human-only status revision; no automatic profit validation.",
+            ),
+            "restore-note-edit",
+            settings,
+        )
+        # A separate explicitly synthetic persistence-boundary note exercises a
+        # real registered artifact retention pin. It claims no Evaluation facts.
+        # Keep the two service-created source notes' inventories unchanged.
+        artifact = session.scalar(select(Artifact).where(Artifact.run_id == run.id))
+        pin = {
+            "resource_kind": "artifact",
+            "resource_id": str(artifact.id),
+            "sha256": artifact.sha256,
+            "details": {
+                "storage_key": artifact.storage_key,
+                "size_bytes": artifact.size_bytes,
+                "name": artifact.name,
+                "run_id": str(artifact.run_id),
+                "attempt_id": str(artifact.attempt_id),
+                "media_type": artifact.media_type,
+            },
+        }
+        retained = ResearchNote(id=uuid4(), owner_id=run.owner_id)
+        session.add(retained)
+        session.flush()
+        raw_content = ResearchNoteContent(
+            title="Synthetic retention registration boundary",
+            body="Persistence-only registered file pin; not a behavioral result or API-created evaluation note.",
+        )
+        raw = raw_content.model_dump(mode="json")
+        retention_revision = ResearchNoteRevision(
+            id=uuid4(),
+            note_id=retained.id,
+            owner_id=run.owner_id,
+            revision=1,
+            revision_sha256=revision_hash(
+                retained.id, 1, raw, [], None, digest([pin]), []
+            ),
+            pins_sha256=digest([pin]),
+            content=raw,
+            evidence_snapshot=[],
+            admission_snapshot=[],
+            title=raw_content.title,
+            tags=[],
+            status="pending",
+            search_text=search_text(raw_content),
+            change_note=None,
+            idempotency_key="restore-retention-boundary",
+            request_sha256=digest({"synthetic_persistence_fixture": True}),
+        )
+        session.add(retention_revision)
+        session.flush()
+        session.add(
+            ResearchNoteEvidencePin(
+                revision_id=retention_revision.id,
+                owner_id=run.owner_id,
+                resource_kind="artifact",
+                resource_id=artifact.id,
+                sha256=artifact.sha256,
+                details=pin["details"],
+            )
+        )
+        session.flush()
+        values = [
+            read_revision(
+                session,
+                first.note_id,
+                run.owner_id,
+                settings,
+                revision=item.revision,
+                revision_sha256=item.revision_sha256,
+            ).model_dump(mode="json")
+            for item in (first, second)
+        ]
+        assert values[0]["content"]["status"] == "pending"
+        assert values[1]["content"]["status"] == "mixed"
+        assert all("spec_revision=1" in value["restore_href"] for value in values)
+        assert all(value["retained_pin_count"] >= 3 for value in values)
+        session.commit()
+        return run.owner_id, values
+
+
+def _reopen_restored_notes(engine, storage, retained):
+    from sqlalchemy.orm import Session
+
+    from backend.app.research_note_services import markdown, read_revision
+
+    owner_id, values = retained
+    settings = _note_settings(engine, storage)
+    with Session(engine) as session:
+        for expected in values:
+            from uuid import UUID
+
+            actual = read_revision(
+                session,
+                UUID(expected["note_id"]),
+                owner_id,
+                settings,
+                revision=expected["revision"],
+                revision_sha256=expected["revision_sha256"],
+            )
+            assert actual.model_dump(mode="json") == expected
+            exported = markdown(actual)
+            assert expected["revision_sha256"] in exported
+            assert expected["content"]["evidence"][0]["code_sha256"] in exported
+        session.commit()
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "005_settings",
+        "006_provider_connections",
+        "007_research_specs",
+        "008_comparisons",
+        "009_independent_evaluations",
+        "010_research_notes",
+        "011_note_pin_trigger",
+    ],
+)
+def test_real_settings_backup_restores_management_and_immutable_history(
+    drill_databases: DrillDatabases,
+    tmp_path: Path,
+    revision: str,
+) -> None:
+    from backend.app.operations_backup import (
+        BackupLimits,
+        PgTools,
+        PostgresDatabase,
+        create_backup,
+        restore_backup,
+        verify_backup,
+    )
+
+    source, restored = (
+        _engine(drill_databases.source),
+        _engine(drill_databases.restored),
+    )
+    storage, restored_storage = (
+        tmp_path / "source-storage",
+        tmp_path / "restored-storage",
+    )
+    backup_root = tmp_path / "private-settings-backup"
+    tools = PgTools(
+        pg_dump=(drill_databases.pg_dump,), pg_restore=(drill_databases.pg_restore,)
+    )
+    limits = BackupLimits()
+    try:
+        _upgrade(source, "003_m3")
+        files = _seed_m3(source, storage)
+        identity = _config_identity(source)
+        # The original 010 trigger cannot insert evidence pins because its SQL
+        # alias conflicts with PL/pgSQL's OLD record. Prepare history under the
+        # additive repair, then restore genuine 010 semantics before archiving.
+        _upgrade(
+            source,
+            "011_note_pin_trigger" if revision == "010_research_notes" else revision,
+        )
+        with source.begin() as connection:
+            connection.execute(_settings_seed_statement())
+        if revision in {
+            "006_provider_connections",
+            "007_research_specs",
+            "008_comparisons",
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            from sqlalchemy.orm import Session
+
+            from backend.app.data_schemas import ProviderConnectionUpdate
+            from backend.app.provider_connections import update_connection
+
+            with Session(source) as session:
+                owner_id = session.execute(
+                    text("SELECT id FROM users LIMIT 1")
+                ).scalar_one()
+                first = update_connection(
+                    session,
+                    owner_id,
+                    "akshare",
+                    ProviderConnectionUpdate(
+                        expected_revision=0,
+                        enabled=True,
+                        is_default=True,
+                        default_price_mode="raw",
+                    ),
+                )
+                update_connection(
+                    session,
+                    owner_id,
+                    "akshare",
+                    ProviderConnectionUpdate(
+                        expected_revision=first["revision"],
+                        enabled=True,
+                        is_default=True,
+                        default_price_mode="qfq",
+                    ),
+                )
+                session.commit()
+        if revision in {
+            "007_research_specs",
+            "008_comparisons",
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            _seed_workbench_evidence(source)
+        if revision in {
+            "008_comparisons",
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            files.update(_seed_comparison_boundary(source, storage))
+        if revision in {
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            _seed_independent_boundary(source)
+        retained_notes = (
+            _seed_note_boundary(source, storage)
+            if revision in {"010_research_notes", "011_note_pin_trigger"}
+            else None
+        )
+        if revision == "010_research_notes":
+            before_downgrade = _historical_snapshot(source)
+            _downgrade(source, revision)
+            assert _historical_snapshot(source) == before_downgrade
+        with source.connect() as connection:
+            assert connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalars().all() == [revision]
+        expected = _historical_snapshot(source)
+        if retained_notes:
+            assert len(expected["research_notes"][1]) == 2
+            assert len(expected["research_note_revisions"][1]) == 3
+            assert len(expected["research_note_evidence_pins"][1]) >= 7
+        if revision in {
+            "008_comparisons",
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            assert len(expected["comparisons"][1]) == 1
+            assert len(expected["comparison_submissions"][1]) == 2
+            assert len(expected["research_evaluations"][1]) == (
+                6
+                if revision
+                in {
+                    "009_independent_evaluations",
+                    "010_research_notes",
+                    "011_note_pin_trigger",
+                }
+                else 2
+            )
+        if revision in {
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            assert len(expected["independent_evaluations"][1]) == 3
+            assert len(expected["controlled_experiments"][1]) == 1
+            assert len(expected["controlled_arms"][1]) == 2
+        manifest = create_backup(
+            database=PostgresDatabase(
+                drill_databases.source.render_as_string(hide_password=False)
+            ),
+            storage_root=storage,
+            destination=backup_root,
+            durable_parent=tmp_path,
+            application_ref=APPLICATION_REF,
+            quiesced=True,
+            tools=tools,
+            limits=limits,
+        )
+        assert manifest["schema_revision"] == revision
+        inventory = {item["path"]: item for item in manifest["files"]}
+        assert set(inventory) == {"database.dump"} | {f"storage/{key}" for key in files}
+        for key, content in files.items():
+            assert inventory[f"storage/{key}"]["sha256"] == _sha(content)
+            assert inventory[f"storage/{key}"]["size_bytes"] == len(content)
+        assert (
+            restore_backup(
+                database=PostgresDatabase(
+                    drill_databases.restored.render_as_string(hide_password=False)
+                ),
+                backup_root=backup_root,
+                storage_root=restored_storage,
+                durable_parent=tmp_path,
+                application_ref=APPLICATION_REF,
+                quiesced=True,
+                trust_backup=True,
+                tools=tools,
+                limits=limits,
+            )
+            == manifest
+        )
+        _assert_historical_snapshot(restored, expected)
+        if revision in {
+            "008_comparisons",
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            from sqlalchemy.orm import Session
+
+            from backend.app.comparison_services import comparison_config
+            from backend.app.models import Comparison, ResearchRun
+            from packages.research_trace.comparison_contracts import (
+                LEGACY_ALGORITHM_VERSION,
+            )
+
+            # Reopen the exact archived legacy business envelope through the
+            # normal integrity guard, without executing/admitting its sources.
+            with Session(restored) as session:
+                comparison = session.scalars(select(Comparison)).one()
+                run = session.get(ResearchRun, comparison.run_id)
+                config = comparison_config(run, comparison)
+                assert config.algorithm_version == LEGACY_ALGORITHM_VERSION
+            with restored.connect() as connection:
+                assert connection.execute(
+                    text(
+                        "SELECT r.status, r.result, c.published_attempt_id, "
+                        "c.manifest_artifact_id, c.manifest_sha256 "
+                        "FROM comparisons c JOIN research_runs r ON r.id = c.run_id"
+                    )
+                ).one() == ("cancelled", None, None, None, None)
+            # pg_restore must retain the append-only protections as well as the
+            # business rows. Both rejected mutations roll back in fixture DBs.
+            for statement, error in (
+                (
+                    "UPDATE comparisons SET input_sha256 = repeat('0', 64)",
+                    "Comparison inputs and published results are immutable",
+                ),
+                (
+                    "DELETE FROM comparison_submissions",
+                    "Comparison submissions are append-only",
+                ),
+            ):
+                with (
+                    pytest.raises(DBAPIError, match=error),
+                    restored.begin() as connection,
+                ):
+                    connection.execute(text(statement))
+            _assert_historical_snapshot(restored, expected)
+        if revision in {
+            "009_independent_evaluations",
+            "010_research_notes",
+            "011_note_pin_trigger",
+        }:
+            for statement, error in (
+                (
+                    "UPDATE independent_evaluations SET source_snapshot = '{}'::jsonb",
+                    "Independent inputs are append-only",
+                ),
+                (
+                    "UPDATE controlled_experiments SET protocol = '{}'::jsonb",
+                    "Controlled experiment inputs are append-only",
+                ),
+                ("DELETE FROM controlled_arms", "Controlled arms are append-only"),
+            ):
+                with (
+                    pytest.raises(DBAPIError, match=error),
+                    restored.begin() as connection,
+                ):
+                    connection.execute(text(statement))
+            _assert_historical_snapshot(restored, expected)
+        if retained_notes:
+            _reopen_restored_notes(restored, restored_storage, retained_notes)
+            for statement in (
+                "UPDATE research_notes SET created_at = now()",
+                "UPDATE research_note_revisions SET status = 'mixed'",
+                "DELETE FROM research_note_evidence_pins",
+            ):
+                with (
+                    pytest.raises(
+                        DBAPIError,
+                        match="Research notes and evidence revisions are append-only",
+                    ),
+                    restored.begin() as connection,
+                ):
+                    connection.execute(text(statement))
+            _assert_historical_snapshot(restored, expected)
+        assert _config_identity(restored) == identity
+        _assert_storage(restored_storage, files)
+        _assert_historical_snapshot(source, expected)
+        assert (
+            verify_backup(backup_root, application_ref=APPLICATION_REF, limits=limits)
+            == manifest
+        )
+        from backend.app.operations_receipts import write_success_receipt
+
+        for operation in ("create", "verify", "restore"):
+            receipt = write_success_receipt(
+                operation=operation,
+                manifest=manifest,
+                backup_root=backup_root,
+                destination=tmp_path / f"settings-{operation}-receipt.json",
+            )
+            assert (
+                receipt.schema_revision == revision and receipt.operation == operation
+            )
+            assert receipt.manifest_sha256 == _sha(
+                (backup_root / "manifest.json").read_bytes()
+            )
+    finally:
+        source.dispose()
+        restored.dispose()

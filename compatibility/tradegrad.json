@@ -1,0 +1,134 @@
+{
+  "schema": "mineagent.tradegrad-compat.v1",
+  "repository": "https://github.com/idkwhodatis/TradeGrad.git",
+  "commit": "6828f3bd429fc754648021bae703a14fa300b62e",
+  "tree": "add06334d6cbcd9e5f359f2cb4a91f6902fed589",
+  "files": [
+    {
+      "path": "requirements.txt",
+      "sha256": "f82f5bd3a5c35f76a370e56f75b7fa3b0f9f3f98cee8a44dcdac0c64326ce600",
+      "git_blob_sha1": "24169bc79e5913b7478357ed4a35715ff62aacaf",
+      "bytes": 165
+    },
+    {
+      "path": "script/eval.sh",
+      "sha256": "41ccd049c5aabad417b342f1ff9ee76579de962580d804280f4bf7a42b5b07c2",
+      "git_blob_sha1": "35f5779c862c5f76e1343e87a68e32709d8d881f",
+      "bytes": 896
+    },
+    {
+      "path": "script/train.sh",
+      "sha256": "24156b02ac455af143e62c1524b3938b9f1d13b9addb0a05ec245dce32f9fda5",
+      "git_blob_sha1": "5938a73257b3e3a370167ed3c37f0d645146a92f",
+      "bytes": 1743
+    },
+    {
+      "path": "seed_strategies/cn_cross.py",
+      "sha256": "486e13c83d179a1a9ba3e9d79614bdff75b001f34c470ce848b4da59b167a78e",
+      "git_blob_sha1": "cd511bd8fc82b6c2441289a20f30308f9931c90b",
+      "bytes": 1245
+    },
+    {
+      "path": "seed_strategies/cn_time.py",
+      "sha256": "09600e5e14cb293dfd0411b697d4ff95774c045845884620d4686f11485401ba",
+      "git_blob_sha1": "86cf7a3c7433bfa09339bdcf3f239059aadc1ca0",
+      "bytes": 728
+    },
+    {
+      "path": "seed_strategies/us_cross.py",
+      "sha256": "3621b9051b95aca0bca650fdc607acfa223c2fee18b47ccb4069367429a91b93",
+      "git_blob_sha1": "4a174e6ca78336ec3abdbeb7076246348eaebef2",
+      "bytes": 2437
+    },
+    {
+      "path": "seed_strategies/us_time.py",
+      "sha256": "ecdcc54ffe62c05db0220d6e3e5a48aab10145b7e34b3e0a5aa84e33f4d149e8",
+      "git_blob_sha1": "a770251e0a62b4ada5641ebbf7524b00425ce786",
+      "bytes": 730
+    },
+    {
+      "path": "src/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_blob_sha1": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "bytes": 0
+    },
+    {
+      "path": "src/eval_runs.py",
+      "sha256": "02cc74310c6e47f01eed3c43d9e91a54ebe5bd128474ef171f8c4f4d23925bf0",
+      "git_blob_sha1": "372bd66ffcba8feeab438c4076c42576458b40e7",
+      "bytes": 3033
+    },
+    {
+      "path": "src/evaluate.py",
+      "sha256": "8d641457e592449fb5ee1445f907484e728591206788dd7f3b754a539bd7d065",
+      "git_blob_sha1": "43d19fded175bf08836c359c9e29281190b69e50",
+      "bytes": 12224
+    },
+    {
+      "path": "src/evaluate_time.py",
+      "sha256": "fc30171e5b1db74483a2b954b9dfa986b5d224e35921852d8b68c739a438df14",
+      "git_blob_sha1": "af4a6cbad9f449ca2c0d2a6777afa311dc7178af",
+      "bytes": 7052
+    },
+    {
+      "path": "src/job.py",
+      "sha256": "1fc2944e335a0bfc099b40708fd0df916fcd3257d7a72bfc4c6fdbe0df1ddf55",
+      "git_blob_sha1": "adcdd15f121f77bbcb23ef09b2f2f435a60e6fd2",
+      "bytes": 6766
+    },
+    {
+      "path": "src/llm_client.py",
+      "sha256": "6b0d59e13bbb509b96aefecaa6ff559cac2a85edf6856265d3f74c13eecb8b4f",
+      "git_blob_sha1": "00f57845e139840470f1c7bf1f8e8a199d6674d8",
+      "bytes": 1935
+    },
+    {
+      "path": "src/loss.py",
+      "sha256": "6eab897c26726f6b17440bef75ebdcf7b506f2c9bb500ae88d29766e451f4ffe",
+      "git_blob_sha1": "dfa3014b157b8dedfe52ef666c64e31c46355c36",
+      "bytes": 12771
+    },
+    {
+      "path": "src/market.py",
+      "sha256": "60686599866e6048cfb6b1874820eb6c72c63d804140d385d1a59563280a4300",
+      "git_blob_sha1": "8df4dca2e2ac5722a05648ba0e5f643d59deae6b",
+      "bytes": 3956
+    },
+    {
+      "path": "src/optimizer.py",
+      "sha256": "12a9ddbe4362ac19772f5e19cabdd0c0b23863169ff9bdee21097c17cc1884b2",
+      "git_blob_sha1": "6ed0ad48be83bc35a892347b511aa1898eb8ade1",
+      "bytes": 16535
+    },
+    {
+      "path": "src/prompt.py",
+      "sha256": "955243e9ad6824ad3c2bba0ca34108e0b3f93135c006b2045f0fe72cdd024ac0",
+      "git_blob_sha1": "42fab18a4f0be6b3ce2507d652f73bc1a30e59c7",
+      "bytes": 8990
+    },
+    {
+      "path": "src/run_one.py",
+      "sha256": "0d05a12daa32077c82d5b19dcf0a30555e289af5f0d9e23ed1367d47c3d6fc9b",
+      "git_blob_sha1": "48d32c13954c499671e5e97b3a5ab09ea1fc3fbf",
+      "bytes": 4968
+    },
+    {
+      "path": "src/strategy.py",
+      "sha256": "c1eba61026b07aea66a5e17b5915ac43e1afd73c3b1d3245d7038c952f60d95b",
+      "git_blob_sha1": "8370cd1e016131825ae0606690fa4a6b73da4105",
+      "bytes": 1133
+    },
+    {
+      "path": "src/tasks.py",
+      "sha256": "a10ed49b130cb0ca09ae167411fea8126105fb9c8b553d23a04d1ca463ff51bb",
+      "git_blob_sha1": "947c32adad056f727c930b986b4d162f1c005c11",
+      "bytes": 1508
+    },
+    {
+      "path": "src/util.py",
+      "sha256": "8a52629eb55e283f5a2814e8845ca076e99770854779329ca89218cb1a5a11d2",
+      "git_blob_sha1": "10328dc99a01927b0c1921e3c84acbf19b7c25c2",
+      "bytes": 6261
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+# Local environments, credentials and generated state
+__pycache__/
+*.pyc
+.venv*/
+node_modules/
+.pytest_cache/
+.coverage
+htmlcov/
+.runtime/
+artifacts/
+playwright-report/
+test-results/
+frontend/dist/
+.env
+.env.*
+!.env.example
+var/
+/result/
+/log/
+/script/my_*
+
+# Pinned external TradeGrad compatibility dependency, not MineAgent MIT source.
+# Materialize using script/bootstrap_tradegrad_compat.py; never git add -f.
+/requirements.txt
+/script/eval.sh
+/script/train.sh
+/seed_strategies/cn_cross.py
+/seed_strategies/cn_time.py
+/seed_strategies/us_cross.py
+/seed_strategies/us_time.py
+/src/__init__.py
+/src/eval_runs.py
+/src/evaluate.py
+/src/evaluate_time.py
+/src/job.py
+/src/llm_client.py
+/src/loss.py
+/src/market.py
+/src/optimizer.py
+/src/prompt.py
+/src/run_one.py
+/src/strategy.py
+/src/tasks.py
+/src/util.py
+
+# Local dependency reuse may be a symlink; never publish it.
+/frontend/node_modules

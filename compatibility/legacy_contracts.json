@@ -1,0 +1,21 @@
+{
+  "baseline_commit": "6828f3bd429fc754648021bae703a14fa300b62e",
+  "baseline_tree": "add06334d6cbcd9e5f359f2cb4a91f6902fed589",
+  "immutable_files": {
+    "backend/alembic/versions/001_m1.py": "5fea1ee1af8a3a77cf0be8dd5607ac86052b64cdb175c3e111be8bf069b4a228",
+    "backend/alembic/versions/002_m2.py": "aa8e7f75e8556400f52555fed4166ef99313b2d3123a9207e69ef3e7452bd6cf",
+    "backend/alembic/versions/003_m3.py": "bc6a5117dda53c24afdf1bd15c237dcbe16f0d7bd5014a5d4eb635149a651bbe",
+    "backend/alembic/versions/004_m5.py": "6b19a65c60eb973e881b7c796fef854556b705bdc9b2444220bd4afd7016aa39",
+    "backend/alembic/versions/005_settings.py": "14beddbc3512b880321bc5158ae3a0dbeb4bf59936257cf44b1b71200a96bc38",
+    "backend/alembic/versions/006_provider_connections.py": "2ea60e2e10580eab602069fa2c0295c283c302e225afb68e959c2139abab017b",
+    "backend/alembic/versions/007_research_specs.py": "511142e4236c9e2d10c44a4cc4246f97f417ae8028e3e9afa3e2fea89f46341a",
+    "backend/alembic/versions/008_comparisons.py": "93d1e68cd13be01e4218d954538e189e19e2be74b53af4a1702bc2b9f9ec7c19",
+    "backend/alembic/versions/009_independent_evaluations.py": "0e6cccf92f0bc5748dd42621158dbc2457ded6120fda7ef865a06bc910075439",
+    "backend/alembic/versions/010_research_notes.py": "618018daa41b1db9738759fc3541a92467f42e80885d54877c0bc8e9f1b3f008",
+    "backend/alembic/versions/011_note_pin_trigger.py": "1d18cd3770e5bad705feebc9dec630d879c8ed9392ef7269ccd3bd3a48b88ee7",
+    "tests/baseline/fixtures/manifest.json": "9941f443642fe57278c417e177345a2875a1a5b106a3ba7ca4043e296bb97bc9",
+    "tests/tradegrad/fixtures/sealed-config-hashes.json": "ba332e3e6df887230344e2915a8a91562440bcd39a078ed610d35198f684119f",
+    "tests/tradegrad/fixtures/sealed-native-config.json": "5fd5d2613b3c2595770370852e5d1a804e10fb532dc11b57b87fde8cdab664e1",
+    "tests/tradegrad/fixtures/sealed-portable-config.json": "b4675b8890afcd79b58a53a74b2081a907c42a15e50751e196f9d7011590ffcf"
+  }
+}
