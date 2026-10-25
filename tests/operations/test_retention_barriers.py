@@ -16,6 +16,52 @@ from backend.app.operations_retention import RetentionError
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.mark.parametrize("fail", [False, True])
+def test_backup_owns_exclusive_guard_after_cold_preflight(tmp_path, fail):
+    from backend.app.operations_backup import _shared_storage_reader
+
+    observed = []
+
+    @_shared_storage_reader
+    def backup_body(*, storage_root, quiesced):
+        assert quiesced is True
+        try:
+            for exclusive in (False, True):
+                with pytest.raises(maintenance.MaintenanceBusy):
+                    with storage_guard(storage_root, exclusive=exclusive):
+                        pytest.fail("Backup allowed a competing filesystem admission")
+            observed.append("exclusive")
+            if fail:
+                raise ValueError("inert backup body fault")
+            return "complete"
+        finally:
+            with pytest.raises(maintenance.MaintenanceBusy):
+                with storage_guard(storage_root):
+                    pytest.fail("Backup lost its fence before body cleanup")
+
+    # The former nested SH harness self-conflicts; never weaken production EX.
+    with storage_guard(tmp_path):
+        with pytest.raises(maintenance.MaintenanceBusy):
+            backup_body(storage_root=tmp_path, quiesced=True)
+    assert observed == []
+    # A cold preflight closes its own descriptor before production admission.
+    with storage_guard(tmp_path, exclusive=True):
+        pass
+    # A raw writer winning that handover must prevent the backup body entirely.
+    with storage_guard(tmp_path):
+        with pytest.raises(maintenance.MaintenanceBusy):
+            backup_body(storage_root=tmp_path, quiesced=True)
+    assert observed == []
+    if fail:
+        with pytest.raises(ValueError, match="inert backup body fault"):
+            backup_body(storage_root=tmp_path, quiesced=True)
+    else:
+        assert backup_body(storage_root=tmp_path, quiesced=True) == "complete"
+    assert observed == ["exclusive"]
+    with storage_guard(tmp_path, exclusive=True):
+        pass
+
+
 class Connection:
     dialect = SimpleNamespace(name="postgresql")
 

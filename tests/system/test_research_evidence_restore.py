@@ -17,7 +17,6 @@ Archives, account passwords and database URLs stay private and are never printed
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import os
 import re
@@ -1179,13 +1178,13 @@ def _quiesce(h, comparison):
 
 @contextmanager
 def _cold_database(database, storage_root=None):
-    """Retain production PG exclusion and filesystem read guard through the copy.
+    """Retain PG exclusion; production backup owns its exclusive filesystem guard.
 
-    Prove EX root availability, then downgrade that same open descriptor to SH
-    so the production backup's nested SH reader can enter. Linux flock conversion
-    is not promised atomic: stopped owned writers plus retained PG EX admission
-    exclusion protect that conversion; SH then remains held through the copy.
-    Restore creates its absent root and holds its own production SH guard.
+    Probe root exclusion before the operation, then close that test-only guard.
+    A nested SH guard would self-conflict with backup's stronger EX admission.
+    Stopped owned writers and retained PG EX prevent cooperative admission in
+    the handover; production independently refuses any intervening raw writer.
+    Restore creates its absent root and retains its own production guard.
     """
     from sqlalchemy import text
     from sqlalchemy.orm import Session
@@ -1206,22 +1205,21 @@ def _cold_database(database, storage_root=None):
                 if storage_root
                 else nullcontext()
             )
-            with root_guard as descriptor:
+            with root_guard:
                 if storage_root is not None:
                     with pytest.raises(MaintenanceBusy), storage_guard(storage_root):
                         pytest.fail(
                             "Filesystem writer bypassed exclusive cold guard",
                             pytrace=False,
                         )
-                    fcntl.flock(descriptor, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                yield
-                require(
-                    not connection.invalidated
-                    and connection.in_transaction()
-                    and connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
-                    == pid,
-                    "Maintenance PG guard was lost or connection changed",
-                )
+            yield
+            require(
+                not connection.invalidated
+                and connection.in_transaction()
+                and connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
+                == pid,
+                "Maintenance PG guard was lost or connection changed",
+            )
     finally:
         engine.dispose()
 
@@ -1290,7 +1288,24 @@ def _run_completed_evidence_restore(evidence_restore_harnesses):
         "Exact application head unavailable",
     )
     application_ref = ref.stdout.strip()
-    source_database = PostgresDatabase(h.private_url)
+
+    class ExclusionCheckedDatabase(PostgresDatabase):
+        checked_snapshots = 0
+
+        def source_snapshot(self, limits):
+            from backend.app.core.maintenance import MaintenanceBusy
+            from backend.app.core.storage_barrier import storage_guard
+
+            # Actual source snapshots bracket the real dump and storage copy.
+            # Only production backup owns the filesystem lock here; a nested
+            # test guard can no longer make this assertion pass accidentally.
+            with pytest.raises(MaintenanceBusy), storage_guard(h.root / "storage"):
+                pytest.fail("Backup did not retain exclusive storage admission")
+            result = super().source_snapshot(limits)
+            self.checked_snapshots += 1
+            return result
+
+    source_database = ExclusionCheckedDatabase(h.private_url)
     target_database = PostgresDatabase(restored.private_url)
     limits = BackupLimits(timeout_seconds=120)
     pg_tools = PgTools(pg_dump=(executables[0],), pg_restore=(executables[1],))
@@ -1306,6 +1321,10 @@ def _run_completed_evidence_restore(evidence_restore_harnesses):
             tools=pg_tools,
             limits=limits,
         )
+    require(
+        source_database.checked_snapshots == 2,
+        "Production exclusive storage guard was not verified around the copy",
+    )
     require(
         manifest["schema_revision"] == REQUIRED_SCHEMA_REVISION
         and verify_backup(archive, application_ref=application_ref, limits=limits)
