@@ -21,7 +21,12 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from uuid import UUID
 
-from packages.factors.parser import MAX_REPORT_BYTES, validate_report
+from packages.factors.parser import (
+    MAX_REPORT_BYTES,
+    REJECTION_CODES,
+    REPORT_SCHEMA,
+    validate_report,
+)
 from packages.factors.storage import MAX_OUTPUT_BYTES, verified_file
 
 MANAGED = "mineagent-factor-parser-v1"
@@ -362,6 +367,25 @@ def assert_quiescent(storage_root, *, ignore_operation=None):
                 raise ParserIsolationError("invalid_stop_receipt")
 
 
+def _stream_failure(errors):
+    """Propagate only locally enumerated categories; never arbitrary stderr/text."""
+    permitted = {
+        "parser_runtime_setup_failed",
+        "parser_input_rejected",
+        "parser_output_failed",
+        "parser_report",
+        "output_budget",
+        "truncated_output",
+        "extra_output",
+        "output_hash",
+        "stderr_limit",
+    }
+    for error in errors:
+        if isinstance(error, ParserIsolationError) and error.code in permitted:
+            return ParserIsolationError(error.code)
+    return ParserIsolationError("parser_failed")
+
+
 class DockerParser:
     """One-shot launcher; operation UUIDs and journals may never be reused."""
 
@@ -635,7 +659,16 @@ class DockerParser:
                 line = process.stdout.readline(MAX_REPORT_BYTES + 1)
                 if len(line) > MAX_REPORT_BYTES or not line.endswith(b"\n"):
                     raise ParserIsolationError("parser_report")
-                report = validate_report(json.loads(line))
+                decoded = json.loads(line)
+                if (
+                    isinstance(decoded, dict)
+                    and set(decoded) == {"schema_version", "status", "code"}
+                    and decoded["schema_version"] == REPORT_SCHEMA
+                    and decoded["status"] == "rejected"
+                    and decoded["code"] in REJECTION_CODES
+                ):
+                    raise ParserIsolationError("parser_" + decoded["code"])
+                report = validate_report(decoded)
                 if report["output_size_bytes"] > self.output_bytes:
                     raise ParserIsolationError("output_budget")
                 remaining = report["output_size_bytes"]
@@ -682,7 +715,9 @@ class DockerParser:
             thread.start()
         try:
             while process.poll() is None:
-                if errors or time.monotonic() >= deadline:
+                if errors:
+                    raise _stream_failure(errors)
+                if time.monotonic() >= deadline:
                     raise ParserIsolationError("parser_deadline")
                 time.sleep(0.01)
             for thread in threads:
@@ -693,7 +728,7 @@ class DockerParser:
                 or process.returncode
                 or len(reports) != 1
             ):
-                raise ParserIsolationError("parser_failed")
+                raise _stream_failure(errors)
             return reports[0]
         finally:
             if process.poll() is None:

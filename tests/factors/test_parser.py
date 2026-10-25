@@ -94,3 +94,58 @@ def test_derived_identity_mapping_preserves_original(tmp_path):
     assert report["factor_version_ids"] == ["00000000-0000-0000-0000-000000000099"]
     assert report["output_sha256"] != source.sha256
     assert source.path.read_bytes() == original
+
+
+def test_real_entrypoint_respects_lower_inherited_hard_limit(tmp_path):
+    """Execute actual parser entrypoint with Docker-equivalent 16MiB hard fsize."""
+    import json
+    import subprocess
+    import sys
+
+    source = write_partition([sample()], tmp_path / "input.parquet")
+    output = tmp_path / "out"
+    output.mkdir()
+    script = """
+import resource,sys
+from pathlib import Path
+from packages.factors import parser
+source,output=map(Path,sys.argv[1:]);sys.argv=['factor-parser']
+resource.setrlimit(resource.RLIMIT_FSIZE,(16*1024*1024,16*1024*1024))
+code=parser.main(input_path=source,output_directory=output)
+assert resource.getrlimit(resource.RLIMIT_FSIZE)==(16*1024*1024,16*1024*1024)
+raise SystemExit(code)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(source.path), str(output)],
+        capture_output=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    line, partition = result.stdout.split(b"\n", 1)
+    report = json.loads(line)
+    assert report["status"] == "validated" and report["input_sha256"] == source.sha256
+    assert len(partition) == report["output_size_bytes"]
+    import hashlib
+
+    assert hashlib.sha256(partition).hexdigest() == report["output_sha256"]
+
+
+def test_tightening_preserves_all_smaller_soft_and_hard_caps(monkeypatch):
+    from packages.factors import parser
+
+    inherited = {
+        parser.resource.RLIMIT_CORE: (0, 0),
+        parser.resource.RLIMIT_CPU: (4, 6),
+        parser.resource.RLIMIT_FSIZE: (4096, 8192),
+        parser.resource.RLIMIT_NOFILE: (32, 48),
+    }
+    calls = {}
+    monkeypatch.setattr(parser.resource, "getrlimit", lambda kind: inherited[kind])
+    monkeypatch.setattr(
+        parser.resource,
+        "setrlimit",
+        lambda kind, values: calls.__setitem__(kind, values),
+    )
+    parser.tighten_runtime_limits()
+    assert calls == {kind: (values[0], values[0]) for kind, values in inherited.items()}

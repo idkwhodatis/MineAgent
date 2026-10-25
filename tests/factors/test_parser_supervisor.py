@@ -285,3 +285,19 @@ def test_archived_prelaunch_abort_survives_cold_copy(operation, tmp_path):
     restored = tmp_path / "aborted-restored"
     shutil.copytree(root, restored)
     assert_quiescent(restored)
+
+
+def test_stream_diagnostics_never_forward_hostile_text():
+    from runtimes.factor_parser.supervisor import _stream_failure
+
+    assert (
+        _stream_failure([ValueError("password=hostile-secret")]).code == "parser_failed"
+    )
+    assert (
+        _stream_failure([ParserIsolationError("hostile-secret")]).code
+        == "parser_failed"
+    )
+    assert (
+        _stream_failure([ParserIsolationError("parser_runtime_setup_failed")]).code
+        == "parser_runtime_setup_failed"
+    )

@@ -285,38 +285,59 @@ def validate_report(report: dict) -> dict:
     return dict(report)
 
 
-def main():
+REJECTION_CODES = frozenset({"runtime_setup_failed", "input_rejected", "output_failed"})
+
+
+def tighten_runtime_limits():
+    """Only narrow inherited limits; a nonroot container cannot raise hard caps."""
+    for kind, requested in (
+        (resource.RLIMIT_CORE, 0),
+        (resource.RLIMIT_CPU, 9),
+        (resource.RLIMIT_FSIZE, 256 * 1024 * 1024),
+        (resource.RLIMIT_NOFILE, 64),
+    ):
+        soft, hard = resource.getrlimit(kind)
+        finite = [value for value in (soft, hard) if value != resource.RLIM_INFINITY]
+        cap = min([requested, *finite])
+        resource.setrlimit(kind, (cap, cap))
+
+
+def main(*, input_path=Path("/input/input.parquet"), output_directory=Path("/output")):
     # Additional limits, NOT a substitute for supervisor cgroup/network isolation.
-    os.environ.clear()
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_CPU, (9, 9))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (256 * 1024 * 1024, 256 * 1024 * 1024))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+    phase = "runtime_setup_failed"
     try:
+        os.environ.clear()
+        tighten_runtime_limits()
         if len(sys.argv) != 1:
             raise FactorStorageError("arguments")
-        mapping = Path("/input/identity-map.json")
+        phase = "input_rejected"
+        mapping = input_path.parent / "identity-map.json"
+        contract = input_path.parent / "snapshot-input.json"
         result = parse_partition(
-            Path("/input/input.parquet"),
-            Path("/output"),
+            input_path,
+            output_directory,
             identity_map_path=mapping if mapping.exists() else None,
-            snapshot_input_path=Path("/input/snapshot-input.json")
-            if Path("/input/snapshot-input.json").exists()
-            else None,
+            snapshot_input_path=contract if contract.exists() else None,
         )
+        phase = "output_failed"
         sys.stdout.write(
             json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False)
             + "\n"
         )
         sys.stdout.flush()
-        with open("/output/values.parquet", "rb") as output:
+        with open(output_directory / OUTPUT_NAME, "rb") as output:
             while chunk := output.read(65536):
                 sys.stdout.buffer.write(chunk)
         sys.stdout.buffer.flush()
         return 0
-    except Exception:  # noqa: BLE001 -- never expose native parser/path diagnostics
+    except Exception:  # noqa: BLE001 -- emit only a closed category, never hostile diagnostics
         sys.stdout.write(
-            '{"schema_version":"mineagent.factor-parser-report.v1","status":"rejected","code":"invalid_partition"}\n'
+            json.dumps(
+                {"schema_version": REPORT_SCHEMA, "status": "rejected", "code": phase},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
         )
         return 2
 
