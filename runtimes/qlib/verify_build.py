@@ -84,15 +84,49 @@ def wheelhouse(directory):
     for path in files:
         if path.is_symlink():
             raise ValueError("Wheel symlink")
+        filename = re.fullmatch(
+            r"([A-Za-z0-9_.]+)-([0-9][A-Za-z0-9._+!]*)"
+            r"(?:-[0-9][A-Za-z0-9_]*)?"
+            r"-[A-Za-z0-9_.]+-[A-Za-z0-9_.]+-[A-Za-z0-9_.]+\.whl",
+            path.name,
+        )
+        if filename is None:
+            raise ValueError("Invalid wheel filename")
         with ZipFile(path) as z:
-            names = [n for n in z.namelist() if n.endswith(".dist-info/METADATA")]
+            # Vendored dependencies (notably setuptools/_vendor) legitimately
+            # contain their own dist-info. Only the wheel's root metadata owns
+            # its distribution identity; never select by a suffix alone.
+            members = z.namelist()
+            if len(members) != len(set(members)):
+                raise ValueError("Duplicate wheel archive member")
+            names = [
+                n for n in members if re.fullmatch(r"[^/]+\.dist-info/METADATA", n)
+            ]
             if len(names) != 1:
                 raise ValueError("Ambiguous wheel metadata")
             meta = BytesParser().parsebytes(z.read(names[0]))
+        if len(meta.get_all("Name", [])) != 1 or len(meta.get_all("Version", [])) != 1:
+            raise ValueError("Ambiguous wheel identity headers")
         name, version = meta["Name"], meta["Version"]
-        if not name or not version or any(c in name + version for c in "\r\n /\\"):
+        if (
+            not name
+            or re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", name) is None
+            or not version
+            or re.fullmatch(r"[0-9][A-Za-z0-9._+!]*", version) is None
+        ):
             raise ValueError("Invalid wheel identity")
         key = re.sub(r"[-_.]+", "-", name).lower()
+        directory_name, separator, directory_version = (
+            names[0].split("/")[0][: -len(".dist-info")].rpartition("-")
+        )
+        if (
+            not separator
+            or key != re.sub(r"[-_.]+", "-", filename[1]).lower()
+            or key != re.sub(r"[-_.]+", "-", directory_name).lower()
+            or version != filename[2]
+            or version != directory_version
+        ):
+            raise ValueError("Wheel filename/metadata identity mismatch")
         if key in seen:
             raise ValueError("Duplicate wheel distribution")
         seen.add(key)

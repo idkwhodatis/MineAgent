@@ -37,11 +37,12 @@ jobs:
           python -m pytest tests/openevolve/test_patch_seams.py \
             tests/openevolve/test_checkpoint_native.py tests/openevolve/test_observer_control.py \
             tests/openevolve/test_checkpoint_observer.py tests/openevolve/test_contracts.py \
+            tests/openevolve/test_runtime_probe_regressions.py \
             -q --junitxml=var/openevolve-proof/contracts.xml
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('var/openevolve-proof/contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 94
+          assert len(cases) == 103
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
       - name: Fetch and verify exact external source without modifying legacy source
@@ -74,12 +75,18 @@ jobs:
           trap cleanup EXIT
           run_probe() {
             name="$1"; shift
-            timeout 180 docker run --cidfile "var/openevolve-proof/$name.cid" \
+            if timeout 180 docker run --cidfile "var/openevolve-proof/$name.cid" \
               --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
               --user 65532:65532 --memory 1g --pids-limit 64 --cpus 1 \
               --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
               --shm-size 16m "$image" "$@" \
-              > "var/openevolve-proof/$name.stdout" 2> "var/openevolve-proof/$name.stderr"
+              > "var/openevolve-proof/$name.stdout" 2> "var/openevolve-proof/$name.stderr"; then
+              return 0
+            else
+              code=$?
+              python runtimes/openevolve/probe_diagnostics.py "$name" "$code" "var/openevolve-proof/$name.stderr"
+              return "$code"
+            fi
           }
           run_probe installed python -I /usr/local/bin/verify_openevolve_proof.py
           run_probe eligible python -I -m runtimes.openevolve.patches.full_loop_evaluation_smoke
@@ -152,6 +159,7 @@ jobs:
           name: mineagent-openevolve-synthetic-runtime-${{ github.sha }}
           path: |
             var/openevolve-proof/report.json
+            var/openevolve-proof/*.failure.json
             var/openevolve-proof/artifact-inventory.json
             var/openevolve-proof/image.iid
             var/ci-evidence/contracts.xml

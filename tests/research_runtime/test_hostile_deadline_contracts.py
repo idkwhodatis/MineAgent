@@ -82,6 +82,34 @@ def test_disabled_even_with_valid_projection():
         contract.require_launch_authority()
 
 
+def test_docker_canonical_capability_prefix_preserves_exact_authority():
+    data = document()
+    data["HostConfig"]["CapAdd"] = ["CAP_SETUID", "CAP_KILL", "CAP_SETGID"]
+    check(data)
+
+
+@pytest.mark.parametrize(
+    "caps",
+    [
+        ["CAP_SETUID", "CAP_KILL", "CAP_SYS_ADMIN"],
+        ["CAP_SETUID", "CAP_KILL", "CAP_SETGID", "CAP_NET_RAW"],
+        ["CAP_SETUID", "CAP_KILL"],
+        ["CAP_SETUID", "SETUID", "CAP_KILL"],
+        ["CAP_CAP_SETUID", "CAP_KILL", "CAP_SETGID"],
+        ["cap_setuid", "CAP_KILL", "CAP_SETGID"],
+        ["ALL", "CAP_KILL", "CAP_SETGID"],
+        [True, "CAP_KILL", "CAP_SETGID"],
+        "CAP_SETUID,CAP_KILL,CAP_SETGID",
+        None,
+    ],
+)
+def test_capability_aliases_never_hide_extra_or_missing_authority(caps):
+    data = document()
+    data["HostConfig"]["CapAdd"] = caps
+    with pytest.raises(ValueError, match="capability policy drift"):
+        check(data)
+
+
 @pytest.mark.parametrize("value", ["", "-1", "1.5", "١٢٣", "1" * 17, "1000", "11001"])
 def test_deadline_rejects_ambiguous_expired_or_excessive(value):
     with pytest.raises(ValueError):

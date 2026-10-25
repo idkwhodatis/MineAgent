@@ -52,9 +52,78 @@ def test_wheelhouse_hashes_exact_bytes_and_rejects_duplicate_distribution(tmp_pa
     assert (
         "--hash=sha256:" + hashes[path.name] in (tmp_path / "install.lock").read_text()
     )
-    wheel(tmp_path / "duplicate.whl", "demo")
+    wheel(tmp_path / "demo-1.0-1-py3-none-any.whl", "demo")
     with pytest.raises(ValueError, match="Duplicate"):
         wheelhouse(tmp_path)
+
+
+def test_wheelhouse_ignores_vendored_metadata_but_hashes_it(tmp_path):
+    path = tmp_path / "setuptools-84.2.1-py3-none-any.whl"
+    with ZipFile(path, "w") as archive:
+        archive.writestr(
+            "setuptools-84.2.1.dist-info/METADATA",
+            "Metadata-Version: 2.4\nName: setuptools\nVersion: 84.2.1\n",
+        )
+        archive.writestr(
+            "setuptools/_vendor/packaging-26.3.dist-info/METADATA",
+            "Metadata-Version: 2.4\nName: packaging\nVersion: 26.3\n",
+        )
+    hashes = wheelhouse(tmp_path)
+    expected = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert hashes == {path.name: expected}
+    assert (tmp_path / "install.lock").read_text() == (
+        f"setuptools==84.2.1 --hash=sha256:{expected}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "member,metadata",
+    [
+        ("vendor/demo-1.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\n"),
+        ("other-1.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\n"),
+        ("demo-2.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\n"),
+        ("demo-1.0.dist-info/METADATA", "Name: other\nVersion: 1.0\n"),
+        ("demo-1.0.dist-info/METADATA", "Name: demo\nVersion: 2.0\n"),
+        ("demo-1.0.dist-info/METADATA", "Name: demo\nName: other\nVersion: 1.0\n"),
+        ("demo-1.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\nVersion: 2.0\n"),
+    ],
+)
+def test_wheelhouse_rejects_missing_root_or_conflicting_identity(
+    tmp_path, member, metadata
+):
+    with ZipFile(tmp_path / "demo-1.0-py3-none-any.whl", "w") as archive:
+        archive.writestr(member, metadata)
+    with pytest.raises(ValueError):
+        wheelhouse(tmp_path)
+    assert not (tmp_path / "install.lock").exists()
+
+
+@pytest.mark.parametrize("duplicate_path", [True, False])
+def test_wheelhouse_rejects_duplicate_or_multiple_root_metadata(
+    tmp_path, duplicate_path
+):
+    with ZipFile(tmp_path / "demo-1.0-py3-none-any.whl", "w") as archive:
+        archive.writestr("demo-1.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\n")
+        if duplicate_path:
+            with pytest.warns(UserWarning, match="Duplicate"):
+                archive.writestr(
+                    "demo-1.0.dist-info/METADATA", "Name: demo\nVersion: 1.0\n"
+                )
+        else:
+            archive.writestr(
+                "other-1.0.dist-info/METADATA", "Name: other\nVersion: 1.0\n"
+            )
+    with pytest.raises(ValueError):
+        wheelhouse(tmp_path)
+
+
+def test_wheelhouse_normalizes_distribution_name_only(tmp_path):
+    with ZipFile(tmp_path / "my_demo-1.0-py3-none-any.whl", "w") as archive:
+        archive.writestr(
+            "my_demo-1.0.dist-info/METADATA", "Name: My-Demo\nVersion: 1.0\n"
+        )
+    wheelhouse(tmp_path)
+    assert (tmp_path / "install.lock").read_text().startswith("My-Demo==1.0 ")
 
 
 def test_profile_verifier_rejects_same_name_modified_wheel(tmp_path):

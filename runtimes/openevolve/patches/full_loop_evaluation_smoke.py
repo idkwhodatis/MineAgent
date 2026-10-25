@@ -119,6 +119,24 @@ def spec():
     )
 
 
+def fixture_diff_response(user, context):
+    """Synthetic transport selects exact current code, never history/inspiration."""
+    matches = re.findall(
+        r"^# Current Program\n```python\n(.*?)\n```", user, re.MULTILINE | re.DOTALL
+    )
+    if (
+        len(matches) != 1
+        or hashlib.sha256(matches[0].encode()).hexdigest()
+        != context["parent_source_sha256"]
+    ):
+        raise ValueError("Fixture current program differs from selected parent")
+    previous = re.search(r"probe_value = (\d+)", matches[0])
+    iteration = context["native_iteration"]
+    if previous is None or type(iteration) is not int or iteration < 1:
+        raise ValueError("Invalid fixture current program or iteration")
+    return f"<<<<<<< SEARCH\nprobe_value = {previous.group(1)}\n=======\nprobe_value = {iteration}\n>>>>>>> REPLACE"
+
+
 def install_explicit_doubles():
     from packages.openevolve_adapter import broker_client as broker
     from packages.openevolve_adapter import observer
@@ -255,9 +273,8 @@ def install_explicit_doubles():
         value = json.loads(payload)
         iteration = value["context"]["native_iteration"]
         user = value["request"]["messages"][1]["content"]
-        # Match current source in the actual prompt; fixture transport never runs code.
-        previous = re.search(r"probe_value = (\d+)", user).group(1)
-        content = f"<<<<<<< SEARCH\nprobe_value = {previous}\n=======\nprobe_value = {iteration}\n>>>>>>> REPLACE"
+        # History/inspiration may precede current code in the real native prompt.
+        content = fixture_diff_response(user, value["context"])
         record("model", iteration=iteration)
         return broker._canonical(
             {

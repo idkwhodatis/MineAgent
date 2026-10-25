@@ -94,6 +94,25 @@ def require_launch_authority() -> None:
     )
 
 
+def bootstrap_capabilities(value) -> frozenset[str]:
+    """Accept only Docker's bare or canonical CAP_ spelling, not more authority.
+
+    Moby NormalizeLegacyCapabilities adds CAP_ to non-ALL capabilities:
+    https://github.com/moby/moby/blob/v28.3.2/oci/caps/utils.go
+    Preserve duplicate/unknown rejection rather than hiding them in a set.
+    """
+    if type(value) is not list or len(value) != len(BOOTSTRAP_CAPS):
+        raise ValueError("capability policy drift")
+    if any(type(cap) is not str for cap in value):
+        raise ValueError("capability policy drift")
+    normalized = tuple(cap.removeprefix("CAP_") for cap in value)
+    if len(set(normalized)) != len(normalized) or set(normalized) != set(
+        BOOTSTRAP_CAPS
+    ):
+        raise ValueError("capability policy drift")
+    return frozenset(normalized)
+
+
 def verify_inspect(
     document: dict,
     *,
@@ -121,9 +140,8 @@ def verify_inspect(
     }
     if any(host.get(key) != value for key, value in expected.items()):
         raise ValueError("host namespace/resource policy drift")
-    if set(host.get("CapAdd") or ()) != set(BOOTSTRAP_CAPS) or host.get("CapDrop") != [
-        "ALL"
-    ]:
+    bootstrap_capabilities(host.get("CapAdd"))
+    if host.get("CapDrop") != ["ALL"]:
         raise ValueError("capability policy drift")
     options = host.get("SecurityOpt") or []
     if len(options) != 2 or "no-new-privileges" not in options:

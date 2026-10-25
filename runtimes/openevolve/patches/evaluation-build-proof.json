@@ -14,7 +14,7 @@
     "sha256": "6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c"
   },
   "python": "3.12.14",
-  "probe_sha256": "5242a328a326ac72683c0ab2b246000c72c98d959ddce65275994069c7f38a5a",
+  "probe_sha256": "ee28b1b2353b752478ec8b57965d1cb191dc2babddd89b9fa4542b13115180e4",
   "scenarios": {
     "eligible": {
       "actual_api": "run_evolution",
@@ -48,5 +48,6 @@
   "objective_verifier": "real observer.evaluation_complete with explicit synthetic typed receipt and mocked host ACK",
   "host_durability": false,
   "financial_acceptance": false,
-  "containment_acceptance": false
+  "containment_acceptance": false,
+  "fixture_response_binding": "Exact pinned current-program section, SHA-bound to selected parent; never first history/inspiration match"
 }
