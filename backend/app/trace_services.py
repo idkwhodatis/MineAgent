@@ -141,6 +141,9 @@ def load_owned_trace(
     if pair is None:
         raise DomainError("not_found", "Evaluation not found", 404)
     evaluation, run = pair
+    from backend.app.research_lifecycle import require_legacy_run
+
+    require_legacy_run(run)
     dispatch = LOADERS.get(run.config.get("schema_version"))
     if dispatch is None:
         raise DomainError(

@@ -47,11 +47,16 @@ def make_attempt():
         status="running",
     )
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=attempt.run_id,
         active_attempt_id=attempt.id,
         generation=1,
         status="running",
-        config={"model": {"provider": "openai-compatible"}},
+        config={
+            "schema_version": "tradegrad.run.v1",
+            "model": {"provider": "openai-compatible"},
+        },
         error=None,
     )
     return run, attempt

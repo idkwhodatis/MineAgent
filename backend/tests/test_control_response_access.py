@@ -14,8 +14,10 @@ from backend.app.portable_schemas import PortableRunPublic
 from backend.app.research_schemas import ResearchRunPublic
 from backend.app.schemas import RunPublic
 from backend.app.services import DomainError
+from backend.tests.test_research_contracts import sample_config
 from packages.tradegrad_adapter.portable_config import PortableRunConfig
 from tests.portable.test_config import config_values
+from tests.research_runtime.fixtures import seed_config
 
 CONTROLS = [
     ("generic", "create_run", "submit_run"),
@@ -35,7 +37,9 @@ CONTROLS = [
 def fixture_run(mode):
     now = datetime.now(UTC)
     result = {"metrics": {"sharpe_ratio": 1.12}, "is_synthetic": True}
-    config = {}
+    config = (
+        sample_config().model_dump(mode="json") if mode == "research" else seed_config()
+    )
     if mode == "portable":
         config = PortableRunConfig.model_validate(config_values()).model_dump(
             mode="json"
@@ -46,6 +50,8 @@ def fixture_run(mode):
             "objective_definition": "portable_return_drawdown.v1",
         }
     return SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=uuid4(),
         status="succeeded",

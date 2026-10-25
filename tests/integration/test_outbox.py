@@ -281,3 +281,103 @@ def test_stalled_job_recovery_rolls_back_and_preserves_business_fence(
         assert claim_attempt(session, attempt.run_id, 1, "redelivery", settings) is None
         assert session.get(ResearchRun, attempt.run_id).active_attempt_id == attempt.id
         assert len(session.scalars(select(ExecutionAttempt)).all()) == 1
+
+
+def _queue_recovery_snapshot(session):
+    return session.execute(
+        text(
+            "SELECT id, status, attempts, args, worker_id FROM procrastinate_jobs ORDER BY id"
+        )
+    ).all()
+
+
+@pytest.mark.parametrize(
+    "corruption", ["extra-key", "boolean-generation", "wrong-run", "wrong-generation"]
+)
+def test_stalled_recovery_rejects_invalid_persisted_binding_without_retry(
+    migrated_engine, stale_queue_delivery, submit_run, corruption
+):
+    import json
+
+    from backend.app.services import DomainError
+    from workers.research.dispatcher import recover_stalled_jobs
+
+    # A real other run proves that existence alone is not a valid job binding.
+    other = submit_run()
+    assert other.status_code in (201, 202)
+    job_id, _ = stale_queue_delivery
+    with Session(migrated_engine) as session:
+        args = dict(
+            session.scalar(
+                text("SELECT args FROM procrastinate_jobs WHERE id = :id"),
+                {"id": job_id},
+            )
+        )
+        if corruption == "extra-key":
+            args["engine"] = "legacy"
+        elif corruption == "boolean-generation":
+            args["generation"] = True
+        elif corruption == "wrong-run":
+            args["run_id"] = other.json()["id"]
+        else:
+            args["generation"] += 1
+        session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET args = CAST(:args AS jsonb) WHERE id = :id"
+            ),
+            {"args": json.dumps(args), "id": job_id},
+        )
+        session.commit()
+    with Session(migrated_engine) as session:
+        before = _queue_recovery_snapshot(session)
+        assert tuple(before[0][1:3]) == ("doing", 0)
+        with pytest.raises(DomainError):
+            recover_stalled_jobs(session)
+        assert _queue_recovery_snapshot(session) == before
+        # Commit deliberately: rollback must not conceal an earlier partial retry.
+        session.commit()
+    with Session(migrated_engine) as session:
+        assert _queue_recovery_snapshot(session) == before
+
+
+def test_stalled_recovery_valid_then_invalid_batch_never_partially_retries(
+    migrated_engine, stale_queue_delivery, submit_run
+):
+    from backend.app.services import DomainError
+    from workers.research.dispatcher import dispatch_outbox, recover_stalled_jobs
+
+    first_job, worker = stale_queue_delivery
+    second = submit_run()
+    assert second.status_code in (201, 202)
+    with Session(migrated_engine) as session:
+        assert dispatch_outbox(session) == 1
+        second_job = session.scalar(
+            text(
+                "SELECT (procrastinate_fetch_job_v2(ARRAY['research']::varchar[], :worker)).id"
+            ),
+            {"worker": worker},
+        )
+        assert second_job > first_job
+        session.execute(
+            text(
+                "UPDATE procrastinate_workers SET last_heartbeat = now() - interval '5 minutes' WHERE id = :worker"
+            ),
+            {"worker": worker},
+        )
+        session.execute(
+            text(
+                "UPDATE procrastinate_jobs SET args = args || '{\"generation\": 2}'::jsonb WHERE id = :id"
+            ),
+            {"id": second_job},
+        )
+        session.commit()
+    with Session(migrated_engine) as session:
+        before = _queue_recovery_snapshot(session)
+        assert len(before) == 2
+        assert all(tuple(row[1:3]) == ("doing", 0) for row in before)
+        with pytest.raises(DomainError):
+            recover_stalled_jobs(session)
+        assert _queue_recovery_snapshot(session) == before
+        session.commit()
+    with Session(migrated_engine) as session:
+        assert _queue_recovery_snapshot(session) == before

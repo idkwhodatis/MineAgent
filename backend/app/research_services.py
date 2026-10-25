@@ -42,6 +42,7 @@ from backend.app.services import (
 )
 from backend.app.storage import read_verified, redact, safe_path
 from backend.app.workspace_policy import enforce_model_policy, quota_limit
+from packages.research_runtime.identity import require_legacy_identity
 from packages.tradegrad_adapter.checkpoint import CheckpointRef, CheckpointStore
 from packages.tradegrad_adapter.config import RunConfig, evaluation_windows
 
@@ -116,6 +117,7 @@ def _key(value):
 
 def research_config(run):
     try:
+        require_legacy_identity(run)
         return RunConfig.model_validate(run.config)
     except ValueError:
         raise DomainError(
@@ -127,6 +129,9 @@ def research_config(run):
 
 def execution_config(run):
     """Strict family dispatch for shared checkpoint persistence, not native APIs."""
+    from backend.app.research_lifecycle import require_legacy_run
+
+    require_legacy_run(run)
     if run.config.get("schema_version") == "tradegrad.portable.run.v1":
         from backend.app.portable_services import portable_config
 
@@ -378,6 +383,8 @@ def submit_research_run(
         split_version_id=split_version_id,
     )
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         idempotency_key=idempotency_key,

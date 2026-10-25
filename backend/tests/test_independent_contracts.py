@@ -238,6 +238,8 @@ def admission_fixture(monkeypatch):
         }
     )
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         generation=1,
@@ -348,10 +350,20 @@ def test_prospective_source_chain_budget(monkeypatch, ancestors, allowed):
 
     calls = []
     runs = [
-        SimpleNamespace(config={"schema_version": service.NATIVE_SCHEMA})
+        SimpleNamespace(
+            purpose="legacy_strategy",
+            engine="legacy",
+            config={"schema_version": service.NATIVE_SCHEMA},
+        )
         for _ in range(ancestors)
     ]
-    runs.append(SimpleNamespace(config={"schema_version": "tradegrad.run.v1"}))
+    runs.append(
+        SimpleNamespace(
+            purpose="legacy_strategy",
+            engine="legacy",
+            config={"schema_version": "tradegrad.run.v1"},
+        )
+    )
     iterator = iter(runs)
 
     def execute(query):
@@ -441,6 +453,8 @@ def test_independent_native_query_exact_series_paging_and_metric_projection(
         evaluation=SimpleNamespace(id=evaluation_id, attempt_id=attempt_id),
         artifact=SimpleNamespace(sha256="a" * 64),
         run=SimpleNamespace(
+            purpose="legacy_strategy",
+            engine="legacy",
             id=uuid4(),
             config={"schema_version": NATIVE_SCHEMA, "purpose": "diagnostic"},
         ),

@@ -27,12 +27,27 @@ pytestmark = pytest.mark.postgres
 
 def seed_observations(engine, account):
     now = utcnow()
+    # Exact persisted seed contract; these are inert operational observations,
+    # not evaluator success claims or a permissive empty-config fixture.
+    config = {
+        "task": account.strategy.task,
+        "dataset_version_id": str(account.dataset.id),
+        "strategy_version_id": str(account.strategy.id),
+        "start_date": account.dataset.start_date.isoformat(),
+        "end_date": account.dataset.end_date.isoformat(),
+        "profile": "corrected_explicit_config",
+        "market": account.dataset.market,
+        "dataset_sha256": account.dataset.content_sha256,
+        "strategy_sha256": account.strategy.content_sha256,
+        "execution_mode": "seed_evaluation",
+        "is_synthetic": account.dataset.is_synthetic,
+    }
     with Session(engine) as session:
         run = ResearchRun(
             owner_id=account.user.id,
             idempotency_key=uuid4().hex,
             request_sha256="1" * 64,
-            config={},
+            config=dict(config),
             dataset_version_id=account.dataset.id,
             strategy_version_id=account.strategy.id,
             status="cancelled",
@@ -118,7 +133,7 @@ def seed_observations(engine, account):
             owner_id=account.user.id,
             idempotency_key=uuid4().hex,
             request_sha256="5" * 64,
-            config={},
+            config=dict(config),
             dataset_version_id=account.dataset.id,
             strategy_version_id=account.strategy.id,
             status="queued",

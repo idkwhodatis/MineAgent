@@ -39,6 +39,7 @@ from backend.app.services import (
 )
 from backend.app.storage import read_verified, redact
 from backend.app.workspace_policy import enforce_model_policy, quota_limit
+from packages.research_runtime.identity import require_legacy_identity
 from packages.strategy_sdk import (
     DataRequirements,
     EngineProfile,
@@ -66,6 +67,7 @@ from packages.tradegrad_adapter.portable_prompts import (
 
 def portable_config(run):
     try:
+        require_legacy_identity(run)
         return PortableRunConfig.model_validate(run.config)
     except (ValueError, TypeError):
         raise DomainError(
@@ -456,6 +458,8 @@ def submit_portable_run(
         split_version_id=split_version_id,
     )
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         idempotency_key=idempotency_key,

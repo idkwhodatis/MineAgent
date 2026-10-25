@@ -26,6 +26,7 @@ from backend.app.operations_backup import (
     BackupLimits,
     _key,
 )
+from backend.app.schema_capabilities import capabilities_for
 
 FORMAT = "tradegrad.retention-preview.v1"
 APPLY_BLOCKER = (
@@ -88,6 +89,12 @@ def _deadline(deadline):
 
 
 def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
+    try:
+        if type(snapshot) is not dict:
+            raise ValueError("Invalid snapshot")
+        capabilities = capabilities_for(snapshot.get("schema_revision"))
+    except ValueError:
+        raise RetentionError("Unsupported database reference snapshot") from None
     if (
         type(snapshot) is not dict
         or set(snapshot)
@@ -100,8 +107,7 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
         }
         | (
             {"factor_closure"}
-            if snapshot.get("schema_revision")
-            in {"012_factor_library", "013_factor_import"}
+            if capabilities.factor_closure_schema is not None
             else set()
         )
         or snapshot["schema_revision"] not in REVISIONS
@@ -134,10 +140,7 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
     keys.update(item["path"] for item in snapshot["checkpoints"])
     if "factor_closure" in snapshot:
         try:
-            expected_closure = {
-                "012_factor_library": "mineagent.factor-restore-closure.v1",
-                "013_factor_import": "mineagent.factor-restore-closure.v2",
-            }[snapshot["schema_revision"]]
+            expected_closure = capabilities.factor_closure_schema
             if snapshot["factor_closure"]["schema_version"] != expected_closure:
                 raise RetentionError("Factor closure revision mismatch")
             for obj in snapshot["factor_closure"]["tables"]["factor_objects"]:

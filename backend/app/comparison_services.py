@@ -47,6 +47,7 @@ from backend.app.workbench_services import (
     owned_source,
 )
 from backend.app.workspace_policy import quota_limit
+from packages.research_runtime.identity import require_legacy_identity
 from packages.research_trace.binding import make_binding
 from packages.research_trace.comparison_contracts import (
     ALGORITHM_VERSION,
@@ -100,6 +101,7 @@ def reject_comparison_key(session, owner_id, key):
 
 def comparison_config(run, comparison=None):
     try:
+        require_legacy_identity(run)
         config = ComparisonConfig.model_validate(run.config)
         if run.request_sha256 != config.sha256 or run.result is not None:
             raise ValueError("Comparison run config or status-only result differs")
@@ -153,6 +155,9 @@ def owned_comparison(session, comparison_id, owner_id, *, lock=False):
 
 
 def _typed_config(run):
+    from backend.app.research_lifecycle import require_legacy_run
+
+    require_legacy_run(run)
     from packages.tradegrad_adapter.config import RunConfig
     from packages.tradegrad_adapter.final_config import FinalEvaluationConfig
     from packages.tradegrad_adapter.independent_config import (
@@ -577,6 +582,8 @@ def submit_comparison(session, owner_id, body, idempotency_key, settings):
         )
         left = sides[0].trace.result
         run = ResearchRun(
+            purpose="legacy_strategy",
+            engine="legacy",
             id=uuid4(),
             owner_id=owner_id,
             idempotency_key=idempotency_key,

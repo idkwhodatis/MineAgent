@@ -13,6 +13,7 @@ from backend.app.api.deps import get_current_user, get_session
 from backend.app.core.config import Settings
 from backend.app.main import create_app
 from backend.app.services import DomainError, owned_native_run
+from tests.research_runtime.fixtures import seed_config
 
 
 @pytest.fixture
@@ -49,7 +50,11 @@ def test_native_routes_do_not_serialize_or_mutate_other_run_types(
     client, session, user = fake_api
     identifier = uuid4()
     session.scalar.return_value = SimpleNamespace(
-        id=identifier, owner_id=user.id, config={"schema_version": version}
+        purpose="legacy_strategy",
+        engine="legacy",
+        id=identifier,
+        owner_id=user.id,
+        config={"schema_version": version},
     )
     response = getattr(client, method)(f"/api/v1/runs/{identifier}{suffix}")
     assert response.status_code == 404
@@ -61,7 +66,9 @@ def test_native_routes_do_not_serialize_or_mutate_other_run_types(
 def test_native_guard_preserves_both_existing_config_formats(version):
     session = MagicMock()
     item = SimpleNamespace(
-        config={} if version is None else {"schema_version": version}
+        purpose="legacy_strategy",
+        engine="legacy",
+        config=seed_config() if version is None else {"schema_version": version},
     )
     session.scalar.return_value = item
     assert owned_native_run(session, uuid4(), uuid4()) is item
@@ -91,6 +98,10 @@ def test_native_lists_filter_before_pagination_and_count(fake_api, resource, exp
         )
         assert expected in sql
         assert str(user.id) in sql
+        if resource == "runs":
+            assert "research_runs.purpose = 'legacy_strategy'" in sql
+            assert "research_runs.engine = 'legacy'" in sql
+            assert "schema_version" in sql and "NOT" in sql
 
 
 def test_native_strategy_detail_applies_mode_filter(fake_api):
@@ -135,6 +146,8 @@ def test_configured_research_detail_distinguishes_owned_incompatible_from_absent
     identifier = uuid4()
     session.scalar.return_value = (
         SimpleNamespace(
+            purpose="legacy_strategy",
+            engine="legacy",
             id=identifier,
             owner_id=user.id,
             config={"schema_version": "tradegrad.portable.run.v1"},

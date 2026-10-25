@@ -88,14 +88,22 @@ def test_research_config_is_frozen_and_no_unapproved_fields():
     ],
 )
 def test_evaluation_registration_rejects_holdout_and_arbitrary_subwindows(window):
-    run = ResearchRun(config=sample_config().model_dump(mode="json"))
+    run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
+        config=sample_config().model_dump(mode="json"),
+    )
     with pytest.raises(DomainError):
         _validated_window(run, window)
 
 
 def test_valid_evaluation_window_is_exact_frozen_plan():
     config = sample_config()
-    run = ResearchRun(config=config.model_dump(mode="json"))
+    run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
+        config=config.model_dump(mode="json"),
+    )
     window = {"split": "train", **config.windows.train.model_dump(mode="json")}
     assert _validated_window(run, window) == window
     assert run.execution_mode == "optimization"

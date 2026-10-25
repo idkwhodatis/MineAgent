@@ -158,7 +158,13 @@ def test_data_staging_verifies_hashes_filters_exclusive_dates_and_preserves_code
     strategy_hash = hashlib.sha256(code.encode()).hexdigest()
     run = ResearchRun(
         id=uuid4(),
+        purpose="legacy_strategy",
+        engine="legacy",
         config={
+            "dataset_version_id": str(uuid4()),
+            "strategy_version_id": str(uuid4()),
+            "execution_mode": "seed_evaluation",
+            "is_synthetic": True,
             "dataset_sha256": dataset_hash,
             "strategy_sha256": strategy_hash,
             "start_date": "2024-01-02",

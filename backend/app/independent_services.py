@@ -60,6 +60,7 @@ from backend.app.services import (
 )
 from backend.app.storage import read_verified, redact
 from backend.app.workspace_policy import quota_limit
+from packages.research_runtime.identity import require_legacy_identity
 from packages.research_trace.contracts import digest
 from packages.tradegrad_adapter.config import DateWindow, VersionRef, canonical_bytes
 from packages.tradegrad_adapter.independent_config import (
@@ -86,6 +87,7 @@ def _integrity():
 
 def independent_config(run):
     try:
+        require_legacy_identity(run)
         config = parse_independent_config(run.config)
         if config.sha256 != run.request_sha256:
             raise ValueError("Config hash differs")
@@ -625,6 +627,8 @@ def _create_one(
     identifier = uuid4()
     config = _make_config(source, strategy, identifier, purpose, body)
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         idempotency_key=key,

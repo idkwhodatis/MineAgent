@@ -319,6 +319,8 @@ def controller(tmp_path, monkeypatch):
     source, config, manifest, parameters = inputs()
     owner_id, run_id, attempt_id, token = uuid4(), uuid4(), uuid4(), uuid4()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=run_id,
         owner_id=owner_id,
         config=config.model_dump(mode="json"),
@@ -356,6 +358,8 @@ def controller(tmp_path, monkeypatch):
         storage_root=tmp_path,
     )
     h = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         mode="success",
         source=source,
         config=config,

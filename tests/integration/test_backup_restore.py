@@ -31,6 +31,8 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError, DBAPIError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from tests.integration.historical_run_fixture import historical_builder
+
 ROOT = Path(__file__).resolve().parents[2]
 APPLICATION_REF = "a" * 40
 DATABASE_NAME = re.compile(r"tradegrad_backup_test_[0-9a-f]{32}\Z")
@@ -822,6 +824,7 @@ def test_supported_backup_revisions_are_receiptable():
         assert receipt.schema_revision == revision
 
 
+@historical_builder
 def _seed_workbench_evidence(engine):
     """Persist real append-only revisions, a bookmark and new bounded context."""
     from sqlalchemy.orm import Session
@@ -950,6 +953,8 @@ def _comparison_boundary_records(source, body, diagnostic_hash, now):
     )
     run = ResearchRun(
         id=uuid4(),
+        purpose="legacy_strategy",
+        engine="legacy",
         owner_id=source.owner_id,
         idempotency_key="restore-comparison-z-submit",
         request_sha256=config.sha256,
@@ -977,6 +982,7 @@ def _comparison_boundary_records(source, body, diagnostic_hash, now):
     return config, run, comparison
 
 
+@historical_builder
 def _seed_comparison_boundary(engine: Engine, storage: Path) -> dict[str, bytes]:
     """Synthetic persistence boundary only, never an engine/admission success.
 
@@ -1132,6 +1138,7 @@ def _seed_comparison_boundary(engine: Engine, storage: Path) -> dict[str, bytes]
     return {storage_key: diagnostic}
 
 
+@historical_builder
 def _seed_independent_boundary(engine: Engine) -> None:
     """Cancelled persistence-only I5 graph; no source/result admission is claimed.
 
@@ -1381,6 +1388,7 @@ def _note_settings(engine, storage):
     )
 
 
+@historical_builder
 def _seed_note_boundary(engine, storage):
     """Real note services over genuine old code/spec rows, not invented results."""
     from sqlalchemy.orm import Session
@@ -1782,6 +1790,9 @@ def test_real_settings_backup_restores_management_and_immutable_history(
             )
             == manifest
         )
+        _assert_historical_snapshot(restored, expected)
+        _assert_storage(restored_storage, files)
+        _upgrade(restored, "head")
         _assert_historical_snapshot(restored, expected)
         if revision in {
             "008_comparisons",

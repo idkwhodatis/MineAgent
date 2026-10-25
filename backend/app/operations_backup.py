@@ -33,21 +33,10 @@ from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 from backend.app.core.atomic_storage import fsync_directory, provision_directory
+from backend.app.schema_capabilities import BACKUP_REVISIONS, capabilities_for
 
 FORMAT = "tradegrad.cold-backup.v1"
-REVISIONS = {
-    "003_m3",
-    "004_m5",
-    "005_settings",
-    "006_provider_connections",
-    "007_research_specs",
-    "008_comparisons",
-    "009_independent_evaluations",
-    "010_research_notes",
-    "011_note_pin_trigger",
-    "012_factor_library",
-    "013_factor_import",
-}
+REVISIONS = BACKUP_REVISIONS
 NAMESPACES = {
     "datasets",
     "runs",
@@ -500,6 +489,7 @@ class PostgresDatabase:
                 raise BackupError(
                     "Unsupported or ambiguous application schema revision"
                 )
+            capabilities = capabilities_for(revisions[0])
             checks = (
                 "SELECT count(*) FROM research_runs WHERE status NOT IN ('paused','cancelled','failed','interrupted','succeeded')",
                 "SELECT count(*) FROM execution_attempts WHERE NOT sandbox_stopped OR finished_at IS NULL OR status NOT IN ('paused','cancelled','failed','interrupted','succeeded')",
@@ -513,7 +503,7 @@ class PostgresDatabase:
                 )
 
             if (
-                revisions[0] == "013_factor_import"
+                capabilities.factor_imports
                 and connection.execute(
                     text(
                         "SELECT count(*) FROM factor_import_admissions WHERE status NOT IN ('succeeded','failed') OR lease_token IS NOT NULL OR lease_expires_at IS NOT NULL"
@@ -551,27 +541,11 @@ class PostgresDatabase:
                 "SELECT manifest_storage_key AS path, manifest_sha256 AS sha256 FROM research_checkpoints ORDER BY manifest_storage_key"
             )
             references += checkpoints
-            if revisions[0] in {
-                "004_m5",
-                "005_settings",
-                "006_provider_connections",
-                "007_research_specs",
-                "008_comparisons",
-                "009_independent_evaluations",
-                "010_research_notes",
-                "011_note_pin_trigger",
-                "012_factor_library",
-                "013_factor_import",
-            }:
+            if capabilities.strategy_packages:
                 references += rows(
                     "SELECT storage_key AS path, archive_sha256 AS sha256, size_bytes FROM strategy_packages ORDER BY storage_key"
                 )
-            if revisions[0] in {
-                "010_research_notes",
-                "011_note_pin_trigger",
-                "012_factor_library",
-                "013_factor_import",
-            }:
+            if capabilities.note_pins:
                 # Historical note revisions retain exact artifacts independently
                 # of a mutable/current resource pointer. Never JOIN these pins to
                 # artifacts: deliberate metadata cleanup must not silently drop
@@ -594,7 +568,7 @@ class PostgresDatabase:
                     }.values()
                 )
             factor_closure = None
-            if revisions[0] in {"012_factor_library", "013_factor_import"}:
+            if capabilities.factor_closure_schema is not None:
                 from backend.app.factor_backup import canonical, read_closure
 
                 try:
@@ -812,20 +786,19 @@ def _validate_references(
                 raise BackupError("Factor archive exceeds admission profile")
             return stream.read(10_000_001)
 
-    factor_revision = snapshot.get("schema_revision") in {
-        "012_factor_library",
-        "013_factor_import",
-    }
+    try:
+        expected_closure = capabilities_for(
+            snapshot.get("schema_revision")
+        ).factor_closure_schema
+    except ValueError:
+        raise BackupError("Unsupported application schema revision") from None
+    factor_revision = expected_closure is not None
     if factor_revision != ("factor_closure" in snapshot):
         raise BackupError("Factor closure capability does not match schema")
     if factor_revision:
         from backend.app.factor_backup import validate_closure
 
         try:
-            expected_closure = {
-                "012_factor_library": "mineagent.factor-restore-closure.v1",
-                "013_factor_import": "mineagent.factor-restore-closure.v2",
-            }[snapshot["schema_revision"]]
             if snapshot["factor_closure"]["schema_version"] != expected_closure:
                 raise ValueError("Factor closure revision mismatch")
             validate_closure(

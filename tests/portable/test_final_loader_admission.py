@@ -60,6 +60,8 @@ def harness(request, tmp_path, monkeypatch):
         exit_code=0,
     )
     source = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=result.run.owner_id,
         config=result.run.config["source_config"],

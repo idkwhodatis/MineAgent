@@ -40,6 +40,7 @@ from backend.app.research_services import (
     checkpoint_reference,
     execution_config,
 )
+from backend.app.schema_capabilities import capabilities_for
 from backend.app.services import DomainError, advisory_lock, owned_run
 from packages.tradegrad_adapter.config import DateWindow
 
@@ -326,7 +327,13 @@ def has_unknown_import_history(session, owner_id):
     classification; actual overlapping exposure evidence always takes precedence.
     """
     revision = session.scalar(text("SELECT version_num FROM alembic_version"))
-    if revision not in {"013_factor_import"}:
+    try:
+        capabilities = capabilities_for(revision)
+    except ValueError:
+        raise DomainError(
+            "factor_schema_integrity", "Import history schema is unsupported", 409
+        ) from None
+    if not capabilities.factor_imports:
         return False
     tables = session.execute(
         text(

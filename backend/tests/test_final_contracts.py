@@ -108,7 +108,12 @@ def test_final_config_revalidation_catches_nested_copy_mutation():
     config = final_configuration()
     raw = copy.deepcopy(config.model_dump(mode="json"))
     raw["source_config"]["optimizer"]["max_iterations"] = 2
-    run = ResearchRun(config=raw, request_sha256=config.sha256)
+    run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
+        config=raw,
+        request_sha256=config.sha256,
+    )
     with pytest.raises(DomainError, match="exact frozen"):
         final_config(run)
 
@@ -118,14 +123,22 @@ def test_final_run_hash_and_frozen_config_enforced():
     assert (
         final_config(
             ResearchRun(
-                config=config.model_dump(mode="json"), request_sha256=config.sha256
+                purpose="legacy_strategy",
+                engine="legacy",
+                config=config.model_dump(mode="json"),
+                request_sha256=config.sha256,
             )
         )
         == config
     )
     with pytest.raises(DomainError):
         final_config(
-            ResearchRun(config=config.model_dump(mode="json"), request_sha256="0" * 64)
+            ResearchRun(
+                purpose="legacy_strategy",
+                engine="legacy",
+                config=config.model_dump(mode="json"),
+                request_sha256="0" * 64,
+            )
         )
     with pytest.raises(ValidationError):
         config.max_runtime_seconds = 10
@@ -137,7 +150,12 @@ def test_optimizer_still_rejects_holdout_and_final_schema():
     for config in [source, final_configuration()]:
         with pytest.raises(DomainError):
             _validated_window(
-                ResearchRun(config=config.model_dump(mode="json")), window
+                ResearchRun(
+                    purpose="legacy_strategy",
+                    engine="legacy",
+                    config=config.model_dump(mode="json"),
+                ),
+                window,
             )
 
 

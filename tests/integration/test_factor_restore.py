@@ -19,6 +19,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from test_backup_restore import drill_databases as shared_drill_databases
 
+from tests.integration.historical_run_fixture import historical_builder
+
 drill_databases = shared_drill_databases
 
 pytestmark = pytest.mark.postgres
@@ -32,6 +34,7 @@ def _files(root):
     }
 
 
+@historical_builder
 def _legacy_package(engine, storage):
     """Persistence-only retained export, not a successful evaluator assertion."""
     from backend.app.core.atomic_storage import publish_bytes
@@ -418,13 +421,13 @@ def _actual_value_import(engine, storage, seeded):
 
     if os.environ.get("MINEAGENT_FACTOR_RESTORE_PARSER_REQUIRED") != "1":
         pytest.fail(
-            "013 factor restore requires MINEAGENT_FACTOR_RESTORE_PARSER_REQUIRED=1; actual parser was not run",
+            "Import-aware factor restore requires MINEAGENT_FACTOR_RESTORE_PARSER_REQUIRED=1; actual parser was not run",
             pytrace=False,
         )
     image = os.environ.get("MINEAGENT_FACTOR_PARSER_IMAGE", "")
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", image):
         pytest.fail(
-            "013 factor restore requires the actual built MINEAGENT_FACTOR_PARSER_IMAGE ID",
+            "Import-aware factor restore requires the actual built MINEAGENT_FACTOR_PARSER_IMAGE ID",
             pytrace=False,
         )
     settings = _factor_settings(engine, storage).model_copy(
@@ -488,7 +491,9 @@ def _actual_value_import(engine, storage, seeded):
     return {"snapshot_id": snapshot_id, "page": page}
 
 
-@pytest.mark.parametrize("revision", ["011_note_pin_trigger", "013_factor_import"])
+@pytest.mark.parametrize(
+    "revision", ["011_note_pin_trigger", "013_factor_import", "014_run_identity"]
+)
 def test_real_factor_cold_restore_and_legacy_upgrade(
     drill_databases, tmp_path: Path, revision
 ):
@@ -518,7 +523,7 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
         notes, legacy_package = _seed_legacy(source, storage)
         seeded = None
         derived = None
-        if revision == "013_factor_import":
+        if revision in {"013_factor_import", "014_run_identity"}:
             legacy._upgrade(source, revision)
             seeded = _seed_factors(source, storage)
             _wrong_archive_rejected(source, seeded)
@@ -595,10 +600,12 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
         )
         legacy._assert_historical_snapshot(restored, expected)
         assert _files(target) == expected_files
+        # Verify real archived old rows and bytes before upgrading, then read
+        # them through current services only at the executable's required head.
+        legacy._upgrade(restored, "014_run_identity")
+        legacy._assert_historical_snapshot(restored, expected)
         legacy._reopen_restored_notes(restored, target, notes)
         if not seeded:
-            legacy._upgrade(restored, "013_factor_import")
-            legacy._assert_historical_snapshot(restored, expected)
             seeded = _seed_factors(restored, target)
             _wrong_archive_rejected(restored, seeded)
             _import_code_only(restored, target, seeded)
@@ -625,7 +632,7 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
                 assert restored_derived == derived["page"]
         # Restored journals prove prior parser shutdown without binding the new
         # filesystem inode to a stale live process, so future publication works.
-        if derived:
+        if seeded:
             from backend.app.factor_schemas import FactorBundleCreate
             from backend.app.factor_services import create_bundle
             from runtimes.factor_parser.supervisor import assert_quiescent, factor_fence
@@ -655,7 +662,7 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
                 connection.execute(
                     text("SELECT version_num FROM alembic_version")
                 ).scalar_one()
-                == "013_factor_import"
+                == "014_run_identity"
             )
             assert (
                 connection.execute(

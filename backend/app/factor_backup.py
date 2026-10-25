@@ -7,6 +7,8 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from backend.app.schema_capabilities import capabilities_for
+
 SCHEMA = "mineagent.factor-restore-closure.v1"
 IMPORT_SCHEMA = "mineagent.factor-restore-closure.v2"
 IMPORT_TABLE_NAMES = ("factor_import_envelopes", "factor_import_admissions")
@@ -36,6 +38,9 @@ def read_closure(
     connection, maximum_rows, *, revision="012_factor_library", maximum_bytes=32_000_000
 ):
     """Fixed allowlisted SQL; retain every generation, failed result and physical object."""
+    capabilities = capabilities_for(revision)
+    if capabilities.factor_closure_schema is None:
+        raise ValueError("Schema has no factor restore capability")
     tables = {}
     count = size = 0
 
@@ -60,7 +65,7 @@ def read_closure(
         return rows
 
     for name in TABLE_NAMES + (
-        IMPORT_TABLE_NAMES if revision == "013_factor_import" else ()
+        IMPORT_TABLE_NAMES if capabilities.factor_imports else ()
     ):
         rows = bounded_rows(
             f"SELECT to_jsonb(t) AS record FROM {name} AS t ORDER BY id LIMIT :limit"
@@ -86,7 +91,7 @@ def read_closure(
         )
         external[name] = rows
     return {
-        "schema_version": IMPORT_SCHEMA if revision == "013_factor_import" else SCHEMA,
+        "schema_version": capabilities.factor_closure_schema,
         "tables": tables,
         "external_bindings": external,
     }

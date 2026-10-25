@@ -12,8 +12,10 @@ from script.factor_browser_acceptance import (
     REQUIRED_IMPORT_BROWSER_CASE,
     REQUIRED_ISOLATION_CASES,
     REQUIRED_MIGRATION_CASES,
+    REQUIRED_OUTBOX_CASES,
     REQUIRED_PG_CASES,
     REQUIRED_RESTORE_CASES,
+    REQUIRED_RUN_IDENTITY_CASES,
     node_environment,
     validated_source,
     verify_report,
@@ -70,9 +72,18 @@ def test_pg_and_isolation_require_real_case_inventory(tmp_path):
         for name in REQUIRED_RESTORE_CASES
     ]
     pg += list(REQUIRED_MIGRATION_CASES)
+    pg += [("tests.integration.test_outbox", name) for name in REQUIRED_OUTBOX_CASES]
     pg += [
         ("tests.integration.test_factor_migrations", name)
         for name in REQUIRED_FACTOR_MIGRATION_CASES
+    ]
+    pg += [
+        (
+            "tests.integration.test_run_identity",
+            name + (f"[{index}]" if count > 1 else ""),
+        )
+        for name, count in REQUIRED_RUN_IDENTITY_CASES.items()
+        for index in range(count)
     ]
     verify_report(write_report(path, pg), "postgres")
     # Every exact required identity, not just the total, is admission evidence.
@@ -180,6 +191,26 @@ def test_test_selectors_and_required_inventory_remain_synchronized():
         selector = module.replace(".", "/") + ".py::" + name
         assert selector in workflow
     assert "tests/integration/test_factor_migrations.py" in workflow
+    assert "tests/integration/test_run_identity.py" in workflow
+    for selector in (
+        "tests/integration/test_outbox.py",
+        "backend/tests/test_neutral_run_identity.py",
+        "backend/tests/test_schema_capabilities.py",
+        "tests/research_runtime",
+    ):
+        assert selector in workflow
+    assert (
+        "test_real_factor_cold_restore_and_legacy_upgrade[011_note_pin_trigger]"
+        in REQUIRED_RESTORE_CASES
+    )
+    assert (
+        "test_real_factor_cold_restore_and_legacy_upgrade[013_factor_import]"
+        in REQUIRED_RESTORE_CASES
+    )
+    assert (
+        "test_real_factor_cold_restore_and_legacy_upgrade[014_run_identity]"
+        in REQUIRED_RESTORE_CASES
+    )
 
 
 def test_create_diagnostics_exports_only_closed_states(tmp_path):
@@ -228,3 +259,50 @@ def test_factor_migration_inventory_matches_every_guard_test():
         and node.name.startswith("test_")
     }
     assert names == {name.split("[", 1)[0] for name in REQUIRED_FACTOR_MIGRATION_CASES}
+
+
+def test_run_identity_inventory_matches_every_parameterized_guard():
+    root = Path(__file__).resolve().parents[2]
+    module = ast.parse((root / "tests/integration/test_run_identity.py").read_text())
+    actual = {}
+    for node in module.body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        count = 1
+        for decorator in node.decorator_list:
+            if (
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and decorator.func.attr == "parametrize"
+            ):
+                assert len(decorator.args) >= 2
+                values = decorator.args[1]
+                assert isinstance(values, (ast.List, ast.Tuple))
+                count *= len(values.elts)
+        actual[node.name] = count
+    assert actual == REQUIRED_RUN_IDENTITY_CASES
+
+
+def test_outbox_inventory_matches_every_recovery_case():
+    root = Path(__file__).resolve().parents[2]
+    module = ast.parse((root / "tests/integration/test_outbox.py").read_text())
+    actual = set()
+    for node in module.body:
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        suffixes = [""]
+        for decorator in node.decorator_list:
+            if (
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and decorator.func.attr == "parametrize"
+            ):
+                values = decorator.args[1]
+                assert isinstance(values, (ast.List, ast.Tuple))
+                suffixes = [
+                    prefix + "[" + ast.literal_eval(value) + "]"
+                    for prefix in suffixes
+                    for value in values.elts
+                ]
+        actual.update(node.name + suffix for suffix in suffixes)
+    assert actual == set(REQUIRED_OUTBOX_CASES)

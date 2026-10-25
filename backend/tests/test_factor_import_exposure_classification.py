@@ -63,9 +63,10 @@ def test_preimport_revision_never_queries_absent_import_tables(revision):
     assert session.scalar.call_count == 1
 
 
-def test_declared_import_schema_missing_tables_fails_closed():
+@pytest.mark.parametrize("revision", ["013_factor_import", "014_run_identity"])
+def test_declared_import_schema_missing_tables_fails_closed(revision):
     session = Mock()
-    session.scalar.return_value = "013_factor_import"
+    session.scalar.return_value = revision
     session.execute.return_value.one.return_value = (None, None)
     with pytest.raises(DomainError, match="Import history metadata"):
         services.has_unknown_import_history(session, uuid4())
@@ -93,3 +94,25 @@ def test_get_exposure_snapshot_applies_owner_unknown_history_only_to_no_overlap(
     result = services.get_exposure_snapshot(session, owner, split)
     assert result["classification"] == "unknown_import_history"
     assert result["matching_exposure_ids"] == []
+
+
+@pytest.mark.parametrize("revision", ["015_future", "999_future", None, {}, 14])
+def test_unknown_revision_cannot_claim_clean_import_history(revision):
+    session = Mock()
+    session.scalar.return_value = revision
+    with pytest.raises(DomainError, match="Import history schema is unsupported"):
+        services.has_unknown_import_history(session, uuid4())
+    session.execute.assert_not_called()
+
+
+@pytest.mark.parametrize("revision", ["013_factor_import", "014_run_identity"])
+@pytest.mark.parametrize("unknown", [False, True])
+def test_new_head_keeps_owner_import_history_query(revision, unknown):
+    session = Mock()
+    session.scalar.side_effect = [revision, unknown]
+    session.execute.return_value.one.return_value = (
+        "factor_import_envelopes",
+        "factor_import_admissions",
+    )
+    assert services.has_unknown_import_history(session, uuid4()) is unknown
+    assert session.scalar.call_count == 2

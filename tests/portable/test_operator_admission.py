@@ -124,6 +124,8 @@ def test_resume_demands_durable_model_receipt_even_when_attempt_claims_stop(
         config_values() | {"model": profile(owner).public_config()}
     )
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         status="paused",
         id=run_id,
         active_attempt_id=attempt_id,

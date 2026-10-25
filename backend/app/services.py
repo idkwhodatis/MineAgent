@@ -27,8 +27,10 @@ from backend.app.models import (
     StrategyVersion,
     utcnow,
 )
+from backend.app.research_lifecycle import require_legacy_run
 from backend.app.schemas import RunCreate
 from backend.app.workspace_policy import quota_limit
+from packages.research_runtime.identity import RunIdentityError, require_legacy_identity
 
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted", "paused"}
 
@@ -76,7 +78,11 @@ def owned_run(
 def owned_native_run(session: Session, run_id: UUID, owner_id: UUID) -> ResearchRun:
     """Legacy/native DTOs must never coerce portable or final-job result semantics."""
     run = owned_run(session, run_id, owner_id)
-    if run.config.get("schema_version") not in {None, "tradegrad.run.v1"}:
+    try:
+        schema = require_legacy_identity(run)
+    except RunIdentityError:
+        raise DomainError("not_found", "Run not found", 404) from None
+    if schema not in {None, "tradegrad.run.v1"}:
         raise DomainError("not_found", "Run not found", 404)
     return run
 
@@ -215,6 +221,8 @@ def submit_run(
         is_synthetic=dataset.is_synthetic,
     )
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         idempotency_key=idempotency_key,
@@ -258,6 +266,7 @@ def claim_attempt(
         or run.status not in {"queued", "pause_requested"}
     ):
         return None
+    require_legacy_run(run)
     if session.scalar(
         select(ExecutionAttempt.id).where(
             ExecutionAttempt.run_id == run_id, ExecutionAttempt.generation == generation
@@ -362,7 +371,8 @@ def finish_attempt(
     artifacts: list[dict] | None = None,
 ) -> ResearchRun:
     run, attempt = fenced_attempt(session, attempt_id, generation, lease_token)
-    if run.config.get("schema_version") is not None:
+    schema = require_legacy_run(run)
+    if schema is not None:
         raise DomainError(
             "research_completion_required",
             "Configured attempts require their mode-specific verified completion",
@@ -448,6 +458,7 @@ def finish_attempt(
 
 def request_cancel(session: Session, run_id: UUID, owner_id: UUID) -> ResearchRun:
     run = owned_run(session, run_id, owner_id, lock=True)
+    require_legacy_run(run)
     if run.status == "paused":
         run.status = "cancelled"
         append_event(
@@ -472,7 +483,8 @@ def resume_run(
 ) -> ResearchRun:
     advisory_lock(session, f"submit:{owner_id}")
     run = owned_run(session, run_id, owner_id, lock=True)
-    if run.config.get("schema_version") == "tradegrad.run.v1":
+    schema = require_legacy_run(run)
+    if schema == "tradegrad.run.v1":
         if settings is None:
             raise DomainError(
                 "settings_required",
@@ -544,6 +556,7 @@ def reconcile_attempt(
         or run.active_attempt_id != attempt.id
     ):
         return False
+    require_legacy_run(run)
     if run.config.get("schema_version") == "tradegrad.comparison.v1":
         from backend.app.comparison_guard import comparison_query_confirmed_stopped
 

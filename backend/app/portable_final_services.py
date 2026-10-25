@@ -54,6 +54,7 @@ from backend.app.services import (
 )
 from backend.app.storage import redact
 from backend.app.workspace_policy import quota_limit
+from packages.research_runtime.identity import require_legacy_identity
 from packages.tradegrad_adapter.config import DateWindow, VersionRef
 from packages.tradegrad_adapter.portable_final_config import (
     PortableFinalEvaluationConfig,
@@ -62,6 +63,7 @@ from packages.tradegrad_adapter.portable_final_config import (
 
 def final_config(run):
     try:
+        require_legacy_identity(run)
         config = PortableFinalEvaluationConfig.model_validate(run.config)
         if run.request_sha256 != config.sha256:
             raise ValueError("Final RunConfig hash differs")
@@ -292,6 +294,8 @@ def validate_final_inputs(session, run, settings):
 
 def _provisional_run(owner_id, final, selection, split, source):
     return ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         idempotency_key="preflight-only",

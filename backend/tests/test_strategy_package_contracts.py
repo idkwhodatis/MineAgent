@@ -134,7 +134,12 @@ def test_environment_missing_record_does_not_substitute_current_locks(monkeypatc
     session = MagicMock()
     session.scalar.return_value = None
     verified = SimpleNamespace(
-        run=SimpleNamespace(id=uuid4(), config={"environment_digest": "a" * 64}),
+        run=SimpleNamespace(
+            purpose="legacy_strategy",
+            engine="legacy",
+            id=uuid4(),
+            config={"environment_digest": "a" * 64},
+        ),
         evaluation=SimpleNamespace(
             attempt_id=uuid4(), image_digest="sha256:" + "b" * 64
         ),
@@ -263,6 +268,8 @@ def package_service_fixture(tmp_path, monkeypatch):
         universe_id,
     ) = [uuid4() for _ in range(7)]
     source = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=source_id,
         owner_id=owner_id,
         config=value.source_config,
@@ -318,6 +325,8 @@ def package_service_fixture(tmp_path, monkeypatch):
         "split_sha256": split.content_sha256,
     }
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=owner_id,
         final_selection_id=selection_id,

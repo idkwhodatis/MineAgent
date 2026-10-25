@@ -203,6 +203,8 @@ def test_failed_runner_cannot_publish_trusted_result(tmp_path):
 def test_bounded_typed_result_sections_and_honest_provenance(section):
     bundle, config, row = evidence()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         config=config.model_dump(mode="json"),
         research_image_digest=IMAGES["engine"],
@@ -239,6 +241,8 @@ def test_completion_checks_registered_artifact_and_removes_failed_trust(
         IMAGES["engine"],
     )
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=run_id,
         config=config.model_dump(mode="json"),
         research_image_digest=IMAGES["engine"],
@@ -332,6 +336,8 @@ def test_persisted_result_read_rechecks_hash_identity_and_success(
     bundle, config, row = evidence()
     owner = uuid4()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         config=config.model_dump(mode="json"),
         dataset_version_id=UUID(config.dataset.id),
@@ -408,6 +414,8 @@ def test_pins_are_dual_actual_ids_and_once_set(monkeypatch):
 
     _, config, _ = evidence()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         config=config.model_dump(mode="json"),
         research_image_digest=None,
         portable_policy_image_digest=None,
@@ -430,6 +438,8 @@ def test_research_registration_rejects_holdout_before_record_or_create(monkeypat
 
     _, config, row = evidence()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         config=config.model_dump(mode="json"),
         status="running",
         research_image_digest=IMAGES["engine"],

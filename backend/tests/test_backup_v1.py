@@ -1222,12 +1222,34 @@ def test_relative_home_profile_fails_before_inspection_or_client_invocation(
         "009_independent_evaluations",
         "010_research_notes",
         "011_note_pin_trigger",
+        "012_factor_library",
+        "013_factor_import",
+        "014_run_identity",
     ],
 )
 def test_supported_revisions_backup_roundtrip_without_relabeling(
     tmp_path, source, revision
 ):
     source[2]["schema_revision"] = revision
+    if revision in {"012_factor_library", "013_factor_import", "014_run_identity"}:
+        from backend.app.factor_backup import (
+            IMPORT_SCHEMA,
+            IMPORT_TABLE_NAMES,
+            SCHEMA,
+            TABLE_NAMES,
+        )
+
+        imports = revision in {"013_factor_import", "014_run_identity"}
+        source[2]["factor_closure"] = {
+            "schema_version": IMPORT_SCHEMA if imports else SCHEMA,
+            "tables": {
+                name: []
+                for name in TABLE_NAMES + (IMPORT_TABLE_NAMES if imports else ())
+            },
+            "external_bindings": {
+                name: [] for name in ("datasets", "strategies", "exposures")
+            },
+        }
     clients = FakeClients()
     manifest = create(tmp_path, source, clients=clients)
     assert manifest["schema_revision"] == revision

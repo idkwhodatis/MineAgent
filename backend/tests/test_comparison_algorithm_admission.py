@@ -54,6 +54,8 @@ def objects(identities, algorithm_version):
         algorithm_version=algorithm_version,
     )
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=run_id,
         owner_id=owner_id,
         config=config.model_dump(mode="json"),

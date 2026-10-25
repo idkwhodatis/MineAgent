@@ -137,6 +137,12 @@ class ResearchRun(Base):
     request_sha256: Mapped[str] = mapped_column(String(64))
     submission_binding: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     config: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    purpose: Mapped[str] = mapped_column(
+        String(40), default="legacy_strategy", server_default="legacy_strategy"
+    )
+    engine: Mapped[str] = mapped_column(
+        String(40), default="legacy", server_default="legacy"
+    )
     dataset_version_id: Mapped[UUID] = mapped_column(ForeignKey("dataset_versions.id"))
     strategy_version_id: Mapped[UUID] = mapped_column(
         ForeignKey("strategy_versions.id")
@@ -177,6 +183,14 @@ class ResearchRun(Base):
             "owner_id", "idempotency_key", name="uq_run_owner_idempotency"
         ),
         CheckConstraint("generation > 0"),
+        CheckConstraint(
+            "purpose = 'legacy_strategy' AND engine = 'legacy'",
+            name="ck_research_run_identity",
+        ),
+        CheckConstraint(
+            "mineagent_legacy_run_config(config) IS TRUE",
+            name="ck_research_run_legacy_config",
+        ),
         CheckConstraint(
             "status IN ('queued','preparing','running','finalizing','pause_requested','paused','cancel_requested','cancelled','failed','interrupted','succeeded')"
         ),

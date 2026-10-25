@@ -32,9 +32,12 @@ from backend.app.services import (
     mark_running,
 )
 from backend.app.storage import read_verified, redact, safe_path
+from packages.research_runtime.dispatch import require_seed_identity
+from packages.research_runtime.identity import require_legacy_identity
 
 
 def prepare_input(session, run: ResearchRun, attempt_id: UUID, settings: Settings):
+    require_seed_identity(run)
     dataset = session.get(DatasetVersion, run.dataset_version_id)
     strategy = session.get(StrategyVersion, run.strategy_version_id)
     if (
@@ -55,6 +58,7 @@ def stage_input(
     settings: Settings,
 ):
     """Pure file staging from trusted immutable records, separately testable offline."""
+    require_seed_identity(run)
     manifest_bytes = json.dumps(
         dataset.manifest, sort_keys=True, separators=(",", ":")
     ).encode()
@@ -184,7 +188,9 @@ def execute(
     factory = factory or session_factory(create_db_engine(settings))
     with factory() as session:
         current = session.get(ResearchRun, UUID(run_id))
-        schema = current.config.get("schema_version") if current is not None else None
+        if current is None:
+            return {"status": "duplicate_or_stale"}
+        schema = require_legacy_identity(current)
     if schema in {
         "tradegrad.independent-evaluation.v1",
         "tradegrad.portable.independent-evaluation.v1",

@@ -85,7 +85,7 @@ jobs:
           python -m script.validate_runtime_split --runtime api
           .venv-research/bin/python -m script.validate_runtime_split --runtime research
       - name: Test pure factor contracts and fail-closed acceptance harness
-        run: python -m pytest tests/factors backend/tests/test_factor_library_contracts.py backend/tests/test_factor_backup.py tests/mineagent/test_factor_browser_acceptance.py -q
+        run: python -m pytest tests/factors backend/tests/test_factor_library_contracts.py backend/tests/test_factor_backup.py backend/tests/test_neutral_run_identity.py backend/tests/test_schema_capabilities.py tests/research_runtime tests/mineagent/test_factor_browser_acceptance.py -q
       - name: Bind streaming backup clients to the exact disposable PostgreSQL container
         run: |
           python - <<'PYCLIENT'
@@ -131,6 +131,8 @@ jobs:
             tests/integration/test_factor_library.py \
             tests/integration/test_factor_restore.py \
             tests/integration/test_factor_migrations.py \
+            tests/integration/test_run_identity.py \
+            tests/integration/test_outbox.py \
             tests/integration/test_comparison_api.py::test_comparison_migration_downgrade_refuses_evidence_loss \
             tests/integration/test_migrations.py::test_migration_downgrade_upgrade_round_trip_preserves_schema_contract \
             tests/integration/test_note_pin_migration.py::test_010_ambiguity_and_011_repair_preserve_pin_admission_and_history \

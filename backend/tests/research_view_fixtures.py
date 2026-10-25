@@ -416,6 +416,8 @@ def synthetic_result(
         },
     }
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=run_id,
         owner_id=owner_id,
         request_sha256=binding_hash,

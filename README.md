@@ -25,8 +25,18 @@ independently verified. This establishes the migrated legacy foundation, not
 acceptance of the later factor/OpenEvolve/RD-Agent functionality.
 
 Stage 1 adds the independent factor library and supervised package-import path.
-It remains feature-gated until its own real database, containment, browser and
-cold-restore acceptance completes. The old execution profile stays unchanged.
+It passed at `001d24c82eb2426124a90ccdb3c5ed02d0cc3358`: the
+[full inherited regression](https://github.com/idkwhodatis/MineAgent/actions/runs/40163526838),
+[factor acceptance](https://github.com/idkwhodatis/MineAgent/actions/runs/40163526839),
+[completed-evidence cold restore](https://github.com/idkwhodatis/MineAgent/actions/runs/40163526830)
+and migration boundary all passed, with artifact hashes independently verified.
+This includes real PostgreSQL, isolated parsing, both import browser profiles,
+old-result restoration, Compose restart and the frozen synthetic capacity gate.
+Features remain operator-controlled; acceptance does not enable them in existing
+deployments. The old execution profile stays unchanged.
+
+The next closed migration establishes immutable legacy run classification before
+new engine admission. It does not yet enable RD-Agent or OpenEvolve execution.
 
 ## Development
 

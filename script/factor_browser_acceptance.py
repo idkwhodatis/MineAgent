@@ -57,6 +57,7 @@ REQUIRED_PG_CASES = (
 REQUIRED_RESTORE_CASES = (
     "test_real_factor_cold_restore_and_legacy_upgrade[011_note_pin_trigger]",
     "test_real_factor_cold_restore_and_legacy_upgrade[013_factor_import]",
+    "test_real_factor_cold_restore_and_legacy_upgrade[014_run_identity]",
 )
 REQUIRED_FACTOR_MIGRATION_CASES = (
     "test_empty_factor_import_migration_round_trip_preserves_core",
@@ -110,6 +111,32 @@ REQUIRED_MIGRATION_CASES = (
         "test_workspace_schema_round_trip_never_rewrites_immutable_runs",
     ),
 )
+REQUIRED_RUN_IDENTITY_CASES = {
+    "test_real_legacy_run_identity_upgrade_preserves_bytes": 1,
+    "test_real_identity_upgrade_rejects_unknown_history": 7,
+    "test_real_run_identity_and_old_inputs_are_immutable": 8,
+    "test_real_seed_identity_rejects_malformed_records": 10,
+    "test_real_run_identity_insert_rejects_unregistered_pairs": 5,
+}
+REQUIRED_OUTBOX_CASES = (
+    "test_stalled_recovery_rejects_invalid_persisted_binding_without_retry[extra-key]",
+    "test_stalled_recovery_rejects_invalid_persisted_binding_without_retry[boolean-generation]",
+    "test_stalled_recovery_rejects_invalid_persisted_binding_without_retry[wrong-run]",
+    "test_stalled_recovery_rejects_invalid_persisted_binding_without_retry[wrong-generation]",
+    "test_stalled_recovery_valid_then_invalid_batch_never_partially_retries",
+    "test_outbox_dispatch_persists_one_procrastinate_job_and_is_replay_safe",
+    "test_queue_insert_and_outbox_acknowledgement_roll_back_together",
+    "test_concurrent_dispatchers_do_not_enqueue_twice",
+    "test_cancelled_old_delivery_does_not_block_or_claim_resumed_generation",
+    "test_crash_before_business_claim_is_redelivered_once",
+    "test_recovery_includes_deleted_queue_worker",
+    "test_recovery_does_not_touch_unrelated_or_healthy_jobs[healthy-worker]",
+    "test_recovery_does_not_touch_unrelated_or_healthy_jobs[other-task]",
+    "test_recovery_does_not_touch_unrelated_or_healthy_jobs[other-queue]",
+    "test_recovery_does_not_touch_unrelated_or_healthy_jobs[finished-job]",
+    "test_concurrent_stalled_job_recovery_retries_only_once",
+    "test_stalled_job_recovery_rolls_back_and_preserves_business_fence",
+)
 REQUIRED_ISOLATION_CASES = {
     "test_real_factor_parser_roundtrip_and_removal": 1,
     "test_real_hostile_execution_stops_and_cannot_publish": 2,
@@ -159,11 +186,24 @@ def verify_report(path: Path, kind: str) -> None:
         )
         expected.update(REQUIRED_MIGRATION_CASES)
         expected.update(
+            ("tests.integration.test_outbox", name) for name in REQUIRED_OUTBOX_CASES
+        )
+        expected.update(
             ("tests.integration.test_factor_migrations", name)
             for name in REQUIRED_FACTOR_MIGRATION_CASES
         )
         if not expected.issubset(set(identities)):
             raise ValueError("Required real PostgreSQL factor cases did not execute")
+        for name, count in REQUIRED_RUN_IDENTITY_CASES.items():
+            if (
+                sum(
+                    classname == "tests.integration.test_run_identity"
+                    and case.split("[", 1)[0] == name
+                    for classname, case in identities
+                )
+                != count
+            ):
+                raise ValueError("Required real run identity cases did not execute")
     elif kind == "isolation":
         for name, count in REQUIRED_ISOLATION_CASES.items():
             if (

@@ -118,7 +118,12 @@ def test_old_and_new_revision_closure_capabilities_are_not_interchangeable(tmp_p
     )
 
 
-def test_current_revision_retains_legacy_note_and_package_inventory(monkeypatch):
+@pytest.mark.parametrize(
+    "revision", ["012_factor_library", "013_factor_import", "014_run_identity"]
+)
+def test_current_revision_retains_legacy_note_and_package_inventory(
+    monkeypatch, revision
+):
     from backend.tests.test_backup_v1 import InspectionConnection, QueryResult
 
     class Connection(InspectionConnection):
@@ -138,13 +143,17 @@ def test_current_revision_retains_legacy_note_and_package_inventory(monkeypatch)
                 )
             return result
 
-    connection = Connection(revisions=["012_factor_library"])
+    connection = Connection(revisions=[revision])
     database = backup.PostgresDatabase(
         "postgresql://operator@localhost/unit_inspection"
     )
     monkeypatch.setattr(database, "_inspect", lambda inspect: inspect(connection))
     snapshot = database.source_snapshot(backup.BackupLimits())
-    assert snapshot["factor_closure"] == empty_closure()
+    expected = empty_closure()
+    if revision != "012_factor_library":
+        expected["schema_version"] = factors.IMPORT_SCHEMA
+        expected["tables"].update({name: [] for name in factors.IMPORT_TABLE_NAMES})
+    assert snapshot["factor_closure"] == expected
     assert snapshot["references"] == [
         {"path": "runs/historical/pinned.json", "sha256": "a" * 64, "size_bytes": 10}
     ]
@@ -184,9 +193,10 @@ def test_restore_rejects_missing_bundle_inventory():
         validate(value)
 
 
-def test_import_revision_cannot_downgrade_its_restore_closure(tmp_path):
+@pytest.mark.parametrize("revision", ["013_factor_import", "014_run_identity"])
+def test_import_revision_cannot_downgrade_its_restore_closure(tmp_path, revision):
     snapshot = {
-        "schema_revision": "013_factor_import",
+        "schema_revision": revision,
         "references": [],
         "datasets": [],
         "checkpoints": [],

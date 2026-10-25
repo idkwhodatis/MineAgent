@@ -315,6 +315,8 @@ def test_production_publisher_and_loader_keep_legacy_metrics_fenced(
 ):
     config, _, _, _ = config_and_files()
     run = SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=uuid4(),
         owner_id=uuid4(),
         config=config.model_dump(mode="json"),

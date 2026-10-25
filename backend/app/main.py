@@ -401,8 +401,14 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
         limit: int = Query(50, ge=1, le=100),
     ):
         version = ResearchRun.config["schema_version"].astext
-        clause = (ResearchRun.owner_id == user.id) & or_(
-            version.is_(None), version == "tradegrad.run.v1"
+        clause = (
+            (ResearchRun.owner_id == user.id)
+            & (ResearchRun.purpose == "legacy_strategy")
+            & (ResearchRun.engine == "legacy")
+            & or_(
+                ~ResearchRun.config.has_key("schema_version"),
+                version == "tradegrad.run.v1",
+            )
         )
         response = {
             "data": session.scalars(

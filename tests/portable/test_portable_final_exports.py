@@ -163,6 +163,8 @@ def final_evidence():
         market="US",
     )
     run = ResearchRun(
+        purpose="legacy_strategy",
+        engine="legacy",
         id=run_id,
         owner_id=owner_id,
         request_sha256=config.sha256,
@@ -251,6 +253,8 @@ def final_evidence():
         manifest,
     )
     return SimpleNamespace(
+        purpose="legacy_strategy",
+        engine="legacy",
         config=config,
         source=source,
         bundle=bundle,
