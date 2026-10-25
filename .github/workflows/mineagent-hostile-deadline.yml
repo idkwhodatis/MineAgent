@@ -6,7 +6,7 @@ on:
   pull_request:
     paths:
       - "runtimes/hostile_deadline/**"
-      - "tests/research_runtime/test_hostile_deadline_contracts.py"
+      - "tests/research_runtime/test_hostile*.py"
       - ".github/workflows/mineagent-hostile-deadline.yml"
   workflow_dispatch:
 
@@ -28,11 +28,11 @@ jobs:
         run: python -m pip install --require-hashes -r backend/requirements.lock
       - name: Validate disabled policy and strict original-deadline assertions
         run: |
-          python -m pytest tests/research_runtime/test_hostile_deadline_contracts.py -q --junitxml=deadline-contracts.xml
+          python -m pytest tests/research_runtime/test_hostile_deadline_contracts.py tests/research_runtime/test_hostile_attach_stream.py tests/research_runtime/test_hostile_protected_output.py -q --junitxml=deadline-contracts.xml
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('deadline-contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 106
+          assert len(cases) == 210
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
       - name: Build pinned disabled lifecycle image without publishing it
@@ -56,7 +56,11 @@ jobs:
           assert proof['seccomp_sha256'] == SECCOMP_SHA256
           assert proof['image'] == pathlib.Path('var/deadline-proof/image.iid').read_text().strip()
           cases = {case['case']: case for case in proof['cases']}
-          assert set(cases) == {'hostile_deadline', 'early_completion'}
+          assert proof['output_abi'] == 'protected_stdout_v2'
+          assert set(cases) == {'hostile_deadline', 'early_completion', 'no_reader', 'collector_killed', 'oversized', 'fifo', 'symlink', 'unreadable'}
+          assert cases['no_reader']['non_reader_live_exporter_observed_and_stopped'] is True
+          assert cases['collector_killed']['primary_collector_killed'] is True
+          assert all(cases[name]['invalid_output_rejected'] is True for name in ('oversized', 'fifo', 'symlink', 'unreadable'))
           assert cases['hostile_deadline']['completed_attack_marker_verified'] is True
           assert cases['early_completion']['root_only_quiescence_and_bounded_output_verified'] is True
           for case in cases.values():

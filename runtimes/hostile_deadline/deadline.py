@@ -126,6 +126,28 @@ def candidate(libc) -> None:
     )
 
 
+def helper(role: str, expires: float, child_exit_code: int = 0) -> None:
+    from runtimes.hostile_deadline.protected_output import export_output, observe_marker
+
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        drop_capabilities(libc)
+        prctl(libc, PR_SET_DUMPABLE, 0)
+        prctl(libc, PR_SET_NO_NEW_PRIVS, 1)
+        require_caps(0)
+        name = b"ma-export-v2" if role == "export" else b"ma-observe-v2"
+        if libc.prctl(15, ctypes.c_char_p(name), 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "fixed helper identity failed")
+        close_fds()
+        if role == "export":
+            export_output(child_exit_code)
+        else:
+            observe_marker(expires)
+    except BaseException:  # noqa: BLE001 - helper failure never blocks PID1
+        os._exit(125)
+    os._exit(0)
+
+
 def quiesce_and_hold(expires: float, child_exit_code: int) -> None:
     # PID1 adopts orphaned descendants. kill(-1) excludes the caller/PID1 and is
     # limited by this private PID namespace. Repeat to close fork/delivery races.
@@ -145,26 +167,11 @@ def quiesce_and_hold(expires: float, child_exit_code: int) -> None:
             time.sleep(0.005)
     if time.monotonic() >= expires:
         os._exit(124)
-    payload = json.dumps(
-        {
-            "schema": "mineagent.hostile-quiescence.v1",
-            "child_exit_code": child_exit_code,
-            "descendants_reaped": True,
-        },
-        separators=(",", ":"),
-    ).encode()
-    fd = os.open(
-        "/status/quiescent.json",
-        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o400,
-    )
-    try:
-        if os.write(fd, payload) != len(payload):
-            raise RuntimeError("short trusted completion receipt")
-    finally:
-        os.close(fd)
-    # Root-only receipt is a host extraction precondition, not a candidate score.
-    # Never read a child-controlled ACK or extend the original absolute deadline.
+    exporter = os.fork()
+    if exporter == 0:
+        helper("export", expires, child_exit_code)
+    # Never wait for or write on the exporter pipe. A stalled/killed reader cannot
+    # extend this deadline; PID1 exit kills the exporter too.
     while time.monotonic() < expires:
         time.sleep(min(0.01, max(0, expires - time.monotonic())))
     os._exit(124)
@@ -229,6 +236,9 @@ def main() -> None:
     # Stop/interrupt exits PID1 rather than waiting on a potentially hostile tree.
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(signum, lambda *_: os._exit(124))
+    observer = os.fork()
+    if observer == 0:
+        helper("observe", expires)
     child = os.fork()
     if child == 0:
         try:

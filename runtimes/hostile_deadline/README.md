@@ -1,99 +1,70 @@
-# Disabled hostile-child deadline and quiescence draft
+# Disabled hostile deadline proof — protected output ABI v2
 
-**Not runtime admission or accepted containment.** Only pure contract/control-flow
-checks have run locally. `acceptance.py` must run on an approved Docker CI host;
-it never executes the hostile fixtures outside Docker. No existing launcher,
-manifest, purpose, database schema, or account security setting is changed.
+Not launch authority, production activation, or an acceptance claim. The v1
+Docker `cp` extraction assumption was invalid for tmpfs. V2 deliberately replaces
+it with a protected stdout channel; no host-root read, namespace injection,
+`docker exec`, extra container capabilities, daemon setting, or provider is used.
 
-## Distinct privilege and namespace contract
+## Preserved isolation
 
-This is not the N1 same-UID trusted-fixture profile. A fixed, installed Python
-module is PID 1 of a private PID namespace, UID/GID 0. Docker drops every capability
-and adds exactly SETUID, SETGID and KILL. Before fork the wrapper validates PID 1,
-all root IDs, bounding/active/ambient/inheritable capability sets and
-no-new-privileges, sets itself nondumpable, and fixes a monotonic deadline from a
-host-supplied absolute timestamp with at most ten seconds remaining. No extension,
-child-controlled ACK, stdout write, or provider/IPC call can postpone this limit.
+Pinned Python and Moby seccomp bytes, private PID namespace, readonly rootfs,
+network/IPC none, no-new-privileges, 256MiB memory+swap, 16 processes, and one CPU
+remain unchanged. Root PID1 starts with only KILL/SETUID/SETGID, is nondumpable,
+and retains only KILL after its trusted forks. Candidate IDs permanently drop to
+65533, groups clear, active/ambient/inheritable capabilities become zero; its
+stdio is `/dev/null`, other inherited FDs close, and only fixed Python `-I`
+executes `/input/candidate.py`. Candidate code cannot write the protected channel
+or signal/read trusted-root helpers. No application launcher admits this profile.
 
-The trusted fork branch creates a separate session, clears supplementary groups,
-permanently drops all IDs to 65533 and all active capabilities to zero, verifies
-those settings, closes every inherited non-stdio FD, redirects stdio to /dev/null,
-and executes only `/input/candidate.py` using installed Python `-I` and a fixed
-small environment. No candidate code runs before privilege reduction. The child
-cannot signal the differently owned parent, inspect its memory/FDs, regain root,
-or inherit a writable host socket. Child nondumpability is set before exec, but
-is **not** relied on after exec (exec/kernel rules and hostile code can change it).
-Parent nondumpability and different credentials protect the trusted wrapper.
+PID1 fixes the original monotonic deadline from the absolute host timestamp,
+never reads candidate output, and never writes or waits on the output channel.
+Direct-child exit triggers kill(-1)/reaping until ECHILD; observer descendants
+are included. Only after ECHILD does PID1 fork an exporter. PID1 then holds until
+the original deadline without waiting for exporter completion. Kernel PID1 exit
+kills the remaining namespace, including a blocked exporter. The host requires
+positive stopped state and all observed identities gone; time elapsed alone is
+not a stop receipt or authority to refund reservations.
 
-The parent retains only CAP_KILL, never execs, and never parses candidate output.
-When the direct child finishes it repeatedly sends SIGKILL to the remaining
-private-namespace processes and reaps adopted descendants until ECHILD. Only then
-it writes a fixed, root-only `/status/quiescent.json` receipt. It holds the same
-bounded tmpfs output until the original deadline or an authenticated host stop;
-it does not extend time for extraction. Timeout or any wrapper failure exits
-PID1, causing the kernel to kill the entire namespace. A blocked kernel task can
-delay physical teardown; the host must still positively verify stopped state,
-never assume a timeout is a stop receipt or refund reservations prematurely.
+## Explicit v2 data ABI
 
-Kernel basis: [PID namespace init and orphan adoption](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html),
-[Linux kill(-1) semantics](https://man7.org/linux/man-pages/man2/kill.2.html).
-The quiescence argument additionally assumes **no host docker-exec, namespace
-injection, or foreign peer process** during the attempt. This is a host launcher
-contract, not something candidate code can grant. The source-only mount is
-readonly; /tmp is 4 MiB, /output 16 MiB, and the root-only status tmpfs 64 KiB.
-Memory+swap are both capped at 256 MiB, PID count 16, CPU 1, network none, IPC none,
-readonly rootfs, no-new-privileges, the byte-pinned official Moby seccomp profile, and checked masked/readonly paths.
-The vendored profile is from `moby/profiles` commit
-`4b8214fc4971e06172938a1f1554ccff6647ee80`, SHA256
-`6416b47770785a41ac59073cdc77d9fe98517df2799dc83ef207e622de3053f6`;
-its Apache-2.0 license is retained as LICENSE.moby-profiles. Source:
-https://github.com/moby/profiles/blob/4b8214fc4971e06172938a1f1554ccff6647ee80/seccomp/default.json.
-The host masked/readonly inventory follows Moby's pinned default algorithm at
-`b711d21792db6db488de976eb3c4a653c92c3bc3/daemon/pkg/oci/defaults.go`, including
-existing per-CPU thermal_throttle paths. Any different Docker configuration fails
-rather than silently accepting a weaker policy. The parent and candidate also
-verify actual kernel Seccomp=2. The built image and effective container ENV must
-match the inspected immutable Python base digest exactly, and WorkingDir must be
-`/`; the resulting image-bound inventory is saved and hashed in the proof.
+`/output` is root-owned mode0733: the candidate can create files but cannot chmod
+the directory. Fixed outputs must be world-readable regular single-link inodes
+owned by65533. Inaccessible0600 files are rejected; no DAC capability is added.
+Helpers traverse an exact directory and basename using NOFOLLOW, open files
+NONBLOCK, reject FIFO/device/directory/symlink/hardlink/oversize, cap reads at4MiB
+plus one overflow byte, and require exact size/EOF and stable pre/post stat.
+Opaque bytes are never interpreted as HDF, pickle, code, or native-format data.
 
-## Output protocol requirements for future integration
+Both trusted helpers drop all active capabilities, remain nondumpable root, and
+close non-stdio FDs. The fixture-only live observer reads only the fixed marker;
+the maintained attack publishes it by atomic rename after protection assertions
+and forks. Observer emits a predetermined marker frame, **not** quiescence or
+artifact authority. Post-ECHILD exporter emits trusted completion metadata plus
+bounded opaque `result.bin`, or an empty rejection frame. Helpers may block on
+stdout; PID1 cannot. They are not additional candidate processes or deadline
+owners.
 
-The trusted root-only receipt proves no candidate descendants remain at that
-instant, not output validity or a financial score. The host must bind it to the
-exact retained container identity, image, attempt, generation and absolute
-deadline, prohibit peer exec, bounded-copy only allowlisted output after receipt,
-validate every byte in a separate parser, then positively stop the whole unit.
-Receipt absence, deadline races, partial extraction or unknown stop are failures;
-never use a candidate-writable host output bind as a substitute for bounded tmpfs.
-Production inspect inventory, retained input/mount authority, durable process
-registry and accounting, recovery, and typed artifact publication remain absent.
-The proof projection verifier is not an admission capability.
+The container is created with log-driver none, TTYfalse and OpenStdinfalse. A
+bounded Unix-socket Docker attach101 handshake establishes the subscription
+before a separate owner starts the container. The owner and an extra attach
+client are killed. Candidate stdout remains redirected; only trusted code owns
+the proof channel. Docker multiplex frames and protected frames have separate
+strict length/type/aggregate limits. The host validates complete evidence while
+the original unit is still running and before its original deadline, then drains
+EOF and verifies stop within the existing fixed1s tolerance. This tolerance does
+not extend candidate/exporter lifetime. Missing/truncated/duplicate/trailing
+frames cannot pass.
 
-## Explicit hosted proof (not executed locally)
+## Required hosted cases
 
-```sh
-docker build --iidfile /tmp/deadline.iid -f runtimes/hostile_deadline/Dockerfile .
-python -m runtimes.hostile_deadline.acceptance --run-hostile-docker-tests \
-  --image "$(cat /tmp/deadline.iid)" --output /tmp/deadline-proof.json
-```
+Live hostile marker + four live unprivileged fixture processes; early ECHILD
+receipt and retained output; non-reading primary collector with an observed
+**non-zombie** exporter then whole-unit stop; killed collector; and explicit
+oversized/FIFO/symlink/0600-output rejection. The no-reader evidence establishes
+live exporter survival with an unread stream and deadline termination, not a
+kernel-wchan proof of a particular blocked syscall. Pure tests are not hosted
+containment acceptance.
 
-The maintained malicious fixture checks denied UID/capability escalation,
-SIGSTOP/SIGKILL/SIGTERM and ptrace/memory/FD access against PID1, then leaves
-session-escaping grandchildren. The host kills both the disposable launch owner
-and attach client, observes namespace PIDs, and checks their eventual death while
-an unrelated host sibling survives. This proof requires the local default Docker
-Unix socket: remote contexts or DOCKER_HOST overrides are rejected. Every observed
-host PID must have a readable, non-null start-time identity; the inspected
-State.Pid must be among them and its local NSpid chain must end at private PID1.
-Missing observations are failures, never silently excluded from the stop claim. A second case checks early completion,
-root-only quiescence, no remaining descendants, and retained output extraction
-before the unchanged deadline. The proof requires a fixed completed-attack marker written after all adversarial
-assertions; bootstrap failure or missing marker cannot pass. The Docker inspect
-contract is checked against the reviewed base-image configuration and pinned host
-policy. Positive stop must be observed within the **original** eight-second
-absolute deadline plus one explicit second of scheduling/teardown tolerance,
-including launch, readiness, extraction and polling time. No fresh relative wait
-can extend this acceptance window; actual elapsed time is saved. The workflow
-uploads only bounded proof JSON (including public image ENV and policy hashes)
-and the local image ID, not arbitrary candidate output or logs.
-Unexecuted scripts are not evidence these kernel/container properties passed.
+Sources: [Docker cp tmpfs limitation](https://docs.docker.com/reference/cli/docker/container/cp/),
+[Moby attach subscription before upgrade](https://github.com/moby/moby/blob/v28.3.2/daemon/attach.go),
+[PID namespace init semantics](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html).

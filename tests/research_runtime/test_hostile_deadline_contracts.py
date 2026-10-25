@@ -17,6 +17,8 @@ def document():
         "Image": "sha256:" + "a" * 64,
         "Config": {
             "User": "0:0",
+            "Tty": False,
+            "OpenStdin": False,
             "Entrypoint": list(contract.ENTRYPOINT),
             "Cmd": ["9000"],
             "Env": ["PATH=/fixed"],
@@ -24,6 +26,7 @@ def document():
         },
         "HostConfig": {
             "Privileged": False,
+            "LogConfig": {"Type": "none", "Config": {}},
             "ReadonlyRootfs": True,
             "NetworkMode": "none",
             "PidMode": "",
@@ -45,7 +48,7 @@ def document():
             "ReadonlyPaths": list(contract.READONLY_PATHS),
             "Tmpfs": {
                 "/tmp": "rw,noexec,nosuid,nodev,size=4m,uid=65533,gid=65533,mode=0700",
-                "/output": "rw,noexec,nosuid,nodev,size=16m,uid=65533,gid=65533,mode=0700",
+                "/output": "rw,noexec,nosuid,nodev,size=16m,uid=0,gid=0,mode=0733",
                 "/status": "rw,noexec,nosuid,nodev,size=64k,uid=0,gid=0,mode=0700",
             },
         },
@@ -221,25 +224,17 @@ def test_quiescence_marker_only_after_echild_and_deadline_unchanged(monkeypatch)
     )
     monkeypatch.setattr(deadline.os, "waitpid", wait)
     monkeypatch.setattr(
-        deadline.os, "open", lambda *args: events.append(("open", args[0])) or 3
+        deadline.os, "fork", lambda: events.append("fork-exporter") or 99
     )
     monkeypatch.setattr(
-        deadline.os,
-        "write",
-        lambda fd, payload: events.append(("write", payload)) or len(payload),
+        deadline.os, "write", lambda *_: pytest.fail("PID1 must never write")
     )
-    monkeypatch.setattr(deadline.os, "close", lambda _: None)
     monkeypatch.setattr(deadline.os, "_exit", leave)
     with pytest.raises(SystemExit) as error:
         deadline.quiesce_and_hold(10, 0)
     assert error.value.code == 124
-    opened = next(
-        index
-        for index, event in enumerate(events)
-        if isinstance(event, tuple) and event[0] == "open"
-    )
-    assert events[:opened].count("wait") == 3
-    assert events[opened][1] == "/status/quiescent.json"
+    assert events[: events.index("fork-exporter")].count("wait") == 3
+    assert events.count("fork-exporter") == 1
 
 
 def test_quiescence_expiration_never_publishes(monkeypatch):
@@ -248,7 +243,7 @@ def test_quiescence_expiration_never_publishes(monkeypatch):
         deadline.os, "_exit", lambda code: (_ for _ in ()).throw(SystemExit(code))
     )
     monkeypatch.setattr(
-        deadline.os, "open", lambda *_: pytest.fail("expired publication")
+        deadline.os, "fork", lambda *_: pytest.fail("expired publication")
     )
     with pytest.raises(SystemExit) as error:
         deadline.quiesce_and_hold(10, 0)

@@ -8,11 +8,13 @@ import json
 import os
 import re
 import stat
+import struct
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 
+from runtimes.hostile_deadline.attach_stream import AttachStream
 from runtimes.hostile_deadline.contract import (
     BASE_IMAGE,
     MASKED_PATHS,
@@ -23,6 +25,11 @@ from runtimes.hostile_deadline.contract import (
     verify_inspect,
 )
 from runtimes.hostile_deadline.deadline import parse_status
+from runtimes.hostile_deadline.protected_output import (
+    MARKER,
+    parse_frame,
+    validate_export,
+)
 
 WALL_SECONDS = 8.0
 STOP_TOLERANCE_SECONDS = 1.0
@@ -95,7 +102,8 @@ for _ in range(3):
         os.setsid()
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         while True: time.sleep(.05)
-open('/output/checks-complete','wb').write(b'mineagent-fixed-hostile-checks-complete-v1\n')
+open('/output/marker.tmp','wb').write(b'mineagent-fixed-hostile-checks-complete-v1\n')
+os.replace('/output/marker.tmp','/output/checks-complete')
 while True: time.sleep(.05)
 """
 EARLY_EXIT = "import os,time\nopen('/output/result.bin','wb').write(b'fixed retained fixture')\ntry: open('/status/forged','w')\nexcept PermissionError: pass\nelse: raise AssertionError('status writable')\nif os.fork()==0:\n os.setsid()\n while True: time.sleep(.05)\ntime.sleep(.5)\n"
@@ -152,19 +160,108 @@ def require_process_observation(
         raise AssertionError("incomplete local host PID identity observation")
 
 
+def read_live_frame(reader: AttachStream, deadline: float) -> tuple[int, bytes]:
+    from runtimes.hostile_deadline.protected_output import MAGIC, MAX_FRAME
+
+    data = bytearray()
+    while True:
+        item = reader.read_frame(deadline=deadline)
+        if item is None:
+            raise AssertionError("EOF before live protected frame")
+        channel, chunk = item
+        if channel != 1:
+            diagnostics = [
+                parse_bootstrap_diagnostic(line) for line in chunk.splitlines()
+            ]
+            raise AssertionError(f"trusted failure diagnostics={diagnostics!r}")
+        data.extend(chunk)
+        if len(data) > MAX_FRAME + 11:
+            raise AssertionError("oversized protected frame")
+        if len(data) >= 11:
+            if data[:6] != MAGIC:
+                raise AssertionError("invalid protected magic")
+            size = struct.unpack(">I", data[7:11])[0]
+            if size > MAX_FRAME:
+                raise AssertionError("oversized protected payload")
+            if len(data) >= 11 + size:
+                return parse_frame(bytes(data))
+
+
+def live_process(pid: int, expected_start: str) -> bool:
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except FileNotFoundError:
+        return False
+    return fields[19] == expected_start and fields[0] not in {"Z", "X", "x"}
+
+
+def require_exporter_observation(rows: list[str], init_pid: int) -> tuple[int, str]:
+    """Exact daemon-owned docker-top unit inventory, not candidate helper names."""
+    if not 1 <= len(rows) <= 16:
+        raise AssertionError("invalid fixed unit process bound")
+    parsed = {}
+    for row in rows:
+        fields = row.split()
+        if len(fields) != 5 or not all(
+            field.isascii() and field.isdecimal() for field in fields[:4]
+        ):
+            raise AssertionError("invalid kernel process inventory")
+        pid, uid, ppid, pidns = map(int, fields[:4])
+        if pid <= 1 or pid in parsed or pidns <= 0:
+            raise AssertionError("ambiguous kernel process inventory")
+        parsed[pid] = (uid, ppid, pidns, fields[4])
+    if init_pid not in parsed or parsed[init_pid][0] != 0:
+        raise AssertionError("missing inspected root PID1")
+    if any(row[0] == 65533 for row in parsed.values()):
+        raise AssertionError("candidate remains before exporter observation")
+    matches = [
+        pid
+        for pid, row in parsed.items()
+        if row == (0, init_pid, parsed[init_pid][2], "ma-export-v2")
+    ]
+    if len(matches) != 1:
+        raise AssertionError("missing uniquely scoped trusted exporter")
+    pid = matches[0]
+    start = process_identity(pid)
+    if start is None or not live_process(pid, start):
+        raise AssertionError("exporter is not live")
+
+    def cgroup(process):
+        with open(f"/proc/{process}/cgroup", "rb") as stream:
+            raw = stream.read(4097)
+        if not raw or len(raw) > 4096:
+            raise AssertionError("invalid bounded cgroup identity")
+        return raw
+
+    if cgroup(pid) != cgroup(init_pid) or not live_process(pid, start):
+        raise AssertionError("exporter identity changed or wrong cgroup")
+    return pid, start
+
+
 def exercise(
-    image: str, folder: Path, *, early: bool, inventory: dict, masked_paths: list[str]
+    image: str, folder: Path, *, mode: str, inventory: dict, masked_paths: list[str]
 ) -> dict:
-    source = folder / ("early.py" if early else "attack.py")
-    source.write_text(EARLY_EXIT if early else ATTACK)
+    sources = {
+        "hostile_deadline": ATTACK,
+        "early_completion": EARLY_EXIT,
+        "no_reader": "import time\nopen('/output/result.bin','wb').write(b'x'*4194304)\ntime.sleep(.5)\n",
+        "collector_killed": "import time\nopen('/output/result.bin','wb').write(b'x'*4194304)\ntime.sleep(.5)\n",
+        "oversized": "import time\nopen('/output/result.bin','wb').write(b'x'*4194305)\ntime.sleep(.5)\n",
+        "fifo": "import os,time\nos.mkfifo('/output/result.bin',0o644)\ntime.sleep(.5)\n",
+        "symlink": "import os,time\nos.symlink('/etc/passwd','/output/result.bin')\ntime.sleep(.5)\n",
+        "unreadable": "import os,time\nopen('/output/result.bin','wb').write(b'fixed')\nos.chmod('/output/result.bin',0o600)\ntime.sleep(.5)\n",
+    }
+    source = folder / (mode + ".py")
+    source.write_text(sources[mode])
     source.chmod(0o444)
     started_monotonic = time.monotonic()
     original_monotonic_deadline = started_monotonic + WALL_SECONDS
     deadline = str(time.time_ns() // 1_000_000 + int(WALL_SECONDS * 1000))
     args = [
         "docker",
-        "run",
-        "--detach",
+        "create",
+        "--log-driver",
+        "none",
         "--network",
         "none",
         "--ipc",
@@ -195,7 +292,7 @@ def exercise(
         "--tmpfs",
         "/tmp:rw,noexec,nosuid,nodev,size=4m,uid=65533,gid=65533,mode=0700",
         "--tmpfs",
-        "/output:rw,noexec,nosuid,nodev,size=16m,uid=65533,gid=65533,mode=0700",
+        "/output:rw,noexec,nosuid,nodev,size=16m,uid=0,gid=0,mode=0733",
         "--tmpfs",
         "/status:rw,noexec,nosuid,nodev,size=64k,uid=0,gid=0,mode=0700",
         "--mount",
@@ -205,28 +302,9 @@ def exercise(
     ]
     cid = ""
     sibling = subprocess.Popen(["sleep", "60"])
-    attach = owner = None
+    attach = owner = reader = None
     try:
-        # A disposable host-side launch owner creates the container and waits.
-        # Killing it cannot be the mechanism that enforces the container deadline.
-        cidfile = folder / ("early.cid" if early else "attack.cid")
-        owner = subprocess.Popen(
-            [
-                "python",
-                "-c",
-                "import pathlib,subprocess,sys,time; r=subprocess.run(sys.argv[2:],check=True,capture_output=True,text=True); pathlib.Path(sys.argv[1]).write_text(r.stdout.strip()); time.sleep(60)",
-                str(cidfile),
-                *args,
-            ]
-        )
-        until = time.monotonic() + 5
-        while not cidfile.exists() and time.monotonic() < until:
-            if owner.poll() is not None:
-                raise AssertionError("launch owner failed")
-            time.sleep(0.02)
-        cid = cidfile.read_text().strip()
-        if len(cid) != 64 or any(c not in "0123456789abcdef" for c in cid):
-            raise AssertionError("invalid container identity")
+        cid = command(*args)
         document = inspect(cid)
         verify_inspect(
             document,
@@ -236,116 +314,136 @@ def exercise(
             inventory=inventory,
             masked_paths=masked_paths,
         )
+        # Handshake before starting; no log driver, TTY or stdin can forge/miss a
+        # trusted frame. This reader is not a deadline/liveness authority.
+        reader = AttachStream.connect(cid, deadline=original_monotonic_deadline)
+        cidfile = folder / (mode + ".started")
+        owner = subprocess.Popen(
+            [
+                "python",
+                "-c",
+                "import pathlib,subprocess,sys,time; subprocess.run(['docker','start',sys.argv[1]],check=True,capture_output=True); pathlib.Path(sys.argv[2]).write_text('started'); time.sleep(60)",
+                cid,
+                str(cidfile),
+            ]
+        )
+        until = min(time.monotonic() + 3, original_monotonic_deadline)
+        while not cidfile.exists() and time.monotonic() < until:
+            if owner.poll() is not None:
+                raise AssertionError("launch owner failed")
+            time.sleep(0.01)
+        if not cidfile.exists():
+            raise AssertionError("launch owner missed original deadline")
+        document = inspect(cid)
+        if not document["State"]["Running"]:
+            raise AssertionError("trusted bootstrap stopped before observation")
         owner.kill()
-        owner.wait(timeout=3)
+        owner.wait(timeout=1)
         attach = subprocess.Popen(
             ["docker", "attach", "--no-stdin", "--sig-proxy=false", cid],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(0.15)
+        time.sleep(0.1)
         attach.kill()
-        attach.wait(timeout=3)
-        if not early and not inspect(cid)["State"]["Running"]:
-            state = inspect(cid)["State"]
-            logs = subprocess.run(
-                ["docker", "logs", "--tail", "2", cid],
-                capture_output=True,
-                timeout=2,
-                check=False,
-            )
-            # Only fixed trusted-wrapper fields; never print raw candidate/log text.
-            diagnostics = []
-            for line in logs.stderr.splitlines()[-2:]:
-                item = parse_bootstrap_diagnostic(line)
-                if item is not None:
-                    diagnostics.append(item)
-            raise AssertionError(
-                f"candidate failed bootstrap or protection assertions: "
-                f"exit={state['ExitCode']} diagnostics={diagnostics!r}"
-            )
-        readiness = time.monotonic() + 2
-        while True:
-            rows = command("docker", "top", cid, "-eo", "pid").splitlines()[1:]
-            observed = {
-                int(row.strip()): process_identity(int(row.strip())) for row in rows
-            }
-            if early or len(observed) >= 5:
-                break
-            if time.monotonic() >= readiness:
-                raise AssertionError(
-                    "hostile fixture did not reach all protection checks/forks"
-                )
-            time.sleep(0.02)
+        attach.wait(timeout=1)
+        rows = command("docker", "top", cid, "-eo", "pid").splitlines()[1:]
+        observed = {
+            int(row.strip()): process_identity(int(row.strip())) for row in rows
+        }
         init_pid = document["State"]["Pid"]
         init_status = parse_status(
             Path(f"/proc/{init_pid}/status").read_text().splitlines()
         )
         require_process_observation(
-            observed, init_pid, [int(pid) for pid in init_status["NSpid"].split()]
+            observed, init_pid, [int(p) for p in init_status["NSpid"].split()]
         )
-        if not early:
-            marker = folder / "attack-checks-complete"
-            marker_until = min(time.monotonic() + 1, original_monotonic_deadline)
-            while time.monotonic() < marker_until:
-                copied = subprocess.run(
-                    ["docker", "cp", f"{cid}:/output/checks-complete", str(marker)],
-                    capture_output=True,
-                    check=False,
-                    timeout=1,
-                )
-                if copied.returncode == 0 and marker.read_bytes() == COMPLETED_MARKER:
-                    break
-                time.sleep(0.02)
-            if not marker.is_file() or marker.read_bytes() != COMPLETED_MARKER:
-                raise AssertionError("missing required completed attack marker")
-        if early:
-            receipt = folder / "quiescent.json"
-            until = time.monotonic() + 3
+        exporter_observed = False
+        if mode == "no_reader":
+            # A deliberately large frame exercises the unread attach channel.
+            # Do not read it: observe the protected exporter still alive twice.
+            until = min(time.monotonic() + 3, original_monotonic_deadline - 0.5)
+            exporter = None
             while time.monotonic() < until:
-                copied = subprocess.run(
-                    ["docker", "cp", f"{cid}:/status/quiescent.json", str(receipt)],
-                    capture_output=True,
-                    check=False,
-                    timeout=3,
-                )
-                if copied.returncode == 0:
+                rows = command(
+                    "docker", "top", cid, "-eo", "pid,uid,ppid,pidns,comm"
+                ).splitlines()[1:]
+                if any(row.split()[-1] == "ma-export-v2" for row in rows):
+                    exporter, identity = require_exporter_observation(rows, init_pid)
                     break
                 time.sleep(0.02)
-            value = json.loads(receipt.read_text())
-            assert value == {
-                "schema": "mineagent.hostile-quiescence.v1",
-                "child_exit_code": 0,
-                "descendants_reaped": True,
-            }
-            assert len(command("docker", "top", cid, "-eo", "pid").splitlines()) == 2
-            artifact = folder / "retained-result.bin"
-            command("docker", "cp", f"{cid}:/output/result.bin", str(artifact))
-            assert artifact.read_bytes() == b"fixed retained fixture"
-            assert inspect(cid)["State"]["Running"]
-        expected_code = 124
+            if exporter is None:
+                raise AssertionError("missing protected backpressure exporter")
+            time.sleep(0.25)
+            rows = command(
+                "docker", "top", cid, "-eo", "pid,uid,ppid,pidns,comm"
+            ).splitlines()[1:]
+            if require_exporter_observation(rows, init_pid) != (exporter, identity):
+                raise AssertionError("exporter identity changed under unread stream")
+            observed[exporter] = identity
+            exporter_observed = True
+        elif mode == "collector_killed":
+            reader.close()
+        else:
+            kind, payload = read_live_frame(reader, original_monotonic_deadline)
+            if (
+                time.monotonic() >= original_monotonic_deadline
+                or not inspect(cid)["State"]["Running"]
+            ):
+                raise AssertionError(
+                    "protected frame did not arrive while original unit alive"
+                )
+            if mode == "hostile_deadline":
+                if (kind, payload) != (1, MARKER):
+                    raise AssertionError("missing required completed attack marker")
+            elif mode == "early_completion":
+                if kind != 2 or validate_export(payload) != b"fixed retained fixture":
+                    raise AssertionError("missing exact quiescent output")
+            elif (kind, payload) != (3, b""):
+                raise AssertionError("unsafe output was not explicitly rejected")
+            rows = command("docker", "top", cid, "-eo", "pid,uid").splitlines()[1:]
+            candidate_pids = [
+                int(row.split()[0]) for row in rows if row.split()[1] == "65533"
+            ]
+            if mode == "hostile_deadline":
+                if len(candidate_pids) != 4 or any(
+                    not live_process(pid, process_identity(pid))
+                    for pid in candidate_pids
+                ):
+                    raise AssertionError(
+                        "fixed hostile candidate tree not alive at marker observation"
+                    )
+                observed.update({pid: process_identity(pid) for pid in candidate_pids})
+            elif candidate_pids:
+                raise AssertionError(
+                    "candidate processes remain after quiescent export"
+                )
+            channels = reader.collect_until_eof(
+                deadline=original_monotonic_deadline + STOP_TOLERANCE_SECONDS
+            )
+            if channels[1] or channels[2]:
+                raise AssertionError("duplicate or trailing protected channel bytes")
         until = original_monotonic_deadline + STOP_TOLERANCE_SECONDS
         while inspect(cid)["State"]["Running"] and time.monotonic() < until:
-            time.sleep(0.05)
+            time.sleep(0.03)
         final = inspect(cid)
-        if final["State"]["Running"] or final["State"]["ExitCode"] != expected_code:
-            raise AssertionError(f"wrong terminal lifecycle: {final['State']}")
-        stopped_monotonic = time.monotonic()
-        elapsed = assert_stop_timing(started_monotonic, stopped_monotonic)
+        if final["State"]["Running"] or final["State"]["ExitCode"] != 124:
+            raise AssertionError("wrong terminal lifecycle")
+        elapsed = assert_stop_timing(started_monotonic, time.monotonic())
         if sibling.poll() is not None:
             raise AssertionError("unrelated host sibling was killed")
         for pid, start in observed.items():
             if process_identity(pid) == start:
                 raise AssertionError("namespace descendant survived trusted PID1 exit")
         return {
-            "case": "early_completion" if early else "hostile_deadline",
-            "exit_code": expected_code,
+            "case": mode,
+            "exit_code": 124,
             "deadline_epoch_ms": int(deadline),
             "configured_wall_seconds": WALL_SECONDS,
             "positive_stop_elapsed_seconds": elapsed,
             "stop_tolerance_seconds": STOP_TOLERANCE_SECONDS,
             "original_deadline_verified": True,
-            "completed_attack_marker_verified": not early,
+            "completed_attack_marker_verified": mode == "hostile_deadline",
             "positive_stop_verified": True,
             "observed_processes": len(observed),
             "complete_local_pid_identities_verified": True,
@@ -354,9 +452,16 @@ def exercise(
             "attach_client_killed": True,
             "host_sibling_survived": True,
             "all_observed_descendants_stopped": True,
-            "root_only_quiescence_and_bounded_output_verified": early,
+            "root_only_quiescence_and_bounded_output_verified": mode
+            == "early_completion",
+            "non_reader_live_exporter_observed_and_stopped": exporter_observed,
+            "invalid_output_rejected": mode
+            in {"oversized", "fifo", "symlink", "unreadable"},
+            "primary_collector_killed": mode == "collector_killed",
         }
     finally:
+        if reader is not None:
+            reader.close()
         for process in (attach, owner, sibling):
             if process is not None and process.poll() is None:
                 process.kill()
@@ -402,22 +507,26 @@ def main() -> None:
             exercise(
                 args.image,
                 folder,
-                early=False,
+                mode=mode,
                 inventory=inventory,
                 masked_paths=masked_paths,
-            ),
-            exercise(
-                args.image,
-                folder,
-                early=True,
-                inventory=inventory,
-                masked_paths=masked_paths,
-            ),
+            )
+            for mode in (
+                "hostile_deadline",
+                "early_completion",
+                "no_reader",
+                "collector_killed",
+                "oversized",
+                "fifo",
+                "symlink",
+                "unreadable",
+            )
         ]
     args.output.write_text(
         json.dumps(
             {
                 "scope": "disabled_hostile_deadline_lifecycle_only",
+                "output_abi": "protected_stdout_v2",
                 "image": args.image,
                 "cases": results,
                 "image_config_inventory": inventory,

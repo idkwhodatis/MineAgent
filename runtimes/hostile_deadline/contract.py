@@ -172,6 +172,12 @@ def verify_inspect(
         or host.get("DeviceRequests")
     ):
         raise ValueError("init/device authority drift")
+    if (
+        config.get("Tty") is not False
+        or config.get("OpenStdin") is not False
+        or host.get("LogConfig") != {"Type": "none", "Config": {}}
+    ):
+        raise ValueError("protected attach channel policy drift")
     if host.get("Binds") or host.get("VolumesFrom") or host.get("Links"):
         raise ValueError("unexpected mount or peer authority")
     if (
@@ -195,7 +201,7 @@ def verify_inspect(
         raise ValueError("candidate input mount drift")
     if host.get("Tmpfs") != {
         "/tmp": "rw,noexec,nosuid,nodev,size=4m,uid=65533,gid=65533,mode=0700",
-        "/output": "rw,noexec,nosuid,nodev,size=16m,uid=65533,gid=65533,mode=0700",
+        "/output": "rw,noexec,nosuid,nodev,size=16m,uid=0,gid=0,mode=0733",
         "/status": "rw,noexec,nosuid,nodev,size=64k,uid=0,gid=0,mode=0700",
     }:
         raise ValueError("tmpfs drift")
