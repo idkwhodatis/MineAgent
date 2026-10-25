@@ -32,7 +32,7 @@ jobs:
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('deadline-contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 103
+          assert len(cases) == 106
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
       - name: Build pinned disabled lifecycle image without publishing it

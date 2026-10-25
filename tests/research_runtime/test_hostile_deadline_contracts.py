@@ -482,3 +482,38 @@ def test_bootstrap_diagnostic_construction_failure_still_exits(monkeypatch):
     monkeypatch.setattr(deadline.os, "_exit", exit_)
     with pytest.raises(Exited):
         deadline.fail_closed(RuntimeError("original private"))
+
+
+def test_proc_status_empty_groups_preserves_field_separator():
+    parsed = deadline.parse_status(
+        ["Name:\tpython\n", "Groups:\t\n", "CapEff:\t0000000000000000\n"]
+    )
+    assert parsed == {"Name": "python", "Groups": "", "CapEff": "0000000000000000"}
+
+
+def test_actual_local_proc_status_is_harmless_readable_metadata():
+    observed = deadline.status()
+    assert int(observed["Pid"]) > 0
+    assert int(observed["CapEff"], 16) >= 0
+    assert "Groups" in observed
+
+
+def test_attack_fixture_status_parser_handles_empty_groups_without_running_attack():
+    import ast
+
+    from runtimes.hostile_deadline.acceptance import ATTACK
+
+    # Execute only the isolated status expression with a harmless proc fixture.
+    assignment = next(
+        node
+        for node in ast.parse(ATTACK).body
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "status"
+    )
+    expression = ast.Expression(assignment.value)
+    parsed = eval(
+        compile(expression, "<fixed-status-expression>", "eval"),
+        {"open": lambda _: ["Groups:\t\n", "CapEff:\t0000\n"]},
+    )
+    assert parsed == {"Groups": "", "CapEff": "0000"}

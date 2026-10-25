@@ -53,9 +53,20 @@ def drop_capabilities(libc, retained: int = 0) -> None:
         raise OSError(ctypes.get_errno(), "capset failed")
 
 
+def parse_status(lines) -> dict[str, str]:
+    # Split before stripping: valid empty fields such as Groups:\t\n must
+    # retain their separator. Required capability/privilege checks remain strict.
+    return {
+        key: value.rstrip()
+        for line in lines
+        if ":\t" in line
+        for key, value in [line.split(":\t", 1)]
+    }
+
+
 def status() -> dict[str, str]:
     with open("/proc/self/status", encoding="ascii") as stream:
-        return dict(line.rstrip().split(":\t", 1) for line in stream if ":\t" in line)
+        return parse_status(stream)
 
 
 def require_caps(expected: int) -> None:

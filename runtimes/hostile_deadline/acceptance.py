@@ -22,6 +22,7 @@ from runtimes.hostile_deadline.contract import (
     seccomp_policy,
     verify_inspect,
 )
+from runtimes.hostile_deadline.deadline import parse_status
 
 WALL_SECONDS = 8.0
 STOP_TOLERANCE_SECONDS = 1.0
@@ -67,7 +68,7 @@ def assert_stop_timing(start: float, stopped: float) -> float:
 ATTACK = r"""
 import ctypes, errno, os, signal, time
 assert os.getuid() == 65533 and os.getgid() == 65533
-status = dict(line.rstrip().split(':\t', 1) for line in open('/proc/self/status') if ':\t' in line)
+status = {key: value.rstrip() for line in open('/proc/self/status') if ':\t' in line for key, value in [line.split(':\t', 1)]}
 assert all(int(status[k], 16) == 0 for k in ('CapEff', 'CapPrm', 'CapInh', 'CapAmb'))
 assert status['NoNewPrivs'] == '1' and status['Seccomp'] == '2'
 for change in (lambda: os.setuid(0), lambda: os.setgid(0)):
@@ -277,10 +278,8 @@ def exercise(
                 )
             time.sleep(0.02)
         init_pid = document["State"]["Pid"]
-        init_status = dict(
-            line.rstrip().split(":\t", 1)
-            for line in Path(f"/proc/{init_pid}/status").read_text().splitlines()
-            if ":\t" in line
+        init_status = parse_status(
+            Path(f"/proc/{init_pid}/status").read_text().splitlines()
         )
         require_process_observation(
             observed, init_pid, [int(pid) for pid in init_status["NSpid"].split()]
