@@ -25,7 +25,12 @@ from tests.integration.test_research_process_recovery import (
     _admit_fixture_process,
     _required_image,
 )
+from tests.integration.test_research_process_recovery import (
+    process_fence_fixture as shared_process_fence_fixture,
+)
 from workers.research.process_recovery import recover_unit, run_unit
+
+process_fence_fixture = shared_process_fence_fixture
 
 pytestmark = pytest.mark.postgres
 
