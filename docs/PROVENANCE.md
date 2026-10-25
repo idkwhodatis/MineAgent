@@ -44,11 +44,22 @@ python script/bootstrap_tradegrad_compat.py
 
 This fetches the fixed public commit into a disposable Git object store,
 validates its complete tree identity and every required blob, and materializes
-only allowlisted Git-ignored paths. It executes no dependency program and asks
-for no credentials. It refuses tracked destinations, symlinks and differing
-local files. Already identical files are left unchanged. Do not force-add the
-external files to Git. Docker builds consume the locally materialized bytes,
-with no external-path symlinks.
+only allowlisted Git-ignored dependency paths. It executes no dependency program
+and asks for no credentials. It refuses tracked destinations, symlinks and
+differing local files. Descriptor-relative no-follow operations are required;
+use a Unix environment supporting these primitives (including Linux containers
+or WSL), not an unsafe fallback on an unsupported platform.
+
+Complete bytes are staged privately under the ignored
+`.runtime/compatibility-bootstrap/` directory, then linked without replacing any
+existing destination. Staging hardlinks are deliberately retained: pathname
+cleanup cannot safely delete only our inode during arbitrary concurrent user
+replacement. An identical repeat creates no new staging files. On failure,
+already-created dependency files may remain; no destination is deleted as a
+rollback. Root/leaf inode and content checks detect changes before success, but
+cannot freeze a checkout against later edits by another same-user process.
+Do not force-add the external or staging files to Git. Docker builds consume
+the locally materialized bytes, with no external-path symlinks.
 
 For an existing local clone with the same tree, use:
 

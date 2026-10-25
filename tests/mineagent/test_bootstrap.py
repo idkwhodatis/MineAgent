@@ -3,6 +3,8 @@
 import copy
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 from pathlib import Path
 
@@ -68,7 +70,14 @@ def test_materialize_idempotent_and_preserves_user_files(destination, payloads):
     license_file = destination / "LICENSE"
     license_file.write_text("mineagent license")
     assert bootstrap.materialize(destination, payloads) == 21
+    assert stat.S_IMODE((destination / "requirements.txt").stat().st_mode) == 0o644
+    staging = destination / ".runtime/compatibility-bootstrap"
+    first_staging = sorted(path.relative_to(staging) for path in staging.rglob("*"))
     assert bootstrap.materialize(destination, payloads) == 0
+    assert (
+        sorted(path.relative_to(staging) for path in staging.rglob("*"))
+        == first_staging
+    )
     assert authored.read_text() == "user-authored"
     assert license_file.read_text() == "mineagent license"
     assert subprocess.check_output(["git", "-C", str(destination), "ls-files"]) == b""
@@ -150,3 +159,168 @@ def test_every_checkout_bootstraps_before_validation():
     assert len(sections) > 1
     for section in sections[1:]:
         assert "python script/bootstrap_tradegrad_compat.py" in section
+
+
+def _ordered(payloads, first):
+    return {first: payloads[first]} | {p: b for p, b in payloads.items() if p != first}
+
+
+def test_parent_swap_immediately_before_publication_cannot_follow_symlink(
+    destination,
+    payloads,
+    monkeypatch,
+):
+    outside = destination / "outside"
+    outside.mkdir()
+    actual_link = os.link
+
+    def swap_then_link(source, target, **kwargs):
+        if target == "evaluate.py":
+            (destination / "src").rename(destination / "original-src")
+            (destination / "src").symlink_to(outside, target_is_directory=True)
+        return actual_link(source, target, **kwargs)
+
+    monkeypatch.setattr(bootstrap.os, "link", swap_then_link)
+    with pytest.raises(bootstrap.BootstrapError, match="Symlink"):
+        bootstrap.materialize(destination, _ordered(payloads, "src/evaluate.py"))
+    assert list(outside.iterdir()) == []
+    assert (destination / "original-src/evaluate.py").read_bytes() == payloads[
+        "src/evaluate.py"
+    ]
+
+
+def test_failure_never_unlinks_replacement_at_final_name(
+    destination, payloads, monkeypatch
+):
+    actual_read = bootstrap._read_exact
+    replaced = False
+
+    def replace_after_publication(parent, name, body):
+        nonlocal replaced
+        result = actual_read(parent, name, body)
+        if name == "requirements.txt" and result is not None and not replaced:
+            replaced = True
+            target = destination / name
+            target.rename(destination / "original-created")
+            target.write_bytes(b"unrelated replacement")
+            raise bootstrap.BootstrapError("injected failure before cleanup")
+        return result
+
+    def forbidden_unlink(*args, **kwargs):
+        raise AssertionError("No pathname cleanup is safe after concurrent replacement")
+
+    monkeypatch.setattr(bootstrap, "_read_exact", replace_after_publication)
+    monkeypatch.setattr(bootstrap.os, "unlink", forbidden_unlink)
+    with pytest.raises(bootstrap.BootstrapError, match="injected failure"):
+        bootstrap.materialize(destination, _ordered(payloads, "requirements.txt"))
+    assert (destination / "requirements.txt").read_bytes() == b"unrelated replacement"
+    assert (destination / "original-created").read_bytes() == payloads[
+        "requirements.txt"
+    ]
+
+
+def test_existing_file_is_rechecked_after_preflight(destination, payloads, monkeypatch):
+    target = destination / "requirements.txt"
+    target.write_bytes(payloads["requirements.txt"])
+    actual_read = bootstrap._read_exact
+    changed = False
+
+    def change_after_first_read(parent, name, body):
+        nonlocal changed
+        result = actual_read(parent, name, body)
+        if name == "requirements.txt" and not changed:
+            changed = True
+            target.write_bytes(b"changed after preflight")
+        return result
+
+    monkeypatch.setattr(bootstrap, "_read_exact", change_after_first_read)
+    with pytest.raises(bootstrap.BootstrapError, match="differing local"):
+        bootstrap.materialize(destination, _ordered(payloads, "requirements.txt"))
+    assert target.read_bytes() == b"changed after preflight"
+    assert not (destination / ".runtime").exists()
+
+
+@pytest.mark.parametrize("same_bytes", [True, False])
+def test_final_verification_rejects_replaced_leaf(
+    destination, payloads, monkeypatch, same_bytes
+):
+    actual_verify = bootstrap._verify_final
+
+    def replace_before_final(root, root_fd, content, identities):
+        target = root / "requirements.txt"
+        target.rename(root / "original-final")
+        target.write_bytes(
+            content["requirements.txt"]
+            if same_bytes
+            else b"changed at final verification"
+        )
+        return actual_verify(root, root_fd, content, identities)
+
+    monkeypatch.setattr(bootstrap, "_verify_final", replace_before_final)
+    with pytest.raises(
+        bootstrap.BootstrapError, match="identity changed|differing local"
+    ):
+        bootstrap.materialize(destination, payloads)
+    assert (destination / "requirements.txt").exists()
+    assert (destination / "original-final").read_bytes() == payloads["requirements.txt"]
+
+
+def test_final_verification_rejects_replaced_root(destination, payloads, monkeypatch):
+    actual_verify = bootstrap._verify_final
+    moved = destination.with_name(destination.name + "-original")
+
+    def replace_before_final(root, root_fd, content, identities):
+        root.rename(moved)
+        root.mkdir()
+        (root / "unrelated").write_text("preserve")
+        return actual_verify(root, root_fd, content, identities)
+
+    monkeypatch.setattr(bootstrap, "_verify_final", replace_before_final)
+    with pytest.raises(
+        bootstrap.BootstrapError, match="Repository directory identity changed"
+    ):
+        bootstrap.materialize(destination, payloads)
+    assert (destination / "unrelated").read_text() == "preserve"
+    assert (moved / "requirements.txt").read_bytes() == payloads["requirements.txt"]
+
+
+def test_staging_replacement_before_link_is_detected_without_cleanup(
+    destination, payloads, monkeypatch
+):
+    actual_link = os.link
+    changed = False
+
+    def replace_staging_then_link(source, target, **kwargs):
+        nonlocal changed
+        if not changed:
+            changed = True
+            source_fd = kwargs["src_dir_fd"]
+            os.rename(
+                source, source + "-original", src_dir_fd=source_fd, dst_dir_fd=source_fd
+            )
+            fd = os.open(
+                source, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=source_fd
+            )
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(b"unrelated staged replacement")
+        return actual_link(source, target, **kwargs)
+
+    monkeypatch.setattr(bootstrap.os, "link", replace_staging_then_link)
+    with pytest.raises(bootstrap.BootstrapError, match="differing local"):
+        bootstrap.materialize(destination, _ordered(payloads, "requirements.txt"))
+    assert (
+        destination / "requirements.txt"
+    ).read_bytes() == b"unrelated staged replacement"
+    assert any(
+        p.read_bytes() == b"unrelated staged replacement"
+        for p in (destination / ".runtime").rglob("*")
+        if p.is_file()
+    )
+
+
+def test_fail_closed_without_descriptor_primitives(destination, payloads, monkeypatch):
+    monkeypatch.setattr(bootstrap.os, "supports_dir_fd", set())
+    with pytest.raises(bootstrap.BootstrapError, match="primitives are required"):
+        bootstrap.materialize(destination, payloads)
+    assert not (destination / ".runtime").exists()
+    assert not (destination / "requirements.txt").exists()
