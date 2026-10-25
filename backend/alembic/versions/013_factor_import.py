@@ -34,6 +34,35 @@ def upgrade():
 
 
 def downgrade():
-    raise RuntimeError(
-        "Factor import evidence requires an explicit verified restore; destructive downgrade is unsupported"
-    )
+    # Empty feature schemas may roll back without blocking legacy migrations.
+    # Pending work, immutable evidence and external import dependencies never do.
+    # NOWAIT table locks also exclude noncooperative/raw SQL insert races.
+    op.execute("""
+    DO $$ BEGIN
+      IF current_setting('transaction_isolation') <> 'read committed'
+      THEN RAISE EXCEPTION 'Factor downgrade requires READ COMMITTED isolation for authoritative emptiness checks'; END IF;
+      IF NOT pg_try_advisory_xact_lock(1413960260, 1129270340)
+      THEN RAISE EXCEPTION 'Factor import migration requires quiescent maintenance admission'; END IF;
+    END $$;
+    LOCK TABLE factor_import_admissions, factor_import_envelopes,
+      factor_versions, feature_snapshots, data_usage_exposures, dataset_versions
+      IN ACCESS EXCLUSIVE MODE NOWAIT;
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM factor_import_admissions)
+        OR EXISTS (SELECT 1 FROM factor_import_envelopes)
+        OR EXISTS (SELECT 1 FROM factor_versions
+          WHERE source_kind = 'imported' OR source_provenance ? 'import_envelope_id')
+        OR EXISTS (SELECT 1 FROM feature_snapshots
+          WHERE source_claims ? 'import_envelope_id'
+            OR local_verification->>'admission_profile' = 'isolated-import.v1')
+        OR EXISTS (SELECT 1 FROM data_usage_exposures
+          WHERE source_key LIKE 'factor:import:%'
+            OR purpose = 'imported_factor_research_exposure')
+        OR EXISTS (SELECT 1 FROM dataset_versions WHERE source = 'imported_factor_synthetic')
+      THEN RAISE EXCEPTION 'Factor import evidence and retained dependencies must be preserved before downgrade';
+      END IF;
+    END $$;
+    DROP TABLE factor_import_admissions;
+    DROP TABLE factor_import_envelopes;
+    DROP FUNCTION validate_factor_import_transition();
+    """)

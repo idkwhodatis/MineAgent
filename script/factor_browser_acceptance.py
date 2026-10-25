@@ -58,6 +58,53 @@ REQUIRED_RESTORE_CASES = (
     "test_real_factor_cold_restore_and_legacy_upgrade[011_note_pin_trigger]",
     "test_real_factor_cold_restore_and_legacy_upgrade[013_factor_import]",
 )
+REQUIRED_FACTOR_MIGRATION_CASES = (
+    "test_empty_factor_import_migration_round_trip_preserves_core",
+    "test_empty_factor_library_migration_round_trip_preserves_legacy",
+    "test_factor_import_migration_refuses_pending_admission",
+    "test_factor_import_migration_refuses_retained_envelope",
+    "test_factor_library_migration_refuses_orphan_object_registration",
+    "test_factor_library_migration_refuses_retained_factor",
+    "test_factor_library_migration_refuses_external_exposure_dependency",
+    "test_factor_import_migration_refuses_external_exposure_dependency",
+    "test_factor_library_migration_refuses_concurrent_insert",
+    "test_factor_migration_refuses_shared_maintenance_admission[library]",
+    "test_factor_migration_refuses_shared_maintenance_admission[import]",
+    "test_factor_migration_refuses_dataset_only_dependency[library-storage]",
+    "test_factor_migration_refuses_dataset_only_dependency[library-source]",
+    "test_factor_migration_refuses_dataset_only_dependency[library-profile]",
+    "test_factor_migration_refuses_dataset_only_dependency[import-source]",
+    "test_factor_import_migration_refuses_provenance_only_dependency[version-provenance]",
+    "test_factor_import_migration_refuses_provenance_only_dependency[snapshot-provenance]",
+    "test_factor_import_migration_refuses_provenance_only_dependency[snapshot-verification]",
+    "test_factor_import_migration_refuses_concurrent_raw_admission_insert",
+    "test_factor_migration_rejects_stale_repeatable_read_snapshot[library]",
+    "test_factor_migration_rejects_stale_repeatable_read_snapshot[import]",
+)
+# Downgrades pass through the newest factor revisions before reaching legacy
+# evidence guards. These regressions must run in the fast factor gate too.
+REQUIRED_MIGRATION_CASES = (
+    (
+        "tests.integration.test_comparison_api",
+        "test_comparison_migration_downgrade_refuses_evidence_loss",
+    ),
+    (
+        "tests.integration.test_migrations",
+        "test_migration_downgrade_upgrade_round_trip_preserves_schema_contract",
+    ),
+    (
+        "tests.integration.test_note_pin_migration",
+        "test_010_ambiguity_and_011_repair_preserve_pin_admission_and_history",
+    ),
+    (
+        "tests.integration.test_workbench_api",
+        "test_migration_refuses_to_drop_generation_context_without_descriptions",
+    ),
+    (
+        "tests.integration.test_workspace_settings",
+        "test_workspace_schema_round_trip_never_rewrites_immutable_runs",
+    ),
+)
 REQUIRED_ISOLATION_CASES = {
     "test_real_factor_parser_roundtrip_and_removal": 1,
     "test_real_hostile_execution_stops_and_cannot_publish": 2,
@@ -104,6 +151,11 @@ def verify_report(path: Path, kind: str) -> None:
         expected.update(
             ("tests.integration.test_factor_restore", name)
             for name in REQUIRED_RESTORE_CASES
+        )
+        expected.update(REQUIRED_MIGRATION_CASES)
+        expected.update(
+            ("tests.integration.test_factor_migrations", name)
+            for name in REQUIRED_FACTOR_MIGRATION_CASES
         )
         if not expected.issubset(set(identities)):
             raise ValueError("Required real PostgreSQL factor cases did not execute")

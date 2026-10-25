@@ -430,6 +430,37 @@ def upgrade():
 
 
 def downgrade():
+    # A downgrade is a schema operation, not evidence retention. Serialize with
+    # compliant publishers first, then fence raw SQL writers before checking
+    # emptiness. Locks and checks remain in Alembic's same DDL transaction.
+    op.execute("""
+    DO $$ BEGIN
+      IF current_setting('transaction_isolation') <> 'read committed'
+      THEN RAISE EXCEPTION 'Factor downgrade requires READ COMMITTED isolation for authoritative emptiness checks'; END IF;
+      IF NOT pg_try_advisory_xact_lock(1413960260, 1129270340)
+      THEN RAISE EXCEPTION 'Factor migration requires quiescent maintenance admission'; END IF;
+    END $$;
+    """)
+    op.execute(
+        "LOCK TABLE "
+        + ", ".join((*TABLES, "data_usage_exposures", "dataset_versions"))
+        + " IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
+    occupied = " OR ".join(f"EXISTS (SELECT 1 FROM {table})" for table in TABLES)
+    op.execute(
+        "DO $$ BEGIN IF "
+        + occupied
+        + """
+      OR EXISTS (SELECT 1 FROM data_usage_exposures
+        WHERE source_key LIKE 'factor:%' OR purpose = 'imported_factor_research_exposure')
+      OR EXISTS (SELECT 1 FROM dataset_versions
+        WHERE storage_key LIKE 'factors/%'
+          OR source IN ('mineagent_fixed_factor_fixture', 'imported_factor_synthetic')
+          OR manifest->>'schema_version' LIKE 'mineagent.factor%')
+      THEN RAISE EXCEPTION 'Factor evidence and retained dependencies must be preserved before downgrade';
+      END IF; END $$;
+    """
+    )
     for table in reversed(TABLES):
         op.execute(f"DROP TABLE {table}")
     for function in (

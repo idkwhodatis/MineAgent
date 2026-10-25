@@ -1,5 +1,6 @@
 """The dedicated Stage1 gate cannot confuse collection/skips with acceptance."""
 
+import ast
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -7,8 +8,10 @@ import pytest
 
 from script.factor_browser_acceptance import (
     REQUIRED_BROWSER_CASES,
+    REQUIRED_FACTOR_MIGRATION_CASES,
     REQUIRED_IMPORT_BROWSER_CASE,
     REQUIRED_ISOLATION_CASES,
+    REQUIRED_MIGRATION_CASES,
     REQUIRED_PG_CASES,
     REQUIRED_RESTORE_CASES,
     node_environment,
@@ -66,9 +69,21 @@ def test_pg_and_isolation_require_real_case_inventory(tmp_path):
         ("tests.integration.test_factor_restore", name)
         for name in REQUIRED_RESTORE_CASES
     ]
+    pg += list(REQUIRED_MIGRATION_CASES)
+    pg += [
+        ("tests.integration.test_factor_migrations", name)
+        for name in REQUIRED_FACTOR_MIGRATION_CASES
+    ]
     verify_report(write_report(path, pg), "postgres")
+    # Every exact required identity, not just the total, is admission evidence.
+    for index in range(len(pg)):
+        with pytest.raises(ValueError):
+            verify_report(write_report(path, pg[:index] + pg[index + 1 :]), "postgres")
+    for outcome in ("skipped", "failure", "error"):
+        with pytest.raises(ValueError):
+            verify_report(write_report(path, pg, outcome), "postgres")
     with pytest.raises(ValueError):
-        verify_report(write_report(path, pg[:-1]), "postgres")
+        verify_report(write_report(path, pg + pg[:1]), "postgres")
     isolation = [
         (
             "tests.isolation.test_factor_parser",
@@ -161,6 +176,10 @@ def test_test_selectors_and_required_inventory_remain_synchronized():
     assert "--verify postgres" in workflow and "--verify isolation" in workflow
     assert "python -m script.factor_browser_acceptance" in workflow
     assert "--collect-only" not in workflow
+    for module, name in REQUIRED_MIGRATION_CASES:
+        selector = module.replace(".", "/") + ".py::" + name
+        assert selector in workflow
+    assert "tests/integration/test_factor_migrations.py" in workflow
 
 
 def test_create_diagnostics_exports_only_closed_states(tmp_path):
@@ -195,3 +214,17 @@ def test_create_diagnostics_exports_only_closed_states(tmp_path):
     path.write_text("<!DOCTYPE x><testsuite/>")
     with pytest.raises(ValueError):
         create_diagnostics(path)
+
+
+def test_factor_migration_inventory_matches_every_guard_test():
+    root = Path(__file__).resolve().parents[2]
+    module = ast.parse(
+        (root / "tests/integration/test_factor_migrations.py").read_text()
+    )
+    names = {
+        node.name
+        for node in module.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    }
+    assert names == {name.split("[", 1)[0] for name in REQUIRED_FACTOR_MIGRATION_CASES}

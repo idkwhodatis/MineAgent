@@ -122,12 +122,21 @@ jobs:
           image=$(docker image inspect --format '{{.Id}}' mineagent-factor-parser:stage1)
           [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
           printf 'MINEAGENT_FACTOR_PARSER_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
-      - name: Require real PostgreSQL factor persistence, cold restore and owner isolation
+      - name: Require real PostgreSQL factors, cold restore and migration regressions
         env:
           RUN_BACKUP_RESTORE_DRILL: "1"
           MINEAGENT_FACTOR_RESTORE_PARSER_REQUIRED: "1"
         run: |
-          python -m pytest tests/integration/test_factor_library.py tests/integration/test_factor_restore.py -q --junitxml=var/factor-postgres-private.xml
+          python -m pytest \
+            tests/integration/test_factor_library.py \
+            tests/integration/test_factor_restore.py \
+            tests/integration/test_factor_migrations.py \
+            tests/integration/test_comparison_api.py::test_comparison_migration_downgrade_refuses_evidence_loss \
+            tests/integration/test_migrations.py::test_migration_downgrade_upgrade_round_trip_preserves_schema_contract \
+            tests/integration/test_note_pin_migration.py::test_010_ambiguity_and_011_repair_preserve_pin_admission_and_history \
+            tests/integration/test_workbench_api.py::test_migration_refuses_to_drop_generation_context_without_descriptions \
+            tests/integration/test_workspace_settings.py::test_workspace_schema_round_trip_never_rewrites_immutable_runs \
+            -q --junitxml=var/factor-postgres-private.xml
           python -m script.factor_browser_acceptance --verify postgres --report var/factor-postgres-private.xml
       - name: Observe database after integration
         if: always()
