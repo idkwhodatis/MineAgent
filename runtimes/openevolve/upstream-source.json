@@ -1,0 +1,341 @@
+{
+  "schema": "mineagent.openevolve-source.v1",
+  "repository": "https://github.com/algorithmicsuperintelligence/openevolve.git",
+  "commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "tree": "3a88ce6e3bdd5bdda7fbb7da5629225dc176bb4e",
+  "source_date_epoch": 1792818759,
+  "package_version": "0.4.0",
+  "license": "Apache-2.0",
+  "files": [
+    {
+      "path": "LICENSE",
+      "size_bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "MANIFEST.in",
+      "size_bytes": 84,
+      "sha256": "a125dc78c67dd71292366bc9979dd56827c32de039a296e003af49363e3e4a5e"
+    },
+    {
+      "path": "README.md",
+      "size_bytes": 36048,
+      "sha256": "51df92c06affe4d2cebee41161e755c6bce825403655d18915a8404462ec9fdc"
+    },
+    {
+      "path": "openevolve/__init__.py",
+      "size_bytes": 673,
+      "sha256": "9b849e8e3bda30d6c18e3063e7010b6169203162752bd38381ec35f1e39a4ffe"
+    },
+    {
+      "path": "openevolve/_version.py",
+      "size_bytes": 73,
+      "sha256": "061c2074c0de1f4f6938d403d38c12496e9f0bf88fcb40db1c69b24181277e85"
+    },
+    {
+      "path": "openevolve/api.py",
+      "size_bytes": 21424,
+      "sha256": "3685e556d618c00a9dd469994d38e39a748fc02f19a0020aa2f9e94dd37e012e"
+    },
+    {
+      "path": "openevolve/cli.py",
+      "size_bytes": 7923,
+      "sha256": "a4c9094542fc7aafb57b50d191d0898050909231264ac2643df94aa40c83d92e"
+    },
+    {
+      "path": "openevolve/coevolution.py",
+      "size_bytes": 13100,
+      "sha256": "4439a24c5c5ac859b73caf1f63fc83c3899736bdbf1e6b3bfeb28d8a40d236c9"
+    },
+    {
+      "path": "openevolve/compat/__init__.py",
+      "size_bytes": 70,
+      "sha256": "31d7b9f9d8ba8aa74b9faac5b5c5ed9739ab61b0b264cfd361b4a463d3bd58fa"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/__init__.py",
+      "size_bytes": 400,
+      "sha256": "dabcda31de46a71afc153f4bae4a0744126658c87d03969fbf189f65346494a4"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/client.py",
+      "size_bytes": 3162,
+      "sha256": "aaade97f23ebd866574b778b64d3306f66d80a4963cc89c84b781632273ad9da"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/controller.py",
+      "size_bytes": 1457,
+      "sha256": "4ae30112abba020d3bd9f7b324da39e8d655966e3339ad656a6cc4fd11b34306"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/experiment.py",
+      "size_bytes": 9249,
+      "sha256": "e7871b248801616cceafb3e488155299bbd465d15b4bb99191958fd1d17e1b7f"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/imports.py",
+      "size_bytes": 3913,
+      "sha256": "9404ef9c21ed4d3f11731ec634e0eb9fe35ddb85e140b9436fc7ac807a0e6b7f"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/models.py",
+      "size_bytes": 1331,
+      "sha256": "6d84e46c3ea81b3b33bedc5806f6af844778cc9a1fc35193625b89d14f3c5827"
+    },
+    {
+      "path": "openevolve/compat/alpha_evolve/visualization.py",
+      "size_bytes": 1054,
+      "sha256": "26eebe113871e8410296d99f3c6c73ef7fe7fd89074e0cc7908267195e41d7a4"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve.py",
+      "size_bytes": 10571,
+      "sha256": "df283f64f0997e12398ca37a17df97afe7dfd7b45d3ad48dcaf4e4c0ab6bca8f"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve_bundle.py",
+      "size_bytes": 15397,
+      "sha256": "b524a85721dff3663160b221e074104b84dccc67c6aa71057b93a935ee97489c"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve_env.py",
+      "size_bytes": 5622,
+      "sha256": "f6188cb6d2b1f1fad12ae3ea2feb4526a017fa28e36261060295bb299a3fdb2f"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve_export.py",
+      "size_bytes": 7350,
+      "sha256": "e02f38209fbf84e372fffe40c7ff3d91e1838100d24601936a6ec5eee768393a"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve_launch.py",
+      "size_bytes": 10818,
+      "sha256": "560b047369654b9302c18dd4915943046dfa6d8615c15f65761f2b46951cea63"
+    },
+    {
+      "path": "openevolve/compat/alphaevolve_reverse.py",
+      "size_bytes": 7066,
+      "sha256": "8d7e379743d5b6760d5fb27ceb3b568c92e115a2cc39e7d50680b7452d8909c0"
+    },
+    {
+      "path": "openevolve/config.py",
+      "size_bytes": 21072,
+      "sha256": "c92b0936cf62845a4b097e9cba8478886f59787cbfd3d063c781ce8f25108767"
+    },
+    {
+      "path": "openevolve/controller.py",
+      "size_bytes": 24028,
+      "sha256": "8c147fef5a79db99e80fbbf6859270d7f094dc4a8af53199ad1f008190356eed"
+    },
+    {
+      "path": "openevolve/database.py",
+      "size_bytes": 115404,
+      "sha256": "b74b36897346df1bb166c95ddfb4c5319ac69af4d6c0e2b4d848c7b4f797c2ac"
+    },
+    {
+      "path": "openevolve/embedding.py",
+      "size_bytes": 4124,
+      "sha256": "5e857b71a3ffd47910073bb5419149201051f9811d7f964c517aaeca23ed80a9"
+    },
+    {
+      "path": "openevolve/evaluation_result.py",
+      "size_bytes": 2233,
+      "sha256": "3f5de9c5821ea6e894bf3692b333282f9b5e7f9623443c8b6ec277efde9159cc"
+    },
+    {
+      "path": "openevolve/evaluator.py",
+      "size_bytes": 34716,
+      "sha256": "0b14a5b3b145f4b2d808aad3ef3dcea830d22f69d9113400abac62f1d74075fb"
+    },
+    {
+      "path": "openevolve/evolution_trace.py",
+      "size_bytes": 22335,
+      "sha256": "d1c241d0a538025e32f338787b175770b1e196afdf07abca94e3f95ef88972c0"
+    },
+    {
+      "path": "openevolve/llm/__init__.py",
+      "size_bytes": 656,
+      "sha256": "a1763b85d33e7edd0e2efa1add235cb0eea35193b74ec273009effe8fb4fc1dc"
+    },
+    {
+      "path": "openevolve/llm/base.py",
+      "size_bytes": 560,
+      "sha256": "1a380059fed17977d8434144749b6d9871c1fb39ac8257370a750984a1a01df8"
+    },
+    {
+      "path": "openevolve/llm/claude_code.py",
+      "size_bytes": 5181,
+      "sha256": "425ab0d3bade669e325e9b16016fa4176ff5e5b4e0474cb6089a1624529cf83a"
+    },
+    {
+      "path": "openevolve/llm/codex_app_server.py",
+      "size_bytes": 15268,
+      "sha256": "6bc7369c8dd2e2560546f291c5ff0766db7987380011848210d536b3658cfd1c"
+    },
+    {
+      "path": "openevolve/llm/copilot_cli.py",
+      "size_bytes": 6548,
+      "sha256": "e5de694651d4b1934ac095396ed5883f96bea0aaa41226cf9a0d0f9907e84136"
+    },
+    {
+      "path": "openevolve/llm/ensemble.py",
+      "size_bytes": 4738,
+      "sha256": "f318c61e2b49c3b61d30425b4621b369eeab1bb2bd59eed1b8e13f968e65700a"
+    },
+    {
+      "path": "openevolve/llm/openai.py",
+      "size_bytes": 13036,
+      "sha256": "a663677857c066772d6d1b26aee09e8fc0f1ec138ea7d9aa22444aaea9f723ee"
+    },
+    {
+      "path": "openevolve/novelty_judge.py",
+      "size_bytes": 1676,
+      "sha256": "03adedc8cbf7a0b0de0fd08ef0ca57aa71cc55825ff901ef03eb2b7bc1fc86c0"
+    },
+    {
+      "path": "openevolve/population.py",
+      "size_bytes": 2109,
+      "sha256": "32a30a125c0790b29d7882bd3a53f86e64e7ca98fc756d3ed799252f767ba8de"
+    },
+    {
+      "path": "openevolve/process_parallel.py",
+      "size_bytes": 47573,
+      "sha256": "1db5f6bf361fdcb829d90a0d464ea2c1b1249542d14170131797f74b4e4f1a71"
+    },
+    {
+      "path": "openevolve/prompt/__init__.py",
+      "size_bytes": 194,
+      "sha256": "a6570bd339fb6acbdd4e903dcdb43ab109bf2f19dcc2ad90c95e1bf83cf8a22b"
+    },
+    {
+      "path": "openevolve/prompt/sampler.py",
+      "size_bytes": 31577,
+      "sha256": "9e71234def141426fdf6372d9793301308dc55cdafe5f4d2a067ae9e1ee59eb3"
+    },
+    {
+      "path": "openevolve/prompt/templates.py",
+      "size_bytes": 7303,
+      "sha256": "2a6f2ae941f5eeabf02c5de0c49bd3eac7c5eb9e215c221c965c1cc2d430d212"
+    },
+    {
+      "path": "openevolve/prompts/defaults/diff_user.txt",
+      "size_bytes": 1282,
+      "sha256": "3fcfc9592b4f019eb07085b0c02855a0218007df15e3e6adeb301deff4124be7"
+    },
+    {
+      "path": "openevolve/prompts/defaults/evaluation.txt",
+      "size_bytes": 626,
+      "sha256": "0dc5fa60ea984a35110c497a04c4fa80bf4ddae0ead5e3084591f1f909dc5005"
+    },
+    {
+      "path": "openevolve/prompts/defaults/evaluator_system_message.txt",
+      "size_bytes": 105,
+      "sha256": "50d7870cf713b7591ac366030ee162d4d843a6d989f150ed857f5e1b25987c8c"
+    },
+    {
+      "path": "openevolve/prompts/defaults/evolution_history.txt",
+      "size_bytes": 109,
+      "sha256": "df9abe02a19f637bd9e13b531c415b3d224137b747563dedab801774d81a4454"
+    },
+    {
+      "path": "openevolve/prompts/defaults/fragments.json",
+      "size_bytes": 2628,
+      "sha256": "e8f2711169d3067e6e09e1054b3b7609281bf9ee5e6f24d407b3829491b639b7"
+    },
+    {
+      "path": "openevolve/prompts/defaults/full_rewrite_user.txt",
+      "size_bytes": 700,
+      "sha256": "622af139dad58a7d05f54c2248f213b229c471e58c0df5db9cb3a7faa7400dd9"
+    },
+    {
+      "path": "openevolve/prompts/defaults/inspiration_program.txt",
+      "size_bytes": 142,
+      "sha256": "a51813f4db9f257028ef0252c44095ab4765ad0cae8da46cbb052b530f8bbd04"
+    },
+    {
+      "path": "openevolve/prompts/defaults/inspirations_section.txt",
+      "size_bytes": 143,
+      "sha256": "5718dd856b6738731dcef52f57a7560f1e4a6104efb542191536bdfa43e7ab38"
+    },
+    {
+      "path": "openevolve/prompts/defaults/previous_attempt.txt",
+      "size_bytes": 95,
+      "sha256": "536016d4c23e1b1e194144286b8533dd1cde4d82f7f2f71d48b0a0d778b9932a"
+    },
+    {
+      "path": "openevolve/prompts/defaults/system_message.txt",
+      "size_bytes": 288,
+      "sha256": "d66ec30775d611aca71538742ff9201e8d1ce4cb3e5b076847aa2d8a32610e65"
+    },
+    {
+      "path": "openevolve/prompts/defaults/system_message_changes_description.txt",
+      "size_bytes": 502,
+      "sha256": "a1d66563b1f5c5c80f0d737959e9474a21a7fdf54cadab4bbd39df03da95d8bd"
+    },
+    {
+      "path": "openevolve/prompts/defaults/system_message_with_changes_description.txt",
+      "size_bytes": 54,
+      "sha256": "29ff342517ed8e3a8e120d7214048ab1f6cbfc76c9ab0791a5e99e26211af13c"
+    },
+    {
+      "path": "openevolve/prompts/defaults/top_program.txt",
+      "size_bytes": 110,
+      "sha256": "dfb73d280a94db990f033c271ff54564f6ff286645ae8217f70584616a2ca137"
+    },
+    {
+      "path": "openevolve/prompts/defaults/user_message_with_changes_description.txt",
+      "size_bytes": 216,
+      "sha256": "078720fffc876a4cd532c3a98ff0bf2bf19f6572233eab66183a3ca4ce06eaae"
+    },
+    {
+      "path": "openevolve/selection.py",
+      "size_bytes": 643,
+      "sha256": "014d1c6d266d1af533df8c9e6f6e64dff061bb09d30300db1b9ee060215197ee"
+    },
+    {
+      "path": "openevolve/test_regional_endpoint.py",
+      "size_bytes": 3530,
+      "sha256": "cbda7eb6ea248fb4e273b47c09bb16ff180c3bed4d6c5affec04b2a06aab565e"
+    },
+    {
+      "path": "openevolve/utils/__init__.py",
+      "size_bytes": 964,
+      "sha256": "e235ee9a3cf14becf01868ce356067d73abb7b63b9b39b14c2e4c88eb8c77ae0"
+    },
+    {
+      "path": "openevolve/utils/async_utils.py",
+      "size_bytes": 6808,
+      "sha256": "1cee0d7ad953e7329ff21112f87cb01b2a2caa78b9bffba4d10ef73b8d6cd808"
+    },
+    {
+      "path": "openevolve/utils/code_utils.py",
+      "size_bytes": 14199,
+      "sha256": "bbeb862b5fbfe4688e834c4af129f23f8a12e1ecb86d94ce2f5c65270ca938c8"
+    },
+    {
+      "path": "openevolve/utils/format_utils.py",
+      "size_bytes": 2402,
+      "sha256": "9c9cb68b8fa69d5d9563e123f461183e5fab70e9a8d9c2a8177a4ceba36fd524"
+    },
+    {
+      "path": "openevolve/utils/logging_utils.py",
+      "size_bytes": 1336,
+      "sha256": "db1aa0df00879d6761620400d33f545a736f268040ba566e1ed577c9aef89ca9"
+    },
+    {
+      "path": "openevolve/utils/metrics_utils.py",
+      "size_bytes": 5070,
+      "sha256": "e2d40a2179052e3ce5ab64be3b803d6c51e3792ec136cb8c12c52a3f543bb2ec"
+    },
+    {
+      "path": "openevolve/utils/trace_export_utils.py",
+      "size_bytes": 11841,
+      "sha256": "44b064a5bec34513898343bd7f46d78782874748209404554e94db8413733c70"
+    },
+    {
+      "path": "pyproject.toml",
+      "size_bytes": 1551,
+      "sha256": "560c7bc754fec0782b5790c71fab51e95054f32e4b5dc3d3b70bd0c7f14bfb9e"
+    }
+  ]
+}

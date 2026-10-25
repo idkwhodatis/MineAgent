@@ -15,6 +15,33 @@ legacy DTOs and runtime codecs remain unchanged. N1 acceptance requires its new
 exact-head PostgreSQL/Docker/restore gate **and** all existing full browser,
 Compose/restart, native engine and capacity gates. Local collection is not execution.
 
+## Accepted N1 evidence
+
+N1 is accepted at `19583e465f6759c36f53fc69f66b3d76af57edaf`:
+[full staged validation](https://github.com/idkwhodatis/MineAgent/actions/runs/40225806283),
+[neutral acceptance](https://github.com/idkwhodatis/MineAgent/actions/runs/40225806422),
+[factor acceptance](https://github.com/idkwhodatis/MineAgent/actions/runs/40225806441),
+[completed-evidence cold restore](https://github.com/idkwhodatis/MineAgent/actions/runs/40225806335),
+and [migration boundary](https://github.com/idkwhodatis/MineAgent/actions/runs/40225806298).
+All four mandatory full-validation jobs passed. Seven artifact ZIP digests were
+independently verified; the frozen capacity report was revalidated against its
+baseline and budget. Neutral acceptance executed 68 real PostgreSQL cases,
+9 real PostgreSQL/Docker isolation cases and 3 cold-restore cases with zero skips.
+The existing factor acceptance executed 92 PostgreSQL, 5 parser-isolation and
+9 browser cases with zero skips. The complete application and Compose browser
+journeys also passed. Optional legacy profiles remain separately selected;
+this does not claim paid-provider execution or production deployment.
+
+Hosted PostgreSQL exposed a zero-argument trigger NULL-array bug during this cut.
+The accepted migration normalizes trigger arguments and explicitly rejects changes
+to immutable evidence. Downgrade obtains maintenance ownership and all neutral/FK
+parent table locks with NOWAIT, requires READ COMMITTED for authoritative emptiness,
+and refuses any evidence-bearing downgrade. Regression tests retain these checks.
+
+RD-Agent/Qlib and OpenEvolve adapter development can now proceed in parallel.
+Their production admission, runtime profiles, artifact kinds and schema closures
+remain closed until each engine's separate staged acceptance is complete.
+
 ## Transaction and filesystem ownership
 
 `AttemptFence` binds exact owner, run, attempt, generation and lease token.

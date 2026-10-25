@@ -1,0 +1,9 @@
+# Full declared runtime closure at OpenEvolve 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc.
+# Kept separate from API, data, research, native and portable environments.
+openai>=1.0.0
+pyyaml>=6.0
+numpy>=1.22.0
+tqdm>=4.64.0
+flask
+dacite>=1.9.2
+cloudpickle>=2.0.0

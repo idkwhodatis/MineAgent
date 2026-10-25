@@ -39,9 +39,13 @@ The immutable legacy classification cut (N0) passed at
 `d205bb65c3c0ca6b996a5577f565cdccb49656d7`, including the
 [full exact-head gate](https://github.com/idkwhodatis/MineAgent/actions/runs/40209567439)
 and dedicated factor, migration and completed-evidence restore gates.
-The next cut provides [neutral durable primitives](docs/MINEAGENT_NEUTRAL_FOUNDATION.md)
-with a separate required PostgreSQL/Docker/restore workflow. It does not enable
-RD-Agent, Qlib or OpenEvolve execution; new engine admission remains rejected.
+The [neutral durable primitives](docs/MINEAGENT_NEUTRAL_FOUNDATION.md) cut (N1)
+passed at `19583e465f6759c36f53fc69f66b3d76af57edaf`, including its required
+PostgreSQL/Docker/restore workflow and every mandatory exact-head full gate.
+It does not enable RD-Agent, Qlib or OpenEvolve execution; new engine admission
+remains rejected while their adapters are implemented and separately validated.
+The first [adapter contract/build slice](docs/MINEAGENT_ENGINE_ADAPTERS.md)
+keeps that boundary closed; import compatibility is not engine execution.
 
 ## Development
 

@@ -1,0 +1,9 @@
+**
+!runtimes/
+!runtimes/openevolve/
+!runtimes/openevolve/**
+!.runtime/
+!.runtime/openevolve-source/
+!.runtime/openevolve-source/**
+**/__pycache__/
+**/*.pyc

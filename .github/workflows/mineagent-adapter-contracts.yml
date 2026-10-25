@@ -1,0 +1,113 @@
+name: MineAgent disabled adapter contracts and upstream baseline
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "packages/**"
+      - "runtimes/openevolve/**"
+      - "tests/rdagent/**"
+      - "tests/openevolve/**"
+      - ".github/workflows/mineagent-adapter-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-contracts:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Materialize pinned legacy compatibility without modifying its source
+        run: python script/bootstrap_tradegrad_compat.py
+      - name: Install unchanged frozen control-plane dependencies
+        run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Validate disabled domain contracts and legacy-only admission boundary
+        run: >-
+          python -m pytest tests/rdagent/test_rdagent_contracts.py
+          tests/rdagent/test_rdagent_prefix.py tests/openevolve/test_contracts.py
+          tests/openevolve/test_runtime_provenance.py
+          tests/research_runtime/test_legacy_dispatch.py -q
+          --junitxml=adapter-contracts-junit.xml
+      - name: Require executed cases without skipped contracts
+        run: |
+          python - <<'PY'
+          from xml.etree import ElementTree as ET
+          cases = list(ET.parse('adapter-contracts-junit.xml').getroot().iter('testcase'))
+          assert len(cases) == 99
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
+          PY
+      - name: Export only bounded test outcomes
+        if: always()
+        run: python script/summarize_ci_junit.py adapter-contracts-junit.xml
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: mineagent-adapter-contracts-${{ github.sha }}
+          path: var/ci-evidence/adapter-contracts-junit.xml
+          retention-days: 14
+
+  openevolve-upstream-import-baseline:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Fetch and verify exact external upstream build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/openevolve-upstream"
+          git init "$source"
+          git -C "$source" fetch --depth 1 https://github.com/algorithmicsuperintelligence/openevolve.git 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc
+          git -C "$source" checkout --detach FETCH_HEAD
+          mkdir -p .runtime var
+          python runtimes/openevolve/materialize_source.py --source "$source" --destination .runtime/openevolve-source
+          python runtimes/openevolve/verify_build_inputs.py .runtime/openevolve-source
+      - name: Build separately locked upstream image without publishing it
+        run: docker build --iidfile var/openevolve-baseline.iid -f runtimes/openevolve/Dockerfile .
+      - name: Verify exact installed closure and all upstream imports without network
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(cat var/openevolve-baseline.iid)
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          cleanup() {
+            if [ -f var/openevolve-baseline.cid ]; then
+              cid=$(cat var/openevolve-baseline.cid)
+              if [[ "$cid" =~ ^[a-f0-9]{64}$ ]]; then docker rm --force "$cid" >/dev/null; fi
+            fi
+          }
+          trap cleanup EXIT
+          timeout 120 docker run --cidfile var/openevolve-baseline.cid \
+            --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --memory 1g --pids-limit 64 --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m "$image" > var/openevolve-import-proof.json
+          python - <<'PY'
+          import json, pathlib
+          path = pathlib.Path('var/openevolve-import-proof.json')
+          assert 0 < path.stat().st_size < 65536
+          proof = json.loads(path.read_text())
+          assert proof['upstream_commit'] == '8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc'
+          assert proof['socket_connect_attempts'] == 0
+          assert len(proof['imported_modules']) == 47
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mineagent-openevolve-import-baseline-${{ github.sha }}
+          path: |
+            var/openevolve-import-proof.json
+            var/openevolve-baseline.iid
+          retention-days: 14
