@@ -324,3 +324,47 @@ def test_fail_closed_without_descriptor_primitives(destination, payloads, monkey
         bootstrap.materialize(destination, payloads)
     assert not (destination / ".runtime").exists()
     assert not (destination / "requirements.txt").exists()
+
+
+@pytest.mark.parametrize("replace_root", [False, True])
+def test_swap_during_final_read_rechecks_directory_identity(
+    destination,
+    payloads,
+    monkeypatch,
+    replace_root,
+):
+    actual_verify = bootstrap._verify_final
+    actual_read = bootstrap._read_exact
+    in_final = False
+    changed = False
+    outside = destination.with_name(destination.name + "-outside")
+    outside.mkdir()
+
+    def mark_final(*args):
+        nonlocal in_final
+        in_final = True
+        return actual_verify(*args)
+
+    def swap_after_final_read(parent, name, body):
+        nonlocal changed
+        result = actual_read(parent, name, body)
+        if in_final and name == "evaluate.py" and not changed:
+            changed = True
+            if replace_root:
+                destination.rename(
+                    destination.with_name(destination.name + "-original")
+                )
+                destination.mkdir()
+                (destination / "preserve").write_text("unrelated")
+            else:
+                (destination / "src").rename(destination / "old-src")
+                (destination / "src").symlink_to(outside, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(bootstrap, "_verify_final", mark_final)
+    monkeypatch.setattr(bootstrap, "_read_exact", swap_after_final_read)
+    with pytest.raises(bootstrap.BootstrapError, match="identity changed|Symlink"):
+        bootstrap.materialize(destination, _ordered(payloads, "src/evaluate.py"))
+    assert list(outside.iterdir()) == []
+    if replace_root:
+        assert (destination / "preserve").read_text() == "unrelated"
