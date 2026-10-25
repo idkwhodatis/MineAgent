@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 import tempfile
@@ -25,6 +26,33 @@ from runtimes.hostile_deadline.contract import (
 WALL_SECONDS = 8.0
 STOP_TOLERANCE_SECONDS = 1.0
 COMPLETED_MARKER = b"mineagent-fixed-hostile-checks-complete-v1\n"
+
+
+def parse_bootstrap_diagnostic(raw: bytes) -> dict | None:
+    """Discard anything except a closed, bounded trusted failure location."""
+    if type(raw) is not bytes or not 0 < len(raw) <= 256:
+        return None
+    try:
+        item = json.loads(raw)
+    except (ValueError, UnicodeError):
+        return None
+    if (
+        type(item) is not dict
+        or set(item) != {"schema", "location", "errno"}
+        or item["schema"] != "mineagent.trusted-bootstrap-failure.v1"
+        or type(item["location"]) is not str
+        or re.fullmatch(
+            r"unknown|(?:main|candidate|require_caps|drop_capabilities|prctl|status|close_fds|quiesce_and_hold):[1-9][0-9]{0,5}",
+            item["location"],
+        )
+        is None
+        or (
+            item["errno"] is not None
+            and (type(item["errno"]) is not int or not 1 <= item["errno"] <= 4095)
+        )
+    ):
+        return None
+    return item
 
 
 def assert_stop_timing(start: float, stopped: float) -> float:
@@ -218,7 +246,23 @@ def exercise(
         attach.kill()
         attach.wait(timeout=3)
         if not early and not inspect(cid)["State"]["Running"]:
-            raise AssertionError("candidate failed bootstrap or protection assertions")
+            state = inspect(cid)["State"]
+            logs = subprocess.run(
+                ["docker", "logs", "--tail", "2", cid],
+                capture_output=True,
+                timeout=2,
+                check=False,
+            )
+            # Only fixed trusted-wrapper fields; never print raw candidate/log text.
+            diagnostics = []
+            for line in logs.stderr.splitlines()[-2:]:
+                item = parse_bootstrap_diagnostic(line)
+                if item is not None:
+                    diagnostics.append(item)
+            raise AssertionError(
+                f"candidate failed bootstrap or protection assertions: "
+                f"exit={state['ExitCode']} diagnostics={diagnostics!r}"
+            )
         readiness = time.monotonic() + 2
         while True:
             rows = command("docker", "top", cid, "-eo", "pid").splitlines()[1:]

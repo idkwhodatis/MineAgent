@@ -368,3 +368,117 @@ def test_missing_remote_or_mismatched_pid_observation_fails(
 
 def test_complete_local_namespace_pid_observation():
     require_process_observation({500: "100", 501: "101"}, 500, [500, 1])
+
+
+@pytest.mark.parametrize("failure", [None, "set_blocking", "write"])
+def test_bootstrap_diagnostic_is_nonblocking_bounded_and_always_exits(
+    monkeypatch, failure
+):
+    calls = []
+
+    class Exited(BaseException):
+        pass
+
+    def set_blocking(fd, blocking):
+        calls.append(("blocking", fd, blocking))
+        if failure == "set_blocking":
+            raise OSError(9, "private diagnostic error")
+
+    def write(fd, payload):
+        calls.append(("write", fd, payload))
+        assert len(payload) <= 256
+        assert b"private" not in payload
+        if failure == "write":
+            raise BlockingIOError(11, "private diagnostic error")
+        return len(payload)
+
+    def exit_(code):
+        calls.append(("exit", code))
+        raise Exited
+
+    monkeypatch.setattr(deadline.os, "set_blocking", set_blocking)
+    monkeypatch.setattr(deadline.os, "write", write)
+    monkeypatch.setattr(deadline.os, "_exit", exit_)
+    with pytest.raises(Exited):
+        deadline.fail_closed(RuntimeError("private candidate text"))
+    assert calls[0] == ("blocking", 2, False)
+    assert calls[-1] == ("exit", 125)
+    assert sum(call[0] == "write" for call in calls) <= 1
+
+
+@pytest.mark.parametrize(
+    "location,number",
+    [
+        ("unknown", None),
+        ("main:1", 1),
+        ("quiesce_and_hold:999999", 4095),
+        ("candidate:100", None),
+    ],
+)
+def test_closed_bootstrap_diagnostic(location, number):
+    from runtimes.hostile_deadline.acceptance import parse_bootstrap_diagnostic
+
+    item = {
+        "schema": "mineagent.trusted-bootstrap-failure.v1",
+        "location": location,
+        "errno": number,
+    }
+    assert parse_bootstrap_diagnostic(json.dumps(item).encode()) == item
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("location", "secret-password:1"),
+        ("location", "main:0"),
+        ("location", "main:1000000"),
+        ("location", "main:01"),
+        ("location", "main:1\nprivate"),
+        ("location", {"secret": "private"}),
+        ("location", ["main:1"]),
+        ("location", None),
+        ("errno", True),
+        ("errno", 0),
+        ("errno", -1),
+        ("errno", 4096),
+        ("errno", "private"),
+        ("errno", {}),
+        ("schema", []),
+    ],
+)
+def test_malformed_bootstrap_diagnostic_rejected(key, value):
+    from runtimes.hostile_deadline.acceptance import parse_bootstrap_diagnostic
+
+    item = {
+        "schema": "mineagent.trusted-bootstrap-failure.v1",
+        "location": "main:1",
+        "errno": None,
+    }
+    item[key] = value
+    assert parse_bootstrap_diagnostic(json.dumps(item).encode()) is None
+
+
+@pytest.mark.parametrize(
+    "raw", [b"", b"null", b"[]", b"private", b"\xff", b" " * 257, "wrong-type"]
+)
+def test_bootstrap_diagnostic_rejects_nonrecord_and_oversized(raw):
+    from runtimes.hostile_deadline.acceptance import parse_bootstrap_diagnostic
+
+    assert parse_bootstrap_diagnostic(raw) is None
+
+
+def test_bootstrap_diagnostic_construction_failure_still_exits(monkeypatch):
+    class Exited(BaseException):
+        pass
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("private")
+
+    def exit_(code):
+        assert code == 125
+        raise Exited
+
+    monkeypatch.setattr(deadline.json, "dumps", broken)
+    monkeypatch.setattr(deadline.os, "_exit", exit_)
+    with pytest.raises(Exited):
+        deadline.fail_closed(RuntimeError("original private"))

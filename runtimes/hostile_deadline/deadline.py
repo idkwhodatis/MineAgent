@@ -159,6 +159,50 @@ def quiesce_and_hold(expires: float, child_exit_code: int) -> None:
     os._exit(124)
 
 
+def fail_closed(error: BaseException) -> None:
+    """One bounded, nonblocking trusted-bootstrap diagnostic, then exit.
+
+    No exception text, candidate data, retry or flush; a full/closed log pipe
+    cannot delay namespace death. Candidate stdio is /dev/null before exec.
+    """
+    try:
+        frame = error.__traceback__
+        location = "unknown"
+        for _ in range(16):
+            if frame is None:
+                break
+            name = frame.tb_frame.f_code.co_name
+            if name in {
+                "main",
+                "candidate",
+                "require_caps",
+                "drop_capabilities",
+                "prctl",
+                "status",
+                "close_fds",
+                "quiesce_and_hold",
+            }:
+                location = name + ":" + str(frame.tb_lineno)
+            frame = frame.tb_next
+        payload = (
+            json.dumps(
+                {
+                    "schema": "mineagent.trusted-bootstrap-failure.v1",
+                    "location": location,
+                    "errno": error.errno if isinstance(error, OSError) else None,
+                },
+                separators=(",", ":"),
+            ).encode("ascii")
+            + b"\n"
+        )
+        os.set_blocking(2, False)
+        os.write(2, payload[:256])
+    except BaseException:  # noqa: BLE001, S110 - diagnostics cannot defer termination
+        pass
+    finally:
+        os._exit(125)
+
+
 def main() -> None:
     if os.getpid() != 1 or os.getresuid() != (0, 0, 0) or os.getresgid() != (0, 0, 0):
         raise RuntimeError("requires root PID1 in its own container PID namespace")
@@ -178,8 +222,8 @@ def main() -> None:
     if child == 0:
         try:
             candidate(libc)
-        except BaseException:  # noqa: BLE001 - fail-closed PID1/child bootstrap
-            os._exit(125)
+        except BaseException as error:  # noqa: BLE001 - fail-closed bootstrap
+            fail_closed(error)
     drop_capabilities(libc, KILL_MASK)
     require_caps(KILL_MASK)
     while True:
@@ -196,7 +240,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except BaseException:  # noqa: BLE001 - fail-closed PID1/child bootstrap
+    except BaseException as error:  # noqa: BLE001 - fail-closed bootstrap
         # Any trusted-wrapper error kills the complete namespace; never fall back
         # to direct candidate execution or leave descendants running.
-        os._exit(125)
+        fail_closed(error)
