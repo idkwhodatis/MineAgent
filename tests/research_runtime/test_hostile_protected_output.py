@@ -325,3 +325,106 @@ def test_image_copy_inventory_exactly_matches_closed_dockerignore():
     assert set(allowed[3:]) == {"!" + path for path in expected}
     assert len(allowed[3:]) == len(expected)
     assert all((root / path).is_file() for path in expected)
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [("S", False), ("R", False), ("Z", True), ("X", True), ("x", True)],
+)
+def test_kernel_exit_is_distinct_from_reaped_identity(monkeypatch, state, expected):
+    from pathlib import Path
+
+    from runtimes.hostile_deadline.acceptance import kernel_exited
+
+    fields = [state] + ["0"] * 18 + ["123"]
+    monkeypatch.setattr(
+        Path, "read_text", lambda _: "100 (ma-export-v2) " + " ".join(fields)
+    )
+    assert kernel_exited(100, "123") is expected
+    assert kernel_exited(100, "999")
+
+
+def test_wait_kernel_exit_never_reads_docker_metadata(monkeypatch):
+    from runtimes.hostile_deadline import acceptance
+
+    monkeypatch.setattr(acceptance.time, "monotonic", lambda: 1)
+    monkeypatch.setattr(acceptance, "kernel_exited", lambda *_: True)
+    monkeypatch.setattr(
+        acceptance, "inspect", lambda *_: pytest.fail("Docker lock dependency")
+    )
+    acceptance.wait_kernel_exit({100: "1", 101: "2"}, 2)
+
+
+def test_kernel_exit_still_obeys_original_absolute_deadline(monkeypatch):
+    from runtimes.hostile_deadline import acceptance
+
+    monkeypatch.setattr(acceptance.time, "monotonic", lambda: 2)
+    monkeypatch.setattr(acceptance, "kernel_exited", lambda *_: False)
+    with pytest.raises(AssertionError):
+        acceptance.wait_kernel_exit({100: "1"}, 2)
+
+
+@pytest.mark.parametrize(
+    "deadline,expected", [(1, None), (0, None), (1.25, 0.25), (100, 30)]
+)
+def test_all_docker_commands_use_remaining_original_budget(
+    monkeypatch, deadline, expected
+):
+    from runtimes.hostile_deadline import acceptance
+
+    monkeypatch.setattr(acceptance.time, "monotonic", lambda: 1)
+    if expected is None:
+        with pytest.raises(AssertionError):
+            acceptance.remaining_command_budget(deadline)
+    else:
+        assert acceptance.remaining_command_budget(deadline) == expected
+
+
+def test_no_reader_closes_only_after_kernel_exit_then_inspects(monkeypatch):
+    from runtimes.hostile_deadline import acceptance
+
+    events = []
+
+    class Reader:
+        def close(self):
+            events.append("close")
+
+    def exited(observed, deadline):
+        assert observed == {100: "1"} and deadline == 2
+        events.append("exited")
+
+    def inspect(cid, *, timeout):
+        assert events == ["exited", "close"]
+        assert cid == "fixed" and timeout == 1
+        events.append("inspect")
+        return {"State": {"Running": False, "ExitCode": 124}}
+
+    monkeypatch.setattr(acceptance, "wait_kernel_exit", exited)
+    monkeypatch.setattr(acceptance, "progress", lambda *_: None)
+    monkeypatch.setattr(acceptance, "inspect", inspect)
+    monkeypatch.setattr(acceptance.time, "monotonic", lambda: 1)
+    assert (
+        acceptance.terminal_state("fixed", Reader(), {100: "1"}, 2, no_reader=True)[
+            "State"
+        ]["ExitCode"]
+        == 124
+    )
+    assert events == ["exited", "close", "inspect"]
+
+
+def test_unterminated_namespace_never_closes_unread_reader_or_inspects(monkeypatch):
+    from runtimes.hostile_deadline import acceptance
+
+    class Reader:
+        def close(self):
+            pytest.fail("closed before kernel exit")
+
+    def waiting(*_):
+        raise AssertionError("deadline exceeded")
+
+    monkeypatch.setattr(acceptance, "wait_kernel_exit", waiting)
+    monkeypatch.setattr(
+        acceptance, "inspect", lambda *_: pytest.fail("inspected before kernel exit")
+    )
+    with pytest.raises(AssertionError):
+        acceptance.terminal_state("fixed", Reader(), {100: "1"}, 2, no_reader=True)

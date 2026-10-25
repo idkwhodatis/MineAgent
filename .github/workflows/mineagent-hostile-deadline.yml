@@ -32,7 +32,7 @@ jobs:
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('deadline-contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 210
+          assert len(cases) == 223
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
       - name: Build pinned disabled lifecycle image without publishing it
@@ -59,6 +59,7 @@ jobs:
           assert proof['output_abi'] == 'protected_stdout_v2'
           assert set(cases) == {'hostile_deadline', 'early_completion', 'no_reader', 'collector_killed', 'oversized', 'fifo', 'symlink', 'unreadable'}
           assert cases['no_reader']['non_reader_live_exporter_observed_and_stopped'] is True
+          assert cases['no_reader']['kernel_exit_before_reader_close_verified'] is True
           assert cases['collector_killed']['primary_collector_killed'] is True
           assert all(cases[name]['invalid_output_rejected'] is True for name in ('oversized', 'fifo', 'symlink', 'unreadable'))
           assert cases['hostile_deadline']['completed_attack_marker_verified'] is True

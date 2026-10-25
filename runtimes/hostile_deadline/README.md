@@ -68,3 +68,16 @@ containment acceptance.
 Sources: [Docker cp tmpfs limitation](https://docs.docker.com/reference/cli/docker/container/cp/),
 [Moby attach subscription before upgrade](https://github.com/moby/moby/blob/v28.3.2/daemon/attach.go),
 [PID namespace init semantics](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html).
+
+
+### Unread-reader terminal observation order
+
+For the deliberate no-reader case, Docker metadata may wait for daemon stream
+finalization. The host first observes every captured exact PID/start identity as
+absent/replaced or terminal Z/X (kernel exit, not yet reaping), without inspecting
+Docker or reading/closing the attach stream. Only then it closes that unread
+stream to release daemon plumbing. Docker stopped/exit124 and disappearance of
+all original identities are still mandatory within the **same original deadline
+plus fixed tolerance**. Every in-attempt Docker command uses only the remaining
+absolute observation budget; no extra30s metadata wait is allowed. Case/phase
+progress records contain only maintained case names, never candidate bytes.

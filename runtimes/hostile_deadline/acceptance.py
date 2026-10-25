@@ -109,14 +109,14 @@ while True: time.sleep(.05)
 EARLY_EXIT = "import os,time\nopen('/output/result.bin','wb').write(b'fixed retained fixture')\ntry: open('/status/forged','w')\nexcept PermissionError: pass\nelse: raise AssertionError('status writable')\nif os.fork()==0:\n os.setsid()\n while True: time.sleep(.05)\ntime.sleep(.5)\n"
 
 
-def command(*args: str) -> str:
+def command(*args: str, timeout: float = 30) -> str:
     return subprocess.run(
-        args, check=True, capture_output=True, text=True, timeout=30
+        args, check=True, capture_output=True, text=True, timeout=timeout
     ).stdout.strip()
 
 
-def inspect(cid: str) -> dict:
-    return json.loads(command("docker", "inspect", cid))[0]
+def inspect(cid: str, *, timeout: float = 30) -> dict:
+    return json.loads(command("docker", "inspect", cid, timeout=timeout))[0]
 
 
 def process_identity(pid: int) -> str | None:
@@ -238,6 +238,68 @@ def require_exporter_observation(rows: list[str], init_pid: int) -> tuple[int, s
     return pid, start
 
 
+def remaining_command_budget(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise AssertionError("original stop observation budget exhausted")
+    return min(30.0, remaining)
+
+
+def kernel_exited(pid: int, expected_start: str) -> bool:
+    try:
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    except FileNotFoundError:
+        return True
+    # A pinned zombie has exited and cannot execute; it is not yet reaped.
+    # Final acceptance separately requires identity absence and Docker stopped.
+    return fields[19] != expected_start or fields[0] in {"Z", "X", "x"}
+
+
+def wait_kernel_exit(observed: dict[int, str | None], deadline: float) -> None:
+    """Observe exit independently of Docker's possibly blocked IO finalization."""
+    if not observed or any(start is None for start in observed.values()):
+        raise AssertionError("missing pinned kernel identities")
+    while True:
+        if time.monotonic() >= deadline:
+            raise AssertionError("kernel exit exceeded original absolute deadline")
+        if all(kernel_exited(pid, start) for pid, start in observed.items()):
+            return
+        time.sleep(min(0.01, remaining_command_budget(deadline)))
+
+
+def terminal_state(
+    cid: str,
+    reader,
+    observed: dict[int, str | None],
+    deadline: float,
+    *,
+    no_reader: bool,
+) -> dict:
+    if no_reader:
+        wait_kernel_exit(observed, deadline)
+        progress("no_reader", "kernel_exit_before_reader_close")
+        reader.close()
+    while True:
+        document = inspect(cid, timeout=remaining_command_budget(deadline))
+        if not document["State"]["Running"]:
+            return document
+        time.sleep(min(0.03, remaining_command_budget(deadline)))
+
+
+def progress(mode: str, phase: str) -> None:
+    print(
+        json.dumps(
+            {
+                "schema": "mineagent.hostile-proof-progress.v2",
+                "case": mode,
+                "phase": phase,
+            },
+            separators=(",", ":"),
+        ),
+        flush=True,
+    )
+
+
 def exercise(
     image: str, folder: Path, *, mode: str, inventory: dict, masked_paths: list[str]
 ) -> dict:
@@ -257,6 +319,18 @@ def exercise(
     started_monotonic = time.monotonic()
     original_monotonic_deadline = started_monotonic + WALL_SECONDS
     deadline = str(time.time_ns() // 1_000_000 + int(WALL_SECONDS * 1000))
+    observation_deadline = original_monotonic_deadline + STOP_TOLERANCE_SECONDS
+
+    def bounded_command(*args):
+        return command(*args, timeout=remaining_command_budget(observation_deadline))
+
+    def bounded_inspect(container):
+        return inspect(
+            container, timeout=remaining_command_budget(observation_deadline)
+        )
+
+    progress(mode, "begin")
+
     args = [
         "docker",
         "create",
@@ -304,8 +378,8 @@ def exercise(
     sibling = subprocess.Popen(["sleep", "60"])
     attach = owner = reader = None
     try:
-        cid = command(*args)
-        document = inspect(cid)
+        cid = bounded_command(*args)
+        document = bounded_inspect(cid)
         verify_inspect(
             document,
             image=image,
@@ -334,7 +408,7 @@ def exercise(
             time.sleep(0.01)
         if not cidfile.exists():
             raise AssertionError("launch owner missed original deadline")
-        document = inspect(cid)
+        document = bounded_inspect(cid)
         if not document["State"]["Running"]:
             raise AssertionError("trusted bootstrap stopped before observation")
         owner.kill()
@@ -347,7 +421,7 @@ def exercise(
         time.sleep(0.1)
         attach.kill()
         attach.wait(timeout=1)
-        rows = command("docker", "top", cid, "-eo", "pid").splitlines()[1:]
+        rows = bounded_command("docker", "top", cid, "-eo", "pid").splitlines()[1:]
         observed = {
             int(row.strip()): process_identity(int(row.strip())) for row in rows
         }
@@ -365,7 +439,7 @@ def exercise(
             until = min(time.monotonic() + 3, original_monotonic_deadline - 0.5)
             exporter = None
             while time.monotonic() < until:
-                rows = command(
+                rows = bounded_command(
                     "docker", "top", cid, "-eo", "pid,uid,ppid,pidns,comm"
                 ).splitlines()[1:]
                 if any(row.split()[-1] == "ma-export-v2" for row in rows):
@@ -375,7 +449,7 @@ def exercise(
             if exporter is None:
                 raise AssertionError("missing protected backpressure exporter")
             time.sleep(0.25)
-            rows = command(
+            rows = bounded_command(
                 "docker", "top", cid, "-eo", "pid,uid,ppid,pidns,comm"
             ).splitlines()[1:]
             if require_exporter_observation(rows, init_pid) != (exporter, identity):
@@ -388,7 +462,7 @@ def exercise(
             kind, payload = read_live_frame(reader, original_monotonic_deadline)
             if (
                 time.monotonic() >= original_monotonic_deadline
-                or not inspect(cid)["State"]["Running"]
+                or not bounded_inspect(cid)["State"]["Running"]
             ):
                 raise AssertionError(
                     "protected frame did not arrive while original unit alive"
@@ -401,7 +475,9 @@ def exercise(
                     raise AssertionError("missing exact quiescent output")
             elif (kind, payload) != (3, b""):
                 raise AssertionError("unsafe output was not explicitly rejected")
-            rows = command("docker", "top", cid, "-eo", "pid,uid").splitlines()[1:]
+            rows = bounded_command("docker", "top", cid, "-eo", "pid,uid").splitlines()[
+                1:
+            ]
             candidate_pids = [
                 int(row.split()[0]) for row in rows if row.split()[1] == "65533"
             ]
@@ -423,10 +499,10 @@ def exercise(
             )
             if channels[1] or channels[2]:
                 raise AssertionError("duplicate or trailing protected channel bytes")
-        until = original_monotonic_deadline + STOP_TOLERANCE_SECONDS
-        while inspect(cid)["State"]["Running"] and time.monotonic() < until:
-            time.sleep(0.03)
-        final = inspect(cid)
+        progress(mode, "evidence_observed")
+        final = terminal_state(
+            cid, reader, observed, observation_deadline, no_reader=mode == "no_reader"
+        )
         if final["State"]["Running"] or final["State"]["ExitCode"] != 124:
             raise AssertionError("wrong terminal lifecycle")
         elapsed = assert_stop_timing(started_monotonic, time.monotonic())
@@ -435,6 +511,7 @@ def exercise(
         for pid, start in observed.items():
             if process_identity(pid) == start:
                 raise AssertionError("namespace descendant survived trusted PID1 exit")
+        progress(mode, "positive_stop_verified")
         return {
             "case": mode,
             "exit_code": 124,
@@ -458,6 +535,7 @@ def exercise(
             "invalid_output_rejected": mode
             in {"oversized", "fifo", "symlink", "unreadable"},
             "primary_collector_killed": mode == "collector_killed",
+            "kernel_exit_before_reader_close_verified": mode == "no_reader",
         }
     finally:
         if reader is not None:
