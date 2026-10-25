@@ -161,3 +161,37 @@ def test_test_selectors_and_required_inventory_remain_synchronized():
     assert "--verify postgres" in workflow and "--verify isolation" in workflow
     assert "python -m script.factor_browser_acceptance" in workflow
     assert "--collect-only" not in workflow
+
+
+def test_create_diagnostics_exports_only_closed_states(tmp_path):
+    from script.factor_browser_acceptance import create_diagnostics
+
+    path = tmp_path / "report.xml"
+    root = ET.Element("testsuite")
+    case = ET.SubElement(root, "testcase", name="private-name")
+    failure = ET.SubElement(case, "failure")
+    failure.text = (
+        "private-token private-source "
+        "FACTOR_CREATE_DIAGNOSTIC_V1:phase=response;status=422;requests=1;"
+        "form=valid;alert=yes;saving=no "
+        "FACTOR_CREATE_DIAGNOSTIC_V1:phase=private;status=200;requests=1;"
+        "form=valid;alert=yes;saving=no "
+        "FACTOR_CREATE_DIAGNOSTIC_V1:phase=response;status=999;requests=1;"
+        "form=valid;alert=yes;saving=no"
+    )
+    ET.ElementTree(root).write(path)
+    assert create_diagnostics(path) == [
+        {
+            "case_index": 0,
+            "phase": "response",
+            "http_status": 422,
+            "requests": 1,
+            "form": "valid",
+            "alert": "yes",
+            "saving": "no",
+        }
+    ]
+    assert "private" not in str(create_diagnostics(path))
+    path.write_text("<!DOCTYPE x><testsuite/>")
+    with pytest.raises(ValueError):
+        create_diagnostics(path)

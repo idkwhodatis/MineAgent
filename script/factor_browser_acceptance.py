@@ -124,6 +124,43 @@ def verify_report(path: Path, kind: str) -> None:
         raise ValueError("Unknown fixed factor acceptance profile")
 
 
+def create_diagnostics(path: Path) -> list[dict]:
+    """Project only closed, non-sensitive form/HTTP states from private failures."""
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_size > MAX_REPORT_BYTES
+    ):
+        raise ValueError("Bounded browser report required")
+    raw = path.read_bytes()
+    if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("Unsupported report framing")
+    pattern = re.compile(
+        r"FACTOR_CREATE_DIAGNOSTIC_V1:phase=(response|navigation);"
+        r"status=(none|[1-5][0-9]{2});requests=([012]);form=(valid|invalid);"
+        r"alert=(yes|no);saving=(yes|no)(?![A-Za-z0-9_])"
+    )
+    result = []
+    for index, case in enumerate(list(ET.fromstring(raw).iter("testcase"))[:512]):
+        for failure in case:
+            if failure.tag not in {"failure", "error"}:
+                continue
+            for match in list(pattern.finditer(failure.text or ""))[:4]:
+                phase, status, requests, form, alert, saving = match.groups()
+                result.append(
+                    {
+                        "case_index": index,
+                        "phase": phase,
+                        "http_status": None if status == "none" else int(status),
+                        "requests": min(int(requests), 2),
+                        "form": form,
+                        "alert": alert,
+                        "saving": saving,
+                    }
+                )
+    return result[:16]
+
+
 def validated_source(source, root):
     if (
         source.get("GITHUB_ACTIONS") != "true"
@@ -256,6 +293,10 @@ def exercise(owner, root, source, private, node):
             print(
                 "FACTOR_BROWSER_SOURCE_DIAGNOSTICS:"
                 + json.dumps(failure_sites(report, root), sort_keys=True)
+            )
+            print(
+                "FACTOR_CREATE_DIAGNOSTICS:"
+                + json.dumps(create_diagnostics(report), sort_keys=True)
             )
             summarize(report, evidence_path(root, source))
     verify_report(report, "browser-import" if imports else "browser")

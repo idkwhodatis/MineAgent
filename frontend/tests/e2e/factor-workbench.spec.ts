@@ -80,8 +80,13 @@ test("real persisted factor values, missingness and sample survive exact URL ref
   const row = page
     .getByTestId("factor-values")
     .getByRole("row")
-    .filter({ hasText: "2024-03-08" })
-    .filter({ hasText: "AAA" });
+    .filter({
+      has: page.getByRole("cell", {
+        name: "2024-03-08 fixture:XNAS:AAA",
+        exact: true,
+      }),
+    });
+  await expect(row).toHaveCount(1);
   await row.getByRole("button", { name: "Inspect sample" }).click();
   await expect(page.getByTestId("factor-sample")).toContainText(
     "fixed_fixture_recomputed",
@@ -162,13 +167,52 @@ test("manual create and child source edits are immutable, repeat clicks are idem
   const source = "def factor(close):\n    return close[-1] / close[0] - 1\n";
   await page.getByLabel("Factor name", { exact: true }).fill(name);
   await page.getByLabel("Exact Python source", { exact: true }).fill(source);
-  await page
-    .getByRole("button", { name: "Save exact definition" })
-    .evaluate((button: HTMLButtonElement) => {
-      button.click();
-      button.click();
-    });
-  await expect(page).toHaveURL(/\/factors\/[^/]+\/versions\//);
+  let createRequests = 0;
+  let createStatus: number | undefined;
+  let phase: "response" | "navigation" = "response";
+  const isCreate = (url: string, method: string) =>
+    new URL(url).pathname === "/api/v1/factors" && method === "POST";
+  page.on("request", (req) => {
+    if (isCreate(req.url(), req.method())) createRequests++;
+  });
+  page.on("response", (response) => {
+    if (isCreate(response.url(), response.request().method()))
+      createStatus = response.status();
+  });
+  try {
+    const response = page.waitForResponse(
+      (res) => isCreate(res.url(), res.request().method()),
+      { timeout: 25_000 },
+    );
+    const [created] = await Promise.all([
+      response,
+      page
+        .getByRole("button", { name: "Save exact definition" })
+        .evaluate((button: HTMLButtonElement) => {
+          button.click();
+          button.click();
+        }),
+    ]);
+    expect(created.status()).toBe(201);
+    phase = "navigation";
+    await expect(page).toHaveURL(/\/factors\/[^/]+\/versions\//);
+  } catch {
+    // Deliberately never emit response bodies, source, names, URLs or credentials.
+    const valid = await page
+      .locator("form.factor-editor")
+      .evaluateAll((forms) =>
+        forms.every((form) => (form as HTMLFormElement).checkValidity()),
+      );
+    const alert = (await page.getByRole("alert").count()) > 0;
+    const saving =
+      (await page
+        .getByRole("button", { name: "Saving…", exact: true })
+        .count()) > 0;
+    throw new Error(
+      `FACTOR_CREATE_DIAGNOSTIC_V1:phase=${phase};status=${createStatus ?? "none"};requests=${Math.min(createRequests, 2)};form=${valid ? "valid" : "invalid"};alert=${alert ? "yes" : "no"};saving=${saving ? "yes" : "no"}`,
+    );
+  }
+  expect(createRequests).toBe(1);
   const match = new URL(page.url()).pathname.match(
     /\/factors\/([^/]+)\/versions\/([^/]+)/,
   )!;
