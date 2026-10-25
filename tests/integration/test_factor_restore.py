@@ -602,7 +602,7 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
         assert _files(target) == expected_files
         # Verify real archived old rows and bytes before upgrading, then read
         # them through current services only at the executable's required head.
-        legacy._upgrade(restored, "014_run_identity")
+        legacy._upgrade(restored, "015_neutral_primitives")
         legacy._assert_historical_snapshot(restored, expected)
         legacy._reopen_restored_notes(restored, target, notes)
         if not seeded:
@@ -662,7 +662,7 @@ def test_real_factor_cold_restore_and_legacy_upgrade(
                 connection.execute(
                     text("SELECT version_num FROM alembic_version")
                 ).scalar_one()
-                == "014_run_identity"
+                == "015_neutral_primitives"
             )
             assert (
                 connection.execute(

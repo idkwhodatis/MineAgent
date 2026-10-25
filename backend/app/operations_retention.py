@@ -110,6 +110,11 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             if capabilities.factor_closure_schema is not None
             else set()
         )
+        | (
+            {"research_closure"}
+            if capabilities.research_closure_schema is not None
+            else set()
+        )
         or snapshot["schema_revision"] not in REVISIONS
         or type(snapshot["postgres_major"]) is not int
         or not 14 <= snapshot["postgres_major"] <= 99
@@ -161,6 +166,20 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
                 )
         except (KeyError, TypeError):
             raise RetentionError("Invalid factor closure manifest inventory") from None
+    if "research_closure" in snapshot:
+        from backend.app.research_backup import manifest_keys
+
+        try:
+            if (
+                snapshot["research_closure"]["schema_version"]
+                != capabilities.research_closure_schema
+            ):
+                raise ValueError("Neutral research closure revision mismatch")
+            keys.update(manifest_keys(snapshot["research_closure"]))
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise RetentionError(
+                "Invalid neutral research manifest inventory"
+            ) from None
     return keys
 
 
@@ -335,6 +354,27 @@ def _protected(snapshot, files, manifests, deadline):
             raise RetentionError(
                 "Factor retention closure failed verification"
             ) from None
+    from backend.app.research_backup import validate_absence, validate_closure
+
+    try:
+        if "research_closure" in snapshot:
+            validate_closure(
+                snapshot["research_closure"],
+                check,
+                lambda key: _json_manifest(manifests[key]),
+                100_000,
+                inventory=list(files.values()),
+            )
+            # N1 has no garbage-collection authority for neutral objects, journals,
+            # prepared markers or charged orphan/temp bytes. Preserve the entire
+            # validated physical namespaces, including uncertain reservations.
+            trees.update({"research-objects", "research-processes"})
+        else:
+            validate_absence(list(files.values()))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Neutral research retention closure failed verification"
+        ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:

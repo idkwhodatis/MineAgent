@@ -44,6 +44,8 @@ NAMESPACES = {
     "uploads",
     "strategy-packages",
     "factors",
+    "research-objects",
+    "research-processes",
 }
 HEX = re.compile(r"[a-f0-9]{64}\Z")
 APP_REF = re.compile(r"(?:[a-f0-9]{40}|[a-f0-9]{64})\Z")
@@ -588,6 +590,24 @@ class PostgresDatabase:
             datasets = rows(
                 "SELECT storage_key AS path, content_sha256 AS sha256, manifest FROM dataset_versions ORDER BY storage_key"
             )
+            research_closure = None
+            if capabilities.research_closure_schema is not None:
+                from backend.app.research_backup import read_closure
+
+                try:
+                    research_closure = read_closure(
+                        connection,
+                        limits.max_files,
+                        revision=revisions[0],
+                        maximum_bytes=limits.max_manifest_bytes,
+                    )
+                except (ValueError, TypeError, KeyError):
+                    raise BackupError(
+                        "Invalid neutral research restore closure"
+                    ) from None
+                references += rows(
+                    "SELECT storage_key AS path, sha256, size_bytes FROM research_objects ORDER BY storage_key"
+                )
             if len(references) + len(datasets) > limits.max_files:
                 raise BackupError("Database reference inventory exceeds its limit")
             return {
@@ -599,6 +619,11 @@ class PostgresDatabase:
                 **(
                     {"factor_closure": factor_closure}
                     if factor_closure is not None
+                    else {}
+                ),
+                **(
+                    {"research_closure": research_closure}
+                    if research_closure is not None
                     else {}
                 ),
             }
@@ -634,6 +659,13 @@ def _key(value: str, *, storage: bool = False) -> str:
         raise BackupError(
             "Unsupported storage namespace; secrets and runner state are not backup inputs"
         )
+    if storage and parts[0] in {"research-objects", "research-processes"}:
+        from backend.app.research_backup import validate_path
+
+        try:
+            validate_path(value)
+        except (ValueError, TypeError, KeyError):
+            raise BackupError("Unsupported neutral research storage layout") from None
     return value
 
 
@@ -787,9 +819,8 @@ def _validate_references(
             return stream.read(10_000_001)
 
     try:
-        expected_closure = capabilities_for(
-            snapshot.get("schema_revision")
-        ).factor_closure_schema
+        capabilities = capabilities_for(snapshot.get("schema_revision"))
+        expected_closure = capabilities.factor_closure_schema
     except ValueError:
         raise BackupError("Unsupported application schema revision") from None
     factor_revision = expected_closure is not None
@@ -810,6 +841,26 @@ def _validate_references(
             )
         except (ValueError, TypeError, KeyError, AttributeError):
             raise BackupError("Factor restore closure failed verification") from None
+    research_revision = capabilities.research_closure_schema is not None
+    if research_revision != ("research_closure" in snapshot):
+        raise BackupError("Neutral research closure capability does not match schema")
+    from backend.app.research_backup import validate_absence, validate_closure
+
+    try:
+        if research_revision:
+            validate_closure(
+                snapshot["research_closure"],
+                check,
+                lambda path: _read_json(root, path, limits)[0],
+                limits.max_files,
+                inventory=inventory,
+            )
+        else:
+            validate_absence(inventory)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Neutral research restore closure failed verification"
+        ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:
@@ -920,6 +971,17 @@ def _shared_storage_reader(function):
             except ParserIsolationError:
                 raise BackupError(
                     "Unconfirmed factor parser must be resolved first"
+                ) from None
+            from packages.research_runtime.process_contracts import ProcessError
+            from runtimes.research_supervisor.supervisor import (
+                assert_quiescent as research_quiescent,
+            )
+
+            try:
+                research_quiescent(root)
+            except (ValueError, ProcessError):
+                raise BackupError(
+                    "Unconfirmed neutral research process must be resolved first"
                 ) from None
             return function(*args, **kwargs)
 

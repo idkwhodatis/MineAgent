@@ -1,0 +1,170 @@
+name: MineAgent neutral foundation acceptance
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "backend/**"
+      - "packages/**"
+      - "runtimes/**"
+      - "workers/**"
+      - "script/**"
+      - "tests/**"
+      - ".github/workflows/mineagent-neutral.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  neutral-foundation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      POSTGRES_USER: tradegrad_ci
+      POSTGRES_DB: tradegrad_ci
+      STORAGE_ROOT: ${{ github.workspace }}/var/storage
+      TRADEGRAD_RUNNER_STATE_DIR: ${{ github.workspace }}/var/runner
+      DATA_PROVIDER_MODE: fixture
+      E2E_LIVE_PROVIDERS: "0"
+      MODEL_PROFILES_ENABLED: "false"
+      MODEL_SYNTHETIC_TEST_MODE: "false"
+      TRADEGRAD_REQUIRE_DOCKER: "1"
+      MINEAGENT_REQUIRE_NEUTRAL_ACCEPTANCE: "1"
+      MINEAGENT_RESEARCH_ISOLATION_REQUIRED: "1"
+      RUN_BACKUP_RESTORE_DRILL: "1"
+      WORKER_CONCURRENCY: "1"
+      DATA_WORKER_CONCURRENCY: "1"
+      HEARTBEAT_SECONDS: "1"
+      LEASE_SECONDS: "20"
+      PYTHONDONTWRITEBYTECODE: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Materialize exact compatibility sources without changing legacy identities
+        run: python script/bootstrap_tradegrad_compat.py
+      - name: Generate and mask disposable fixture credentials
+        run: python script/ci_test_environment.py
+      - name: Start actual PostgreSQL 18.6 on loopback with normal durability
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var
+          docker run --detach --name tradegrad-ci-postgres --cidfile "$GITHUB_WORKSPACE/var/neutral-postgres.cid" \
+            --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
+            --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
+            --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
+            --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
+            --health-interval 2s --health-timeout 5s --health-retries 30 postgres:18.6 \
+            -c max_wal_size=256MB -c min_wal_size=80MB -c checkpoint_timeout=60s >/dev/null
+          for attempt in $(seq 1 90); do
+            state=$(docker inspect --format '{{.State.Health.Status}}' tradegrad-ci-postgres)
+            if [ "$state" = healthy ]; then exit 0; fi
+            if [ "$state" = unhealthy ]; then break; fi
+            sleep 1
+          done
+          echo 'Disposable PostgreSQL did not become healthy' >&2
+          exit 1
+      - name: Verify actual database capacity and durability
+        run: python script/ci_postgres_resources.py --phase provisioned --require-config
+      - name: Install frozen API dependencies
+        run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Install separately hash-locked research environment
+        run: |
+          python -m venv .venv-research
+          .venv-research/bin/python -m pip install --require-hashes -r runtimes/research/requirements.lock
+          python -m script.validate_runtime_split --runtime api
+          .venv-research/bin/python -m script.validate_runtime_split --runtime research
+      - name: Verify pure neutral contracts, closure and fail-closed acceptance
+        run: python -m pytest tests/research_runtime backend/tests/test_neutral_objects.py tests/operations/test_neutral_closure.py tests/mineagent/test_neutral_acceptance.py -q
+      - name: Bind streaming backup clients to the exact disposable PostgreSQL container
+        run: |
+          python - <<'PYCLIENT'
+          import os, pathlib, re, shlex, subprocess, sys
+          container = pathlib.Path("var/neutral-postgres.cid").read_text().strip()
+          if not re.fullmatch(r"[0-9a-f]{64}", container):
+              raise SystemExit("Invalid disposable service identity")
+          actual = subprocess.check_output(["docker", "inspect", "--format", "{{.Id}}", container], text=True, timeout=10).strip()
+          if actual != container:
+              raise SystemExit("Disposable service identity changed")
+          root = pathlib.Path("var/ci-pg").resolve()
+          root.mkdir(parents=True, mode=0o700, exist_ok=False)
+          config = root / "docker-config"
+          config.mkdir(mode=0o700)
+          (config / "config.json").write_text('{"auths":{}}')
+          script = pathlib.Path("script/ci_pg_client.py").resolve()
+          for tool in ("pg_dump", "pg_restore"):
+              executable = root / tool
+              executable.write_text(
+                  "#!/bin/sh\nGITHUB_ACTIONS=true TRADEGRAD_CI_POSTGRES_ID=" + container
+                  + " DOCKER_CONFIG=" + shlex.quote(str(config))
+                  + " exec " + shlex.quote(sys.executable) + " " + shlex.quote(str(script))
+                  + " " + tool + ' "$@"\n'
+              )
+              executable.chmod(0o700)
+              with open(os.environ["GITHUB_ENV"], "a") as stream:
+                  print(tool.upper() + "_EXECUTABLE=" + str(executable), file=stream)
+          PYCLIENT
+      - name: Build and pin the closed neutral fixture supervisor image
+        run: |
+          set -euo pipefail
+          docker build -t mineagent-research-supervisor:n1 -f runtimes/research_supervisor/Dockerfile .
+          image=$(docker image inspect --format '{{.Id}}' mineagent-research-supervisor:n1)
+          [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'MINEAGENT_RESEARCH_SUPERVISOR_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+      - name: Provision only the disposable fixture storage namespaces
+        run: |
+          python -m script.provision_storage --root "$STORAGE_ROOT" --durable-parent "$GITHUB_WORKSPACE"
+          python -m script.provision_storage --root "$STORAGE_ROOT/research-objects" --durable-parent "$GITHUB_WORKSPACE"
+          python -m script.provision_storage --root "$STORAGE_ROOT/research-processes" --durable-parent "$GITHUB_WORKSPACE"
+      - name: Require real PostgreSQL neutral ownership, accounting and publication
+        run: python -m script.neutral_acceptance --profile postgres
+      - name: Require real whole-unit containment, peer binding and journal recovery
+        run: python -m script.neutral_acceptance --profile isolation
+      - name: Require current and historical neutral cold restore with new publication
+        run: python -m script.neutral_acceptance --profile restore
+      - name: Observe disposable database before removal
+        if: always()
+        run: python script/ci_postgres_resources.py --phase before-removal
+      - name: Require exact owned supervisor cleanup
+        if: always()
+        run: |
+          set -euo pipefail
+          # Journals own removal. A label query can establish absence, never authority to kill.
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-research-supervisor-v1)
+          [ -z "$ids" ] || { echo 'Owned supervisor absence is unconfirmed' >&2; exit 1; }
+      - name: Remove only the exact disposable database and confirm absence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$GITHUB_WORKSPACE/var/neutral-postgres.cid"
+          if [ ! -f "$file" ] || [ -L "$file" ]; then
+            ids=$(timeout 15s docker ps --all --quiet --filter name='^tradegrad-ci-postgres$')
+            [ -z "$ids" ] || { echo 'Uncertain database identity; refusing name-only cleanup' >&2; exit 1; }
+            exit 0
+          fi
+          id=$(cat "$file")
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          actual=$(timeout 15s docker inspect --format '{{.Id}}|{{.Name}}|{{index .Config.Labels "io.tradegrad.ci"}}' "$id")
+          [ "$actual" = "$id|/tradegrad-ci-postgres|postgres" ]
+          timeout 30s docker rm --force --volumes "$id" >/dev/null
+          remaining=$(timeout 15s docker ps --all --quiet --no-trunc --filter "id=$id")
+          [ -z "$remaining" ]
+      - name: Preserve only sanitized outcome and capacity evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mineagent-neutral-${{ github.sha }}
+          path: |
+            var/ci-evidence/neutral-*-junit.xml
+            var/ci-evidence/postgres-resources-*.json
+          retention-days: 14
+          if-no-files-found: warn

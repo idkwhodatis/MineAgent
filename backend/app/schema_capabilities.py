@@ -15,6 +15,7 @@ class SchemaCapabilities:
     note_pins: bool = False
     factor_closure_schema: str | None = None
     factor_imports: bool = False
+    research_closure_schema: str | None = None
 
 
 SCHEMA_CAPABILITIES = MappingProxyType(
@@ -63,6 +64,14 @@ SCHEMA_CAPABILITIES = MappingProxyType(
             note_pins=True,
             factor_closure_schema="mineagent.factor-restore-closure.v2",
             factor_imports=True,
+        ),
+        "015_neutral_primitives": SchemaCapabilities(
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v1",
         ),
     }
 )

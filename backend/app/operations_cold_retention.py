@@ -139,6 +139,17 @@ def exclusive_maintenance(database: PostgresDatabase, storage_root: Path):
                     raise RetentionError(
                         "Unconfirmed factor parser must be resolved first"
                     ) from None
+                from packages.research_runtime.process_contracts import ProcessError
+                from runtimes.research_supervisor.supervisor import (
+                    assert_quiescent as research_quiescent,
+                )
+
+                try:
+                    research_quiescent(storage_root)
+                except (ValueError, ProcessError):
+                    raise RetentionError(
+                        "Unconfirmed neutral research process must be resolved first"
+                    ) from None
                 yield LockedDatabase(database, connection), fd
     finally:
         engine.dispose()

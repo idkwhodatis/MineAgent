@@ -182,6 +182,7 @@ class ResearchRun(Base):
         UniqueConstraint(
             "owner_id", "idempotency_key", name="uq_run_owner_idempotency"
         ),
+        UniqueConstraint("owner_id", "id", name="uq_research_run_owner_id"),
         CheckConstraint("generation > 0"),
         CheckConstraint(
             "purpose = 'legacy_strategy' AND engine = 'legacy'",
@@ -235,6 +236,7 @@ class ExecutionAttempt(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         UniqueConstraint("run_id", "generation", name="uq_attempt_run_generation"),
+        UniqueConstraint("run_id", "generation", "id", name="uq_attempt_scope_id"),
     )
 
 
@@ -978,3 +980,7 @@ class ResearchNoteEvidencePin(Base):
 # Register independent MineAgent tables only after legacy declarations exist.
 from backend.app import factor_models as _factor_models  # noqa: E402,F401
 from backend.app import factor_import_models as _factor_import_models  # noqa: E402,F401
+
+from backend.app import research_object_models as _research_object_models  # noqa: E402,F401
+from backend.app import research_broker_models as _research_broker_models  # noqa: E402,F401
+from backend.app import research_process_models as _research_process_models  # noqa: E402,F401

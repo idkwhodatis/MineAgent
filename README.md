@@ -35,8 +35,13 @@ old-result restoration, Compose restart and the frozen synthetic capacity gate.
 Features remain operator-controlled; acceptance does not enable them in existing
 deployments. The old execution profile stays unchanged.
 
-The next closed migration establishes immutable legacy run classification before
-new engine admission. It does not yet enable RD-Agent or OpenEvolve execution.
+The immutable legacy classification cut (N0) passed at
+`d205bb65c3c0ca6b996a5577f565cdccb49656d7`, including the
+[full exact-head gate](https://github.com/idkwhodatis/MineAgent/actions/runs/40209567439)
+and dedicated factor, migration and completed-evidence restore gates.
+The next cut provides [neutral durable primitives](docs/MINEAGENT_NEUTRAL_FOUNDATION.md)
+with a separate required PostgreSQL/Docker/restore workflow. It does not enable
+RD-Agent, Qlib or OpenEvolve execution; new engine admission remains rejected.
 
 ## Development
 

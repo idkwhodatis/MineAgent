@@ -51,6 +51,10 @@ class Settings(BaseSettings):
 
     # MineAgent migrations are independently gated. These never reinterpret old
     # TradeGrad schemas/checkpoints or change the legacy execution profile.
+    # Neutral primitives have no public run admission or provider transport.
+    neutral_object_owner_max_bytes: int = Field(default=512 * 1024**2, ge=1024)
+    neutral_object_installation_max_bytes: int = Field(default=2 * 1024**3, ge=1024)
+    neutral_object_max_files: int = Field(default=10_000, ge=1, le=100_000)
     factor_library_enabled: bool = False
     factor_import_enabled: bool = False
     factor_parser_image_id: str | None = Field(

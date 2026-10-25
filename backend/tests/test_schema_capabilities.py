@@ -131,3 +131,13 @@ def test_retention_rejects_unknown_capabilities_without_mutation(revision):
             value, operations_backup.BackupLimits()
         )
     assert value == before
+
+
+def test_neutral_revision_preserves_factor_and_historical_closure():
+    old = capabilities_for("014_run_identity")
+    neutral = capabilities_for("015_neutral_primitives")
+    assert neutral.backup_supported and neutral.strategy_packages and neutral.note_pins
+    assert neutral.factor_imports == old.factor_imports
+    assert neutral.factor_closure_schema == old.factor_closure_schema
+    assert old.research_closure_schema is None
+    assert neutral.research_closure_schema == "mineagent.research-restore-closure.v1"

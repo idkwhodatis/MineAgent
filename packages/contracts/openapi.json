@@ -293,7 +293,8 @@
               "011_note_pin_trigger",
               "012_factor_library",
               "013_factor_import",
-              "014_run_identity"
+              "014_run_identity",
+              "015_neutral_primitives"
             ],
             "title": "Schema Revision",
             "type": "string"

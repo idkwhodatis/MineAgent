@@ -95,7 +95,7 @@ def test_empty_factor_import_migration_round_trip_preserves_core(
             .one()
             == before
         )
-    assert revision(migrated_engine) == "014_run_identity"
+    assert revision(migrated_engine) == "015_neutral_primitives"
 
 
 def test_empty_factor_library_migration_round_trip_preserves_legacy(
