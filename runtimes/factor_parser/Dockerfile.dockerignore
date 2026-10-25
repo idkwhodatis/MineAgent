@@ -1,0 +1,14 @@
+# Parser-only build context. Never widen the root evaluator context.
+**
+!backend/
+!backend/requirements.lock
+!packages/
+!packages/factors/
+!packages/factors/__init__.py
+!packages/factors/contracts.py
+!packages/factors/storage.py
+!packages/factors/parser.py
+!runtimes/
+!runtimes/factor_parser/
+!runtimes/factor_parser/Dockerfile
+!runtimes/factor_parser/Dockerfile.dockerignore
