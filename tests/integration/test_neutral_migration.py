@@ -46,12 +46,15 @@ def test_neutral_zero_argument_immutability_trigger_rejects_changed_values(
                     "INSERT INTO neutral_immutable_probe VALUES (1, '{\"record\": 1}')"
                 )
             )
-        for sql in (
-            "UPDATE neutral_immutable_probe SET value='{\"record\":2}'",
-            "DELETE FROM neutral_immutable_probe",
+        for sql, parameters in (
+            (
+                "UPDATE neutral_immutable_probe SET value=CAST(:value AS jsonb)",
+                {"value": '{"record": 2}'},
+            ),
+            ("DELETE FROM neutral_immutable_probe", {}),
         ):
             with pytest.raises(DBAPIError), connection.begin():
-                connection.execute(text(sql))
+                connection.execute(text(sql), parameters)
         with connection.begin():
             assert connection.scalar(
                 text("SELECT value FROM neutral_immutable_probe")
