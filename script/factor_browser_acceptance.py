@@ -258,6 +258,46 @@ def create_diagnostics(path: Path) -> list[dict]:
     return result[:16]
 
 
+def import_retry_diagnostics(path: Path) -> list[dict]:
+    """Export only allowlisted retry outcome states, never server response text."""
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_size > MAX_REPORT_BYTES
+    ):
+        raise ValueError("Bounded browser report required")
+    raw = path.read_bytes()
+    if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("Unsupported report framing")
+    codes = (
+        "factor_busy|factor_import_busy|factor_capacity|factor_recovery_required|"
+        "factor_storage_uncertain|factor_admission_lost|factor_admission_timeout|"
+        "factor_import_unavailable|idempotency_conflict|unauthorized|"
+        "maintenance_busy|none|other"
+    )
+    pattern = re.compile(
+        r"FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=([1-5][0-9]{2});code=("
+        + codes
+        + r");identity=(same|different)(?![A-Za-z0-9_])"
+    )
+    result = []
+    for index, case in enumerate(list(ET.fromstring(raw).iter("testcase"))[:512]):
+        for failure in case:
+            if failure.tag not in {"failure", "error"}:
+                continue
+            for match in list(pattern.finditer(failure.text or ""))[:4]:
+                status, code, identity = match.groups()
+                result.append(
+                    {
+                        "case_index": index,
+                        "http_status": int(status),
+                        "code": code,
+                        "identity": identity,
+                    }
+                )
+    return result[:16]
+
+
 def validated_source(source, root):
     if (
         source.get("GITHUB_ACTIONS") != "true"
@@ -394,6 +434,10 @@ def exercise(owner, root, source, private, node):
             print(
                 "FACTOR_CREATE_DIAGNOSTICS:"
                 + json.dumps(create_diagnostics(report), sort_keys=True)
+            )
+            print(
+                "FACTOR_IMPORT_RETRY_DIAGNOSTICS:"
+                + json.dumps(import_retry_diagnostics(report), sort_keys=True)
             )
             summarize(report, evidence_path(root, source))
     verify_report(report, "browser-import" if imports else "browser")

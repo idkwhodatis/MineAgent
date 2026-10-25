@@ -460,7 +460,12 @@ def test_schema_dispatch_calls_the_correct_admission_loader_before_absence(
     from backend.app.trace_services import LOADERS, load_owned_trace
 
     evaluation = SimpleNamespace(id=uuid4(), attempt_id=uuid4(), payload={})
-    run = SimpleNamespace(id=uuid4(), config={"schema_version": schema})
+    run = SimpleNamespace(
+        id=uuid4(),
+        purpose="legacy_strategy",
+        engine="legacy",
+        config={"schema_version": schema},
+    )
     result = SimpleNamespace(artifact=SimpleNamespace(sha256="e" * 64))
     session = MagicMock()
     session.execute.return_value.one_or_none.return_value = (evaluation, run)

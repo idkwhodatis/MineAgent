@@ -263,6 +263,8 @@ def persisted_native(exported, tmp_path):
     run = ResearchRun(
         id=run_id,
         owner_id=owner_id,
+        purpose="legacy_strategy",
+        engine="legacy",
         dataset_version_id=dataset_id,
         strategy_version_id=strategy_id,
         config=config.model_dump(mode="json"),

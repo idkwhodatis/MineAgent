@@ -306,3 +306,40 @@ def test_outbox_inventory_matches_every_recovery_case():
                 ]
         actual.update(node.name + suffix for suffix in suffixes)
     assert actual == set(REQUIRED_OUTBOX_CASES)
+
+
+def test_import_retry_diagnostics_export_only_closed_states(tmp_path):
+    from script.factor_browser_acceptance import import_retry_diagnostics
+
+    path = tmp_path / "report.xml"
+    root = ET.Element("testsuite")
+    case = ET.SubElement(root, "testcase", name="private-id")
+    failure = ET.SubElement(case, "failure")
+    failure.text = (
+        "private-token private-source private-uuid "
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=503;code=factor_busy;identity=different "
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=202;code=none;identity=same "
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=409;code=private-secret;identity=different "
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=999;code=none;identity=same "
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=503;code=none;identity=same_private"
+    )
+    # A successful case's arbitrary output is never projected.
+    ET.SubElement(
+        case, "system-out"
+    ).text = (
+        "FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=500;code=other;identity=different"
+    )
+    ET.ElementTree(root).write(path)
+    assert import_retry_diagnostics(path) == [
+        {
+            "case_index": 0,
+            "http_status": 503,
+            "code": "factor_busy",
+            "identity": "different",
+        },
+        {"case_index": 0, "http_status": 202, "code": "none", "identity": "same"},
+    ]
+    assert "private" not in str(import_retry_diagnostics(path))
+    path.write_text("<!DOCTYPE x><testsuite/>")
+    with pytest.raises(ValueError):
+        import_retry_diagnostics(path)

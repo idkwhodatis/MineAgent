@@ -467,7 +467,40 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     await page
       .getByRole("button", { name: "Import exact package", exact: true })
       .click();
-    expect((await (await repeated).json()).id).toBe(admission.id);
+    const repeatedResponse = await repeated;
+    const repeatedBody: unknown = await repeatedResponse
+      .json()
+      .catch(() => null);
+    const retryCodes = new Set([
+      "factor_busy",
+      "factor_import_busy",
+      "factor_capacity",
+      "factor_recovery_required",
+      "factor_storage_uncertain",
+      "factor_admission_lost",
+      "factor_admission_timeout",
+      "factor_import_unavailable",
+      "idempotency_conflict",
+      "unauthorized",
+      "maintenance_busy",
+    ]);
+    const retryRecord =
+      repeatedBody !== null && typeof repeatedBody === "object"
+        ? (repeatedBody as Record<string, unknown>)
+        : undefined;
+    const retryCode =
+      typeof retryRecord?.code === "string" && retryCodes.has(retryRecord.code)
+        ? retryRecord.code
+        : retryRecord?.code === undefined
+          ? "none"
+          : "other";
+    const retryIdentity =
+      retryRecord?.id === admission.id ? "same" : "different";
+    // Only closed states escape the private CI report: never response bodies,
+    // identifiers, messages, paths or arbitrary server-supplied error codes.
+    const retryDiagnostic = `FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=${repeatedResponse.status()};code=${retryCode};identity=${retryIdentity}`;
+    expect(repeatedResponse.status(), retryDiagnostic).toBe(202);
+    expect(retryRecord?.id, retryDiagnostic).toBe(admission.id);
     const other = await token(request, true);
     const denied = await request.get(api(`/factor-imports/${admission.id}`), {
       headers: authorization(other),
