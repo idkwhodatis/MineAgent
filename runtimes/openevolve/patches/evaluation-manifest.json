@@ -1,0 +1,19 @@
+{
+  "schema": "mineagent.openevolve-patch-series.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires": "frontier-manifest.json",
+  "patches": [
+    {
+      "path": "0006-objective-receipt-before-evaluation-return.patch",
+      "sha256": "e5d8ec242be2b31719cf97224a36473eae29e55197cc0a8b17391109a4a8b90f",
+      "files": [
+        {
+          "path": "openevolve/evaluator.py",
+          "before_sha256": "eb5ae6a84ebb979d3e428dc84a88efcdef29b73d65d552df0a6b869d24384c4c",
+          "after_sha256": "91c1f3be0626f5da5eef555aaf0ab4772c309e0a33d6f4a9b2b2a665f0f20213"
+        }
+      ]
+    }
+  ],
+  "scope": "Mandatory host-bound objective verification before metrics escape candidate scope; host durable receipt implementation remains separate"
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "mineagent.openevolve-patch-series.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "patches": [
+    {
+      "path": "0001-spawn-and-evaluation-context.patch",
+      "sha256": "47aba2b0ff0c22adda7e381e21624cd5bb8c1c3d653e586fafc216e6df6b4973",
+      "files": [
+        {
+          "path": "openevolve/process_parallel.py",
+          "before_sha256": "1db5f6bf361fdcb829d90a0d464ea2c1b1249542d14170131797f74b4e4f1a71",
+          "after_sha256": "1f2329bb2bd7dffcb36e9a88f2357b4ead24a886f717ea1ed862f6144da99378"
+        },
+        {
+          "path": "openevolve/evaluator.py",
+          "before_sha256": "0b14a5b3b145f4b2d808aad3ef3dcea830d22f69d9113400abac62f1d74075fb",
+          "after_sha256": "31155b623a736150bc82b5ef9ba56d67ecab8623a6a0a31c5e3f909e1ff47abd"
+        }
+      ]
+    }
+  ],
+  "scope": "Spawn policy and executor context propagation only; no complete observer, persistence, containment or engine acceptance claim"
+}

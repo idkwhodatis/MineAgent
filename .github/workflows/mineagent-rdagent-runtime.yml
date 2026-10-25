@@ -1,0 +1,101 @@
+name: MineAgent disabled RD-Agent installed compatibility
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "packages/rdagent_adapter/**"
+      - "packages/factors/**"
+      - "packages/research_runtime/**"
+      - "runtimes/rdagent/**"
+      - ".github/workflows/mineagent-rdagent-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-costeer-compatibility:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Fetch exact upstream and reproduce both reduced-profile wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/rdagent-upstream"
+          git init "$source"
+          git -C "$source" fetch --depth 1 https://github.com/microsoft/RD-Agent.git 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          git -C "$source" checkout --detach FETCH_HEAD
+          test "$(git -C "$source" rev-parse HEAD)" = 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          mkdir -p .runtime var/rdagent-proof
+          python runtimes/rdagent/build_profile.py --source "$source" --output .runtime/rdagent-wheels
+          python runtimes/rdagent/build_profile.py --source "$source" --output "$RUNNER_TEMP/rdagent-build-two"
+          cmp .runtime/rdagent-wheels/build-report.json "$RUNNER_TEMP/rdagent-build-two/build-report.json"
+          cmp .runtime/rdagent-wheels/build-report.json runtimes/rdagent/wheel-proof.json
+          cp .runtime/rdagent-wheels/build-report.json var/rdagent-proof/
+      - name: Build installed-only compatibility image without publishing it
+        run: docker build --iidfile var/rdagent-proof/image.iid -f runtimes/rdagent/Dockerfile .
+      - name: Exercise real CoSTEER and transport with explicit in-memory host stand-ins
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(cat var/rdagent-proof/image.iid)
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          cleanup() {
+            for file in var/rdagent-proof/*.cid; do
+              [ -f "$file" ] || continue
+              cid=$(cat "$file")
+              if [[ "$cid" =~ ^[a-f0-9]{64}$ ]]; then docker rm --force "$cid" >/dev/null; fi
+            done
+          }
+          trap cleanup EXIT
+          for probe in costeer runtime; do
+            timeout 180 docker run --cidfile "var/rdagent-proof/$probe.cid" \
+              --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+              --memory 2g --pids-limit 64 --cpus 1 \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
+              "$image" python -I -m "runtimes.rdagent.probe_$probe" \
+              > "var/rdagent-proof/$probe.json"
+          done
+          python - <<'PY'
+          import json, pathlib
+          proofs = {}
+          for name in ('costeer', 'runtime'):
+              path = pathlib.Path(f'var/rdagent-proof/{name}.json')
+              assert 0 < path.stat().st_size < 65536
+              proof = json.loads(path.read_text())
+              assert proof['isolated_python'] is True
+              assert proof['module_paths_installed_only'] is True
+              assert proof['socket_connect_attempts'] == 0
+              assert proof['pickle_access_attempts'] == 0
+              assert proof['actual_candidate_execution'] is False
+              assert proof['durable_broker'] is False
+              proofs[name] = proof
+          loop = proofs['costeer']
+          assert loop['scope'] == 'actual_costeer_control_flow_with_host_standins'
+          assert loop['steps'] == [0, 1, 2]
+          assert loop['final_decisions'] == [False, False, True]
+          assert loop['source_versions'] == 3 and loop['malformed_response_repaired'] is True
+          assert loop['model_chat_calls'] == 12 and loop['embedding_calls'] == 5
+          assert loop['logical_evaluations'] == 3 and loop['repeated_value_reads'] == 11
+          transport = proofs['runtime']
+          assert transport['scope'] == 'imports_and_transport_bridge_only'
+          assert transport['upstream_call_contexts'] == 3 and transport['logical_requests'] == 5
+          assert transport['semantic_repair_submissions'] == 3
+          assert transport['cancelled_repair_submissions'] == 1
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mineagent-rdagent-installed-compatibility-${{ github.sha }}
+          path: |
+            var/rdagent-proof/*.json
+            var/rdagent-proof/image.iid
+          retention-days: 14

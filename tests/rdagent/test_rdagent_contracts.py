@@ -107,3 +107,14 @@ def test_config_rejects_incomplete_frozen_inputs(change):
         raw["max_output_rows_per_cutoff"] = 2
     with pytest.raises(ValueError):
         FactorResearchConfig.model_validate(raw)
+
+
+def test_research_history_matches_factor_definition_prior_session_semantics():
+    raw = research_dict()
+    raw["input"]["lookback_sessions"] = 63
+    parsed = FactorResearchConfig.model_validate(raw)
+    assert parsed.input.history_semantics == "prior_sessions_plus_current"
+    assert parsed.runtime.candidate_profile == "mineagent.factor-prefix-candidate.v2"
+    raw["input"]["lookback_sessions"] = 64
+    with pytest.raises(ValueError):
+        FactorResearchConfig.model_validate(raw)

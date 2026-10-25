@@ -1,0 +1,19 @@
+{
+  "schema": "mineagent.openevolve-patch-series.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires": "observer-manifest.json",
+  "patches": [
+    {
+      "path": "0004-rendered-prompt-reference-seams.patch",
+      "sha256": "08f6bb8c7616d720c806e6841b4f25e86b84f618b57fa50cd0224517aff17d81",
+      "files": [
+        {
+          "path": "openevolve/prompt/sampler.py",
+          "before_sha256": "9e71234def141426fdf6372d9793301308dc55cdafe5f4d2a067ae9e1ee59eb3",
+          "after_sha256": "beac5c343a8e5c84866c51b46d6f21fd64a8c02b682db56c972dbfd023159dee"
+        }
+      ]
+    }
+  ],
+  "scope": "Native prompt render selection callback seams; fixed supported templates only, previous_summary is not source-code rendering; durable host acceptance remains separate"
+}

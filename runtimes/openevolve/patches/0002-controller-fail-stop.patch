@@ -1,0 +1,50 @@
+--- a/openevolve/process_parallel.py
++++ b/openevolve/process_parallel.py
+@@ -19,6 +19,7 @@
+ from openevolve.database import Program, ProgramDatabase
+ from openevolve.selection import IslandSelectionContext, IslandSelector, IslandState
+ from openevolve.utils.metrics_utils import safe_numeric_average
++from packages.openevolve_adapter.observer import abort_control
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -964,25 +965,14 @@
+                 try:
+                     self._checkpoint_if_due(completed_iteration, checkpoint_callback)
+                 except Exception as e:
+-                    if getattr(e, "_openevolve_strategy_error", False):
+-                        raise
+-                    logger.error(
+-                        f"Error processing result from iteration {completed_iteration}: {e}"
+-                    )
++                    abort_control("checkpoint_publication", e)
+             except FutureTimeoutError as e:
+-                if getattr(e, "_openevolve_strategy_error", False):
+-                    raise
+-                logger.error(
+-                    f"⏰ Iteration {completed_iteration} timed out after {timeout_seconds}s "
+-                    f"(evaluator timeout: {self.config.evaluator.timeout}s + 30s buffer). "
+-                    f"Canceling future and continuing with next iteration."
+-                )
+-                # Cancel the future to clean up the process
+-                future.cancel()
++                # Cancelled waiting is not proof that evaluator work stopped.
++                abort_control("evaluation_timeout", e)
+             except Exception as e:
+-                if getattr(e, "_openevolve_strategy_error", False):
+-                    raise
+-                logger.error(f"Error processing result from iteration {completed_iteration}: {e}")
++                # Native add/artifact/migration may already have mutated state.
++                # Never checkpoint or submit replacements after unknown failure.
++                abort_control("result_application", e)
+ 
+             completed_iterations += 1
+ 
+@@ -1073,5 +1063,5 @@
+             return future
+ 
+         except Exception as e:
+-            logger.error(f"Error submitting iteration {iteration}: {e}")
+-            return None
++            # Sampling or submission can have side effects; do not silently skip.
++            abort_control("submission", e)

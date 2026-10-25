@@ -1,0 +1,21 @@
+{
+  "schema": "mineagent.openevolve-frontier-seam-build.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "series": {
+    "manifest.json": "26997839b046fa650b2378810eca12789f40b9960d6d578e509139c0fc12f009",
+    "control-manifest.json": "c62d6e7c33ebbb0e995b6f53ce7c9ce5a7da243944d1965742164d4364858b58",
+    "observer-manifest.json": "64f51ee18ca30292714e71d29f371c6f17f7bd656f5ecd67bdfae385e8a447ec",
+    "prompt-manifest.json": "42eff9011b509b0f1203084528c42bd9fc6d2ecbd94fdbbd8971ba09a035e158",
+    "frontier-manifest.json": "f3b5a4356f4458833d3b7ecc08dfd8596d689a8224fc0d9acf7d989fb7522fbe"
+  },
+  "wheel": {
+    "filename": "openevolve-0.4.0-py3-none-any.whl",
+    "sha256": "dca5e1da87cb6e6ef3f41503e9e50222fda00737512ddc3466b751181b3c6085"
+  },
+  "python": "3.12.14",
+  "installed_method_probes": "passed_in_memory_recorders_only",
+  "native_roundtrip": "passed_native_save_load_projection_and_reconstruction_drift_rejection",
+  "docker": "not_run",
+  "host_durable_checkpoint": "not_implemented_in_this_patch",
+  "actual_search": "not_run"
+}

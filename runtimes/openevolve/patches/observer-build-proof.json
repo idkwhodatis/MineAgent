@@ -1,0 +1,17 @@
+{
+  "schema": "mineagent.openevolve-observer-seam-build.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "series": {
+    "manifest.json": "26997839b046fa650b2378810eca12789f40b9960d6d578e509139c0fc12f009",
+    "control-manifest.json": "c62d6e7c33ebbb0e995b6f53ce7c9ce5a7da243944d1965742164d4364858b58",
+    "observer-manifest.json": "64f51ee18ca30292714e71d29f371c6f17f7bd656f5ecd67bdfae385e8a447ec"
+  },
+  "wheel": {
+    "filename": "openevolve-0.4.0-py3-none-any.whl",
+    "sha256": "bea4fa7eca74830a7d8c312e5cc4a2e0aed9bfda56238db2523c9f69643ee86c"
+  },
+  "python": "3.12.14",
+  "callback_seam_smoke": "passed_in_memory_recorder_only",
+  "docker": "not_run",
+  "actual_search": "not_run"
+}

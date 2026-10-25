@@ -1,0 +1,52 @@
+{
+  "schema": "mineagent.openevolve-evaluation-seam-build.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "series": {
+    "manifest.json": "26997839b046fa650b2378810eca12789f40b9960d6d578e509139c0fc12f009",
+    "control-manifest.json": "c62d6e7c33ebbb0e995b6f53ce7c9ce5a7da243944d1965742164d4364858b58",
+    "observer-manifest.json": "64f51ee18ca30292714e71d29f371c6f17f7bd656f5ecd67bdfae385e8a447ec",
+    "prompt-manifest.json": "42eff9011b509b0f1203084528c42bd9fc6d2ecbd94fdbbd8971ba09a035e158",
+    "frontier-manifest.json": "f3b5a4356f4458833d3b7ecc08dfd8596d689a8224fc0d9acf7d989fb7522fbe",
+    "evaluation-manifest.json": "d3d1079227850ac9581d1104b715a5a6806fd0b9f8285ecfbf7a785c2f4f9583"
+  },
+  "wheel": {
+    "filename": "openevolve-0.4.0-py3-none-any.whl",
+    "sha256": "6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c"
+  },
+  "python": "3.12.14",
+  "probe_sha256": "5242a328a326ac72683c0ab2b246000c72c98d959ddce65275994069c7f38a5a",
+  "scenarios": {
+    "eligible": {
+      "actual_api": "run_evolution",
+      "candidate_scopes": 4,
+      "continuation_mutations": 1,
+      "fresh_mutations": 2,
+      "model_calls": 3,
+      "network_attempts": 0,
+      "scope": "synthetic observer/transport/evaluator probe only; no durable/financial/containment acceptance",
+      "start_method": "spawn"
+    },
+    "children": {
+      "mode": "children_rejected",
+      "model_calls": 2,
+      "frontier": 2,
+      "population_count": 1,
+      "scope": "synthetic objective verification seam only"
+    },
+    "seed": {
+      "mode": "seed_rejected",
+      "model_calls": 0,
+      "checkpoints": 0,
+      "scope": "synthetic objective verification seam only"
+    },
+    "fallback": {
+      "mode": "fallback_refused",
+      "last_frontier": 0,
+      "scope": "synthetic objective verification seam only"
+    }
+  },
+  "objective_verifier": "real observer.evaluation_complete with explicit synthetic typed receipt and mocked host ACK",
+  "host_durability": false,
+  "financial_acceptance": false,
+  "containment_acceptance": false
+}

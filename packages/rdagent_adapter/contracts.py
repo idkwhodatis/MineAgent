@@ -47,8 +47,8 @@ class RuntimePins(Contract):
     candidate_image: ImageDigest
     normalizer_image: ImageDigest
     analysis_image: ImageDigest
-    candidate_profile: Literal["mineagent.factor-prefix-candidate.v1"] = (
-        "mineagent.factor-prefix-candidate.v1"
+    candidate_profile: Literal["mineagent.factor-prefix-candidate.v2"] = (
+        "mineagent.factor-prefix-candidate.v2"
     )
     normalizer_profile: Literal["mineagent.factor-numeric-hdf.v1"] = (
         "mineagent.factor-numeric-hdf.v1"
@@ -83,7 +83,10 @@ class FrozenResearchInput(Contract):
     calendar_sha256: Sha256
     market_timezone: Identifier
     input_fields: tuple[InputField, ...] = Field(min_length=1, max_length=5)
-    lookback_sessions: int = Field(strict=True, ge=1, le=64)
+    lookback_sessions: int = Field(strict=True, ge=1, le=63)
+    history_semantics: Literal["prior_sessions_plus_current"] = (
+        "prior_sessions_plus_current"
+    )
     lag_sessions: int = Field(strict=True, ge=0, le=8)
     preprocessing: Preprocessing = Field(default_factory=NoPreprocessing)
     membership_policy: Literal["static_available_by_every_cutoff"] = (

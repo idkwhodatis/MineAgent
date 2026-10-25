@@ -1,0 +1,13 @@
+--- a/openevolve/evaluator.py
++++ b/openevolve/evaluator.py
+@@ -240,7 +240,9 @@
+ 
+         with mineagent_observer.control_guard("candidate_registration"):
+             with mineagent_observer.candidate_scope(program_id, program_code):
+-                return await self._evaluate_program_impl(program_code, program_id)
++                metrics = await self._evaluate_program_impl(program_code, program_id)
++                mineagent_observer.evaluation_complete(metrics)
++                return metrics
+ 
+     async def _evaluate_program_impl(
+         self,

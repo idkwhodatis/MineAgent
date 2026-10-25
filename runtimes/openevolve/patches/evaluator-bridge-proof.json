@@ -1,0 +1,25 @@
+{
+  "schema": "mineagent.openevolve-evaluator-bridge-probe.v1",
+  "wheel_sha256": "6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c",
+  "probe_sha256": "26f855207d128931d3be8f6f5a9908e8a23082832d1de7ec5aa8d15bf7aca02a",
+  "bridge_sha256": "f47d53080c71a7855abeaa9077e30d1d4453791d7f9d51c581d69b9d8f09e72a",
+  "observer_sha256": "8a5ae1868bed5dbb0612c985fc2935809a653f7e5c193fcf321fe7b85c061c11",
+  "checks_passed": [
+    "actual_upstream_file_loader",
+    "actual_evaluate_program_thread_context",
+    "real_EvaluationResult_metrics_and_artifacts",
+    "regular_source_exact_hash",
+    "mutated_source_rejected_before_host_execute",
+    "symlink_rejected_before_host_execute",
+    "wrong_run_grant_rejected_before_host_execute",
+    "wrong_candidate_receipt_rejected",
+    "duplicate_result_receipt_rejected",
+    "score_drift_rejected_before_ack",
+    "candidate_source_not_imported_or_executed",
+    "candidate_context_reset"
+  ],
+  "host_transport": "explicit_bootstrap_and_host_event_doubles_only",
+  "financial_acceptance": false,
+  "host_durability": false,
+  "containment_acceptance": false
+}

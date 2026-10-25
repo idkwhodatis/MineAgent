@@ -1,0 +1,66 @@
+--- a/openevolve/process_parallel.py
++++ b/openevolve/process_parallel.py
+@@ -483,8 +483,13 @@
+         self.file_suffix = file_suffix
+         self.island_selector = island_selector
+ 
++        # MineAgent patch v1: bootstrap must select spawn before any MP primitive.
++        if mp.get_start_method(allow_none=True) != "spawn":
++            raise RuntimeError("MineAgent requires spawn before controller construction")
++        if type(config.evaluator.parallel_evaluations) is not int or config.evaluator.parallel_evaluations != 1 or config.max_tasks_per_child is not None:
++            raise RuntimeError("MineAgent requires one worker without process recycling")
+         self.executor: Optional[ProcessPoolExecutor] = None
+-        self.shutdown_event = mp.Event()
++        self.shutdown_event = mp.get_context("spawn").Event()
+         self.early_stopping_triggered = False
+ 
+         # Number of worker processes
+@@ -540,20 +545,16 @@
+ 
+         current_env = dict(os.environ)
+ 
++        # The entire process pool belongs to one pre-admitted kernel unit.
++        if mp.get_start_method(allow_none=True) != "spawn" or type(self.num_workers) is not int or self.num_workers != 1 or type(self.config.evaluator.parallel_evaluations) is not int or self.config.evaluator.parallel_evaluations != 1 or self.config.max_tasks_per_child is not None:
++            raise RuntimeError("MineAgent process policy changed before pool start")
+         executor_kwargs = {
+-            "max_workers": self.num_workers,
++            "max_workers": 1,
++            "mp_context": mp.get_context("spawn"),
++            "max_tasks_per_child": None,
+             "initializer": _worker_init,
+             "initargs": (config_dict, self.evaluation_file, current_env),
+         }
+-        if sys.version_info >= (3, 11):
+-            logger.info(f"Set max {self.config.max_tasks_per_child} tasks per child")
+-            executor_kwargs["max_tasks_per_child"] = self.config.max_tasks_per_child
+-        elif self.config.max_tasks_per_child is not None:
+-            logger.warn(
+-                "max_tasks_per_child is only supported in Python 3.11+. "
+-                "Ignoring max_tasks_per_child and using spawn start method."
+-            )
+-            executor_kwargs["mp_context"] = mp.get_context("spawn")
+ 
+         # Create process pool with initializer
+         self.executor = ProcessPoolExecutor(**executor_kwargs)
+--- a/openevolve/evaluator.py
++++ b/openevolve/evaluator.py
+@@ -447,13 +447,17 @@
+             Exception: If evaluation function raises an exception
+         """
+ 
++        # MineAgent patch v1: freeze the authenticated per-evaluation context.
++        from contextvars import copy_context
++
++        evaluation_context = copy_context()
+         # Create a coroutine that runs the evaluation function in an executor
+         async def run_evaluation():
+             loop = asyncio.get_event_loop()
+             return await loop.run_in_executor(
+                 self._executor,
+-                functools.partial(self.evaluate_function, **self._evaluator_kwargs),
+-                program_path,
++                evaluation_context.run,
++                functools.partial(self.evaluate_function, program_path, **self._evaluator_kwargs),
+             )
+ 
+         # Run the evaluation with timeout - let exceptions bubble up for retry handling

@@ -18,11 +18,47 @@ mounted lookback window. Membership and preprocessing readiness are explicit;
 lagged publication cannot be backdated. Mounted inputs are recorded as **provided,
 not proven read**. Source availability declarations do not establish market PIT.
 
+The corrected prefix grammar is explicitly **v2**: a factor's lookback `L` means
+`L` prior sessions **plus the current session**, preserving existing factor
+definitions. This initial profile permits `L=1..63`, at most 64 mounted sessions.
+The previously disabled prefix v1 counted total sessions instead; it is rejected
+by the new runtime rather than silently reinterpreted. No RD runs were admitted
+under that earlier contract. Regression fixtures compare actual three-price
+momentum at `L=2` with the existing fixed-factor materializer.
+
 The caller must first verify the frozen dataset and calendar against their hashes.
 Pure projection cannot grant a process capability, prove source authenticity or
 publish a feature row. Generated Python, native HDF output normalization, actual
-FactorCoSTEER execution, Qlib analyses and their persistent closure remain separate
-acceptance work.
+durable FactorCoSTEER execution, Qlib analyses and their persistent closure remain
+separate acceptance work.
+
+### Installed CoSTEER compatibility profile
+
+`runtimes/rdagent` separately packages byte-verified original upstream modules
+and explicit platform transport/bootstrap seams. The pinned upstream packaging
+declaration produced an empty Python wheel; the reduced profile therefore uses
+distinct distribution names and records its recipe, full wheel inventories and
+hash-locked dependencies. It is not presented as the full upstream CLI.
+
+The installed-only probes execute the real `FactorCoSTEER.develop` control flow
+with **in-memory host execution and persistence stand-ins**: malformed-response
+repair, three source versions, false/false/true decisions, 12 chat submissions,
+five embedding submissions and three evaluation tickets. A separate transport
+probe distinguishes continuation and semantic-repair requests from physical
+transport retries. Measured network and pickle-access attempt counters must stay
+zero, even if an upstream catch would otherwise swallow an exception.
+
+The dedicated workflow reproduces both wheels, verifies the frozen build report,
+and runs the installed modules under isolated Python in a nonroot, read-only,
+network-disabled container. This compatibility image does **not** execute generated
+source, implement a durable broker or establish hostile-child containment. Its
+test limits are not a newly admitted production process profile.
+
+Separate disabled engine-fixture broker codecs preserve the neutral v1 grammar
+unchanged. RD requests bind response format and retain continuation finish reasons;
+OpenEvolve requests bind the exact rendered system/user pair. Versioned byte,
+token, response and embedding-shape limits reject oversized or coerced inputs.
+Parsing and hashing these envelopes does not grant transport or process authority.
 
 ## OpenEvolve source, execution and objective contracts
 

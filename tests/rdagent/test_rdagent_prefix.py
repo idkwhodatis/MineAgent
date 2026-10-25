@@ -48,9 +48,9 @@ def test_exact_prefix_excludes_future_and_older_history():
     snapshot, args = inputs()
     manifest, files = project_prefix(snapshot, **args)
     rows = json.loads(files["observations.json"])
-    assert len(rows) == 6
+    assert len(rows) == 9
     assert {r["session"] for r in rows} == {
-        d.isoformat() for d in args["calendar_sessions"][2:4]
+        d.isoformat() for d in args["calendar_sessions"][1:4]
     }
     assert manifest.dependency_claim == "provided_not_proven_read"
     assert PrefixManifest.model_validate_json(manifest.model_dump_json()) == manifest
@@ -70,7 +70,7 @@ def test_delayed_peer_remains_in_full_universe_without_future_value():
     raw["available_at"] = args["host_cutoff"] + timedelta(days=1)
     rows[target] = MarketObservation.model_validate(raw)
     manifest, files = project_prefix(snapshot, **{**args, "observations": tuple(rows)})
-    assert len(manifest.listings) == 3 and manifest.observation_count == 5
+    assert len(manifest.listings) == 3 and manifest.observation_count == 8
     assert len(json.loads(files["listings.json"])) == 3
 
 
@@ -177,3 +177,64 @@ def test_future_fitted_transform_and_oversized_input_fail_closed():
         project_prefix(
             snapshot, **{**args, "observations": args["observations"][:1] * 640001}
         )
+
+
+def test_prefix_v2_preserves_shared_lookback_two_prior_plus_current_numeric_meaning():
+    snapshot, args = inputs()
+    manifest, files = project_prefix(snapshot, **args)
+    assert manifest.schema_version == "mineagent.factor-prefix-input.v2"
+    assert manifest.history_semantics == "prior_sessions_plus_current"
+    assert (
+        manifest.lookback_prior_sessions == 2 and len(manifest.provided_sessions) == 3
+    )
+    observations = json.loads(files["observations.json"])
+    expected = demo_fixture(
+        factor_version_id=UUID(int=1),
+        dataset_version_id=UUID(int=2),
+        lookback_sessions=2,
+    )
+    for listing in manifest.listings:
+        prices = [
+            row["values"][0]
+            for row in observations
+            if row["listing_code"] == listing.code
+        ]
+        actual = prices[-1] / prices[0] - 1
+        row = next(
+            row
+            for row in expected.rows
+            if row.session_date == args["output_session"]
+            and row.listing_id == listing.listing_id
+        )
+        assert actual == row.value
+    old = manifest.model_dump(mode="json")
+    old["schema_version"] = "mineagent.factor-prefix-input.v1"
+    with pytest.raises(ValueError):
+        PrefixManifest.model_validate(old)
+
+
+def test_prior_history_maximum_63_mounts_64_and_64_is_rejected():
+    from packages.factors.contracts import FactorDefinition
+
+    snapshot, args = inputs()
+    raw = snapshot.model_dump(mode="json")
+    raw["definition"]["lookback_sessions"] = 63
+    raw["version"]["definition_sha256"] = FactorDefinition.model_validate(
+        raw["definition"]
+    ).sha256
+    snapshot = SnapshotInput.model_validate(raw)
+    calendar = tuple(
+        args["output_session"] - timedelta(days=offset) for offset in range(63, -1, -1)
+    )
+    manifest, _ = project_prefix(
+        snapshot, **{**args, "calendar_sessions": calendar, "observations": ()}
+    )
+    assert (
+        len(manifest.provided_sessions) == 64 and manifest.lookback_prior_sessions == 63
+    )
+    raw["definition"]["lookback_sessions"] = 64
+    raw["version"]["definition_sha256"] = FactorDefinition.model_validate(
+        raw["definition"]
+    ).sha256
+    with pytest.raises(ValueError, match="63 prior"):
+        project_prefix(SnapshotInput.model_validate(raw), **args)

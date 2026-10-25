@@ -1,0 +1,8 @@
+**
+!runtimes/
+!runtimes/rdagent/
+!runtimes/rdagent/requirements.lock
+!.runtime/
+!.runtime/rdagent-wheels/
+!.runtime/rdagent-wheels/*.whl
+!.runtime/rdagent-wheels/build-report.json

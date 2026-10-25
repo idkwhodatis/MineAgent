@@ -1,0 +1,202 @@
+"""Trusted PID1; never import candidate modules or consume candidate output.
+
+Installed at a fixed readonly path, launched only in a private PID namespace.
+No application launcher currently admits this disabled profile.
+"""
+
+from __future__ import annotations
+
+import ctypes
+import errno
+import json
+import os
+import resource
+import signal
+import sys
+import time
+
+from runtimes.hostile_deadline.contract import (
+    CANDIDATE_GID,
+    CANDIDATE_UID,
+    remaining_seconds,
+)
+
+PR_SET_DUMPABLE = 4
+PR_SET_NO_NEW_PRIVS = 38
+LINUX_CAPABILITY_VERSION_3 = 0x20080522
+KILL_MASK = 1 << 5
+BOOTSTRAP_MASK = KILL_MASK | (1 << 6) | (1 << 7)  # No SETPCAP/SYS_ADMIN.
+
+
+class CapHeader(ctypes.Structure):
+    _fields_ = [("version", ctypes.c_uint32), ("pid", ctypes.c_int)]
+
+
+class CapData(ctypes.Structure):
+    _fields_ = [
+        ("effective", ctypes.c_uint32),
+        ("permitted", ctypes.c_uint32),
+        ("inheritable", ctypes.c_uint32),
+    ]
+
+
+def prctl(libc, option: int, value: int) -> None:
+    if libc.prctl(option, value, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "prctl failed")
+
+
+def drop_capabilities(libc, retained: int = 0) -> None:
+    header = CapHeader(LINUX_CAPABILITY_VERSION_3, 0)
+    data = (CapData * 2)()
+    data[0].effective = data[0].permitted = retained
+    if libc.capset(ctypes.byref(header), ctypes.byref(data)) != 0:
+        raise OSError(ctypes.get_errno(), "capset failed")
+
+
+def status() -> dict[str, str]:
+    with open("/proc/self/status", encoding="ascii") as stream:
+        return dict(line.rstrip().split(":\t", 1) for line in stream if ":\t" in line)
+
+
+def require_caps(expected: int) -> None:
+    observed = status()
+    if any(int(observed[key], 16) != expected for key in ("CapEff", "CapPrm")):
+        raise RuntimeError("unexpected active capabilities")
+    if any(int(observed[key], 16) != 0 for key in ("CapInh", "CapAmb")):
+        raise RuntimeError("inherited or ambient capability")
+    if (
+        int(observed["CapBnd"], 16) != BOOTSTRAP_MASK
+        or observed["NoNewPrivs"] != "1"
+        or observed["Seccomp"] != "2"
+    ):
+        raise RuntimeError("unexpected bounding set or privilege policy")
+
+
+def close_fds() -> None:
+    # Enumerating trusted procfs before exec also closes inherited descriptors
+    # above a subsequently lowered RLIMIT_NOFILE. No credentials/IPC are inherited.
+    for name in os.listdir("/proc/self/fd"):
+        descriptor = int(name)
+        if descriptor > 2:
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                if error.errno != errno.EBADF:
+                    raise
+
+
+def candidate(libc) -> None:
+    os.setsid()
+    os.setgroups([])
+    os.setresgid(CANDIDATE_GID, CANDIDATE_GID, CANDIDATE_GID)
+    os.setresuid(CANDIDATE_UID, CANDIDATE_UID, CANDIDATE_UID)
+    drop_capabilities(libc)
+    prctl(libc, PR_SET_NO_NEW_PRIVS, 1)
+    prctl(libc, PR_SET_DUMPABLE, 0)
+    require_caps(0)
+    if (
+        os.getresuid() != (CANDIDATE_UID,) * 3
+        or os.getresgid() != (CANDIDATE_GID,) * 3
+        or os.getgroups()
+    ):
+        raise RuntimeError("candidate credentials did not drop permanently")
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024,) * 2)
+    null = os.open("/dev/null", os.O_RDWR)
+    for fd in (0, 1, 2):
+        os.dup2(null, fd)
+    close_fds()
+    os.chdir("/tmp")
+    os.execve(
+        sys.executable,
+        [sys.executable, "-I", "/input/candidate.py"],
+        {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp", "LANG": "C.UTF-8"},
+    )
+
+
+def quiesce_and_hold(expires: float, child_exit_code: int) -> None:
+    # PID1 adopts orphaned descendants. kill(-1) excludes the caller/PID1 and is
+    # limited by this private PID namespace. Repeat to close fork/delivery races.
+    # No host docker-exec/namespace injection is permitted during this profile.
+    while True:
+        if time.monotonic() >= expires:
+            os._exit(124)
+        try:
+            os.kill(-1, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            done, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            break  # ECHILD: no surviving descendants can create new descendants.
+        if done == 0:
+            time.sleep(0.005)
+    if time.monotonic() >= expires:
+        os._exit(124)
+    payload = json.dumps(
+        {
+            "schema": "mineagent.hostile-quiescence.v1",
+            "child_exit_code": child_exit_code,
+            "descendants_reaped": True,
+        },
+        separators=(",", ":"),
+    ).encode()
+    fd = os.open(
+        "/status/quiescent.json",
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o400,
+    )
+    try:
+        if os.write(fd, payload) != len(payload):
+            raise RuntimeError("short trusted completion receipt")
+    finally:
+        os.close(fd)
+    # Root-only receipt is a host extraction precondition, not a candidate score.
+    # Never read a child-controlled ACK or extend the original absolute deadline.
+    while time.monotonic() < expires:
+        time.sleep(min(0.01, max(0, expires - time.monotonic())))
+    os._exit(124)
+
+
+def main() -> None:
+    if os.getpid() != 1 or os.getresuid() != (0, 0, 0) or os.getresgid() != (0, 0, 0):
+        raise RuntimeError("requires root PID1 in its own container PID namespace")
+    if len(sys.argv) != 2 or not sys.flags.isolated:
+        raise RuntimeError("invalid fixed entrypoint")
+    remaining = remaining_seconds(sys.argv[1], time.time_ns() // 1_000_000)
+    expires = time.monotonic() + remaining
+    libc = ctypes.CDLL(None, use_errno=True)
+    prctl(libc, PR_SET_DUMPABLE, 0)
+    prctl(libc, PR_SET_NO_NEW_PRIVS, 1)
+    require_caps(BOOTSTRAP_MASK)
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    # Stop/interrupt exits PID1 rather than waiting on a potentially hostile tree.
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, lambda *_: os._exit(124))
+    child = os.fork()
+    if child == 0:
+        try:
+            candidate(libc)
+        except BaseException:  # noqa: BLE001 - fail-closed PID1/child bootstrap
+            os._exit(125)
+    drop_capabilities(libc, KILL_MASK)
+    require_caps(KILL_MASK)
+    while True:
+        # No output writes: a blocked log consumer cannot delay namespace death.
+        if time.monotonic() >= expires:
+            os._exit(124)
+        done, result = os.waitpid(child, os.WNOHANG)
+        if done:
+            code = os.waitstatus_to_exitcode(result)
+            quiesce_and_hold(expires, code)
+        time.sleep(min(0.01, max(0, expires - time.monotonic())))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BaseException:  # noqa: BLE001 - fail-closed PID1/child bootstrap
+        # Any trusted-wrapper error kills the complete namespace; never fall back
+        # to direct candidate execution or leave descendants running.
+        os._exit(125)

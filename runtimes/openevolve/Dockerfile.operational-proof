@@ -1,0 +1,78 @@
+# Disabled synthetic API compatibility proof; not a production execution profile.
+FROM python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e AS build
+COPY runtimes/openevolve/build-requirements.lock /tmp/build-requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r /tmp/build-requirements.lock
+COPY .runtime/openevolve-source /tmp/source
+COPY runtimes/openevolve/verify_build_inputs.py runtimes/openevolve/upstream-source.json /tmp/verification/
+COPY runtimes/openevolve/patches /tmp/patches
+RUN python -I /tmp/verification/verify_build_inputs.py /tmp/source \
+ && python -I /tmp/patches/apply.py /tmp/source \
+ && python -I /tmp/patches/apply.py --control /tmp/source \
+ && python -I /tmp/patches/apply.py --observer /tmp/source \
+ && python -I /tmp/patches/apply.py --prompt /tmp/source \
+ && python -I /tmp/patches/apply.py --frontier /tmp/source \
+ && python -I /tmp/patches/apply.py --evaluation /tmp/source
+ENV SOURCE_DATE_EPOCH=1792818759
+RUN python -m build --wheel --no-isolation /tmp/source --outdir /wheels \
+ && echo '6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c  /wheels/openevolve-0.4.0-py3-none-any.whl' | sha256sum --check -
+
+FROM python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+LABEL io.mineagent.managed="mineagent-openevolve-synthetic-proof-v1"
+COPY runtimes/openevolve/requirements.lock /tmp/requirements.lock
+RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r /tmp/requirements.lock
+COPY --from=build /wheels/openevolve-0.4.0-py3-none-any.whl /tmp/openevolve-0.4.0-py3-none-any.whl
+RUN pip install --no-cache-dir --no-deps /tmp/openevolve-0.4.0-py3-none-any.whl \
+ && pip check && rm /tmp/openevolve-0.4.0-py3-none-any.whl /tmp/requirements.lock
+# Closed module list: no checkout mount, backend, host server or provider credentials.
+COPY packages/openevolve_adapter/__init__.py packages/openevolve_adapter/observer.py packages/openevolve_adapter/observer_transport.py packages/openevolve_adapter/broker_client.py packages/openevolve_adapter/runtime_config.py packages/openevolve_adapter/runtime_profile.py packages/openevolve_adapter/evaluator_bridge.py packages/openevolve_adapter/evaluator_protocol.py packages/openevolve_adapter/contracts.py packages/openevolve_adapter/objective.py packages/openevolve_adapter/source.py packages/openevolve_adapter/checkpoint_native.py /usr/local/lib/python3.12/site-packages/packages/openevolve_adapter/
+COPY packages/research_runtime/__init__.py packages/research_runtime/broker_contracts.py packages/research_runtime/budget_contracts.py packages/research_runtime/control.py /usr/local/lib/python3.12/site-packages/packages/research_runtime/
+COPY packages/tradegrad_adapter/independent_results.py packages/tradegrad_adapter/results.py /usr/local/lib/python3.12/site-packages/packages/tradegrad_adapter/
+COPY runtimes/__init__.py /usr/local/lib/python3.12/site-packages/runtimes/__init__.py
+COPY runtimes/openevolve /usr/local/lib/python3.12/site-packages/runtimes/openevolve/
+COPY <<'PY' /usr/local/bin/verify_openevolve_proof.py
+import hashlib, importlib, importlib.metadata, json, pathlib, pkgutil, sys
+from runtimes.openevolve.verify_runtime import blocked_connections
+root = pathlib.Path('/usr/local/lib/python3.12/site-packages')
+runtime = root / 'runtimes/openevolve'
+sha = lambda raw: hashlib.sha256(raw).hexdigest()
+manifest = json.loads((runtime / 'runtime-manifest.json').read_bytes())
+assert sys.flags.isolated and sys.version_info[:3] == tuple(map(int, manifest['python'].split('.')))
+for file, key in [('requirements.lock', 'requirements_sha256'), ('build-requirements.lock', 'build_requirements_sha256')]:
+    assert sha((runtime / file).read_bytes()) == manifest[key]
+expected_deps = {**manifest['dependencies'], 'openevolve': '0.4.0'}
+installed = {d.metadata['Name'].lower().replace('_', '-'): d.version for d in importlib.metadata.distributions()}
+assert {k:v for k,v in installed.items() if k != 'pip'} == expected_deps
+expected = {f['path']:f['sha256'] for f in json.loads((runtime / 'upstream-source.json').read_bytes())['files'] if f['path'].startswith('openevolve/')}
+series = ['manifest.json', 'control-manifest.json', 'observer-manifest.json', 'prompt-manifest.json', 'frontier-manifest.json', 'evaluation-manifest.json']
+proof = json.loads((runtime / 'patches/evaluation-build-proof.json').read_bytes())
+for name in series:
+    raw = (runtime / 'patches' / name).read_bytes()
+    assert sha(raw) == proof['series'][name]
+    item = json.loads(raw)
+    for patch in item['patches']:
+        assert sha((runtime / 'patches' / patch['path']).read_bytes()) == patch['sha256']
+        for f in patch['files']:
+            assert expected[f['path']] == f['before_sha256']
+            expected[f['path']] = f['after_sha256']
+actual = {p.relative_to(root).as_posix():sha(p.read_bytes()) for p in (root/'openevolve').rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+assert actual == expected
+with blocked_connections() as attempts:
+    import openevolve
+    imported = [item.name for item in pkgutil.walk_packages(openevolve.__path__, openevolve.__name__ + '.')]
+    for name in imported:
+        importlib.import_module(name)
+    adapter_modules = ['observer', 'observer_transport', 'broker_client', 'runtime_config', 'runtime_profile', 'evaluator_bridge', 'evaluator_protocol', 'contracts', 'objective', 'source', 'checkpoint_native']
+    for name in adapter_modules:
+        module = importlib.import_module('packages.openevolve_adapter.' + name)
+        assert pathlib.Path(module.__file__).resolve().is_relative_to(root)
+assert len(imported) == 47
+adapter_inventory = {p.relative_to(root).as_posix():sha(p.read_bytes()) for folder in ['packages/openevolve_adapter', 'packages/research_runtime', 'packages/tradegrad_adapter'] for p in (root/folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+adapter_inventory_sha256 = sha(json.dumps(adapter_inventory, sort_keys=True, separators=(',', ':')).encode())
+runtime_probe_inventory = {p.relative_to(root).as_posix():sha(p.read_bytes()) for p in (root/'runtimes').rglob('*.py') if '__pycache__' not in p.parts}
+runtime_probe_inventory_sha256 = sha(json.dumps(runtime_probe_inventory, sort_keys=True, separators=(',', ':')).encode())
+print(json.dumps({'schema':'mineagent.openevolve-installed-patched-proof.v1', 'upstream_commit':manifest['upstream_commit'], 'wheel_sha256':proof['wheel']['sha256'], 'isolated_python':True, 'installed_only':True, 'upstream_file_count':len(actual), 'imported_module_count':len(imported), 'adapter_modules':adapter_modules, 'adapter_inventory':adapter_inventory, 'adapter_inventory_sha256':adapter_inventory_sha256, 'runtime_probe_inventory':runtime_probe_inventory, 'runtime_probe_inventory_sha256':runtime_probe_inventory_sha256, 'socket_connect_attempts':attempts[0], 'production_admission':False, 'claim':'installed synthetic API compatibility only'}, sort_keys=True))
+PY
+ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /tmp
+USER 65532:65532
+CMD ["python", "-I", "/usr/local/bin/verify_openevolve_proof.py"]

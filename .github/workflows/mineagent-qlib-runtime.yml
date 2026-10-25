@@ -1,0 +1,106 @@
+name: MineAgent disabled Qlib installed runtime proof
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "packages/qlib_adapter/**"
+      - "packages/rdagent_adapter/**"
+      - "packages/factors/contracts.py"
+      - "packages/research_runtime/**"
+      - "runtimes/qlib/**"
+      - "runtimes/rdagent/**"
+      - "tests/qlib/**"
+      - ".github/workflows/mineagent-qlib-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-qlib-proof:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Validate closed analysis and packaging contracts without native imports
+        run: |
+          python -m pip install --require-hashes -r backend/requirements.lock
+          python -m pytest tests/qlib -q --junitxml=qlib-contracts.xml
+          python - <<'PY'
+          from xml.etree import ElementTree as ET
+          cases = list(ET.parse('qlib-contracts.xml').getroot().iter('testcase'))
+          assert len(cases) == 26
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
+          PY
+          python script/summarize_ci_junit.py qlib-contracts.xml
+      - name: Verify exact source and reproduce frozen reduced-profile wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          qlib="$RUNNER_TEMP/qlib-upstream"
+          rd="$RUNNER_TEMP/qlib-rd-upstream"
+          git init "$qlib"
+          git -C "$qlib" fetch --depth 1 https://github.com/microsoft/qlib.git 54355232463878d2eebb91fe0ee5fa7fa1f5976c
+          git -C "$qlib" checkout --detach FETCH_HEAD
+          git init "$rd"
+          git -C "$rd" fetch --depth 1 https://github.com/microsoft/RD-Agent.git 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          git -C "$rd" checkout --detach FETCH_HEAD
+          test "$(git -C "$rd" rev-parse HEAD)" = 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          mkdir -p .runtime var/qlib-proof
+          python -I runtimes/qlib/verify_build.py materialize "$qlib" --inventory runtimes/qlib/source-inventory.json --destination .runtime/qlib-source
+          python runtimes/qlib/build_runner_profile.py --source "$rd" --output .runtime/qlib-wheels
+          python runtimes/qlib/build_runner_profile.py --source "$rd" --output "$RUNNER_TEMP/qlib-wheels-repeat"
+          cmp .runtime/qlib-wheels/build-report.json "$RUNNER_TEMP/qlib-wheels-repeat/build-report.json"
+          python -I runtimes/qlib/verify_build.py profile .runtime/qlib-wheels --inventory runtimes/qlib/wheel-proof.json
+          cp .runtime/qlib-wheels/build-report.json var/qlib-proof/
+      - name: Build two fresh independent locked environments without publishing image
+        run: docker build --iidfile var/qlib-proof/image.iid -f runtimes/qlib/Dockerfile .
+      - name: Run installed-only real Qlib and RD runner proof under confinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(cat var/qlib-proof/image.iid)
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          cleanup() {
+            for file in var/qlib-proof/*.cid; do
+              [ -f "$file" ] || continue
+              cid=$(cat "$file")
+              if [[ "$cid" =~ ^[a-f0-9]{64}$ ]]; then docker rm --force "$cid" >/dev/null; fi
+            done
+          }
+          trap cleanup EXIT
+          timeout 300 docker run --cidfile var/qlib-proof/runtime.cid \
+            --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --memory 3g --pids-limit 96 --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=384m \
+            "$image" > var/qlib-proof/runtime.json
+          python -I runtimes/qlib/validate_proof.py var/qlib-proof/runtime.json
+          cid=$(cat var/qlib-proof/runtime.cid)
+          docker inspect "$cid" > var/qlib-proof/container-inspect.json
+          docker cp "$cid":/opt/mineagent-build-receipts var/qlib-proof/build-receipts
+          python - <<'PY'
+          import json, pathlib
+          item=json.loads(pathlib.Path('var/qlib-proof/container-inspect.json').read_text())[0]
+          host=item['HostConfig']
+          assert host['ReadonlyRootfs'] and host['NetworkMode']=='none'
+          assert 'ALL' in host['CapDrop'] and 'no-new-privileges' in host['SecurityOpt']
+          assert item['Config']['User']=='65532:65532'
+          assert item['State']['ExitCode']==0 and not item['State']['OOMKilled']
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mineagent-qlib-installed-proof-${{ github.sha }}
+          path: |
+            var/qlib-proof/runtime.json
+            var/qlib-proof/build-report.json
+            var/qlib-proof/image.iid
+            var/qlib-proof/build-receipts/
+            var/ci-evidence/qlib-contracts.xml
+          retention-days: 14

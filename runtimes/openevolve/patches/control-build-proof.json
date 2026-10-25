@@ -1,0 +1,14 @@
+{
+  "schema": "mineagent.openevolve-control-patch-build.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "base_series_sha256": "26997839b046fa650b2378810eca12789f40b9960d6d578e509139c0fc12f009",
+  "control_series_sha256": "c62d6e7c33ebbb0e995b6f53ce7c9ce5a7da243944d1965742164d4364858b58",
+  "wheel": {
+    "filename": "openevolve-0.4.0-py3-none-any.whl",
+    "sha256": "d240257074f1f66fa7775cda4e29b847a8075db4fb4a193aa4797d967a88a735"
+  },
+  "python": "3.12.14",
+  "controller_fault_smoke": "passed",
+  "docker": "not_run",
+  "actual_search": "not_run"
+}

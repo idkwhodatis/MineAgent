@@ -65,9 +65,13 @@ class ProjectionFile(Contract):
 
 
 class PrefixManifest(Contract):
-    schema_version: Literal["mineagent.factor-prefix-input.v1"] = (
-        "mineagent.factor-prefix-input.v1"
+    schema_version: Literal["mineagent.factor-prefix-input.v2"] = (
+        "mineagent.factor-prefix-input.v2"
     )
+    history_semantics: Literal["prior_sessions_plus_current"] = (
+        "prior_sessions_plus_current"
+    )
+    lookback_prior_sessions: int = Field(strict=True, ge=1, le=63)
     snapshot_input_sha256: Sha256
     host_cutoff: datetime
     output_event_time: datetime
@@ -88,8 +92,8 @@ class PrefixManifest(Contract):
     input_files: tuple[ProjectionFile, ...] = Field(min_length=2, max_length=2)
     candidate_image: ImageDigest
     normalizer_image: ImageDigest
-    candidate_profile: Literal["mineagent.factor-prefix-candidate.v1"] = (
-        "mineagent.factor-prefix-candidate.v1"
+    candidate_profile: Literal["mineagent.factor-prefix-candidate.v2"] = (
+        "mineagent.factor-prefix-candidate.v2"
     )
     normalizer_profile: Literal["mineagent.factor-numeric-hdf.v1"] = (
         "mineagent.factor-numeric-hdf.v1"
@@ -130,6 +134,10 @@ class PrefixManifest(Contract):
             raise ValueError("Preprocessing was not fitted by cutoff")
         if tuple(sorted(set(self.provided_sessions))) != self.provided_sessions:
             raise ValueError("Provided sessions must be unique and sorted")
+        if len(self.provided_sessions) > self.lookback_prior_sessions + 1:
+            raise ValueError(
+                "Mounted history exceeds declared prior sessions plus current"
+            )
         if self.provided_sessions[-1] != self.output_session:
             raise ValueError("Prefix ends at its declared output session")
         if self.provided_window != DateWindow(
@@ -201,9 +209,9 @@ def project_prefix(
     event = aware_utc(output_event_time)
     if (
         snapshot.definition.lookback_sessions < 1
-        or snapshot.definition.lookback_sessions > 64
+        or snapshot.definition.lookback_sessions > 63
     ):
-        raise ValueError("First prefix profile requires one to 64 mounted sessions")
+        raise ValueError("Prefix v2 requires one to 63 prior sessions plus current")
     if (
         tuple(sorted(set(calendar_sessions))) != calendar_sessions
         or output_session not in calendar_sessions
@@ -215,7 +223,7 @@ def project_prefix(
         raise ValueError("Output session is outside immutable development window")
     end = calendar_sessions.index(output_session) + 1
     sessions = calendar_sessions[
-        max(0, end - snapshot.definition.lookback_sessions) : end
+        max(0, end - (snapshot.definition.lookback_sessions + 1)) : end
     ]
     mapping = tuple(
         ListingCode(code=i, listing_id=listing)
@@ -266,6 +274,7 @@ def project_prefix(
     import hashlib
 
     manifest = PrefixManifest(
+        lookback_prior_sessions=snapshot.definition.lookback_sessions,
         snapshot_input_sha256=snapshot.sha256,
         host_cutoff=cutoff,
         output_event_time=event,

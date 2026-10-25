@@ -1,0 +1,15 @@
+**
+!runtimes/
+!runtimes/qlib/
+!runtimes/qlib/build-requirements.lock
+!runtimes/qlib/requirements.lock
+!runtimes/qlib/runner-requirements.lock
+!runtimes/qlib/verify_build.py
+!runtimes/qlib/source-inventory.json
+!runtimes/qlib/wheel-proof.json
+!.runtime/
+!.runtime/qlib-source/
+!.runtime/qlib-source/**
+!.runtime/qlib-wheels/
+!.runtime/qlib-wheels/*.whl
+!.runtime/qlib-wheels/build-report.json

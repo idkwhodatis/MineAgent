@@ -1,0 +1,19 @@
+{
+  "schema": "mineagent.openevolve-patch-series.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires": "manifest.json",
+  "patches": [
+    {
+      "path": "0002-controller-fail-stop.patch",
+      "sha256": "bfb460a9be1b4209a1ba66c96326f3e42503d631acc66ecc3ef4aba30c648c0f",
+      "files": [
+        {
+          "path": "openevolve/process_parallel.py",
+          "before_sha256": "1f2329bb2bd7dffcb36e9a88f2357b4ead24a886f717ea1ed862f6144da99378",
+          "after_sha256": "3bf469096bb0d13929e46e699e0ed15a84a2cfd01f1b5cde6eaded3d0d9e3ab5"
+        }
+      ]
+    }
+  ],
+  "scope": "Partial controller fail-stop handlers only; seed/load/frontier/durable observer callbacks remain incomplete"
+}

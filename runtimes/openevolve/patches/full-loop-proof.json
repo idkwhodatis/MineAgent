@@ -1,0 +1,23 @@
+{
+  "actual_api": "run_evolution",
+  "candidate_scopes": 4,
+  "continuation_mutations": 1,
+  "fresh_mutations": 2,
+  "model_calls": 3,
+  "network_attempts": 0,
+  "scope": "synthetic observer/transport/evaluator probe only; no durable/financial/containment acceptance",
+  "start_method": "spawn",
+  "schema": "mineagent.openevolve-synthetic-full-loop-proof.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "wheel_sha256": "dca5e1da87cb6e6ef3f41503e9e50222fda00737512ddc3466b751181b3c6085",
+  "probe_sha256": "5999f888129e2231c2393fdc6b4106a2868fce02d83952d7c99fb9c704ca159f",
+  "native_validator_sha256": "733b2b2882d61f78cddd09efd557ae21101e32e64b2bc2476391ad513eb3bda6",
+  "distinct_spawn_model_workers": 2,
+  "config_factory": "packages.openevolve_adapter.broker_client.init_client",
+  "transport": "explicit_in_memory_exchange_double",
+  "evaluator": "temporary_source_reading_synthetic_score",
+  "observer": "explicit_local_recorders",
+  "host_durability": false,
+  "financial_acceptance": false,
+  "containment_acceptance": false
+}

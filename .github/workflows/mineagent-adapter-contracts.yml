@@ -7,6 +7,7 @@ on:
     paths:
       - "packages/**"
       - "runtimes/openevolve/**"
+      - "runtimes/rdagent/**"
       - "tests/rdagent/**"
       - "tests/openevolve/**"
       - ".github/workflows/mineagent-adapter-contracts.yml"
@@ -34,7 +35,9 @@ jobs:
         run: >-
           python -m pytest tests/rdagent/test_rdagent_contracts.py
           tests/rdagent/test_rdagent_prefix.py tests/openevolve/test_contracts.py
+          tests/rdagent/test_rdagent_packaging.py
           tests/openevolve/test_runtime_provenance.py
+          tests/research_runtime/test_engine_broker_contracts.py
           tests/research_runtime/test_legacy_dispatch.py -q
           --junitxml=adapter-contracts-junit.xml
       - name: Require executed cases without skipped contracts
@@ -42,7 +45,7 @@ jobs:
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('adapter-contracts-junit.xml').getroot().iter('testcase'))
-          assert len(cases) == 99
+          assert len(cases) == 125
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
       - name: Export only bounded test outcomes

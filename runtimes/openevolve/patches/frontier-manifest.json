@@ -1,0 +1,24 @@
+{
+  "schema": "mineagent.openevolve-patch-series.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires": "prompt-manifest.json",
+  "patches": [
+    {
+      "path": "0005-contiguous-frontier-and-checkpoint-seams.patch",
+      "sha256": "27251990cbc2dbf7a80fa29570bb34a4343e26859cac4afc7e6285223527fddf",
+      "files": [
+        {
+          "path": "openevolve/process_parallel.py",
+          "before_sha256": "8f8869fefaadc064fe2636a59cb8971826a1fce227f57c6ea1d52d8d30e3a403",
+          "after_sha256": "82e41425a20a2eba642ac6ae20c48942fdcc558c94d9a32f68c923dd2d130cd0"
+        },
+        {
+          "path": "openevolve/controller.py",
+          "before_sha256": "b95798fb91add7fbbcc31e29d2b979d710c3753b1424de9ebe910b3ac8da70b6",
+          "after_sha256": "ca3deea6afc5e49dadc9f4bfa0e84c230ce54cc95f1a6f156e0374744baca986"
+        }
+      ]
+    }
+  ],
+  "scope": "Strict contiguous terminal frontier and guarded native checkpoint/load seams; host durability and containment require independent acceptance"
+}

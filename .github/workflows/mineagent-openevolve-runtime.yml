@@ -1,0 +1,158 @@
+name: MineAgent disabled OpenEvolve installed API compatibility
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "packages/openevolve_adapter/**"
+      - "packages/research_runtime/**"
+      - "packages/tradegrad_adapter/independent_results.py"
+      - "packages/tradegrad_adapter/results.py"
+      - "runtimes/openevolve/**"
+      - "tests/openevolve/**"
+      - ".github/workflows/mineagent-openevolve-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-synthetic-api:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Run pure compatibility and fail-stop contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/openevolve-proof
+          python -m pip install --require-hashes -r backend/requirements.lock
+          python -m pytest tests/openevolve/test_patch_seams.py \
+            tests/openevolve/test_checkpoint_native.py tests/openevolve/test_observer_control.py \
+            tests/openevolve/test_checkpoint_observer.py tests/openevolve/test_contracts.py \
+            -q --junitxml=var/openevolve-proof/contracts.xml
+          python - <<'PY'
+          from xml.etree import ElementTree as ET
+          cases = list(ET.parse('var/openevolve-proof/contracts.xml').getroot().iter('testcase'))
+          assert len(cases) == 94
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
+          PY
+      - name: Fetch and verify exact external source without modifying legacy source
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/openevolve-upstream"
+          git init "$source"
+          git -C "$source" fetch --depth 1 https://github.com/algorithmicsuperintelligence/openevolve.git 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc
+          git -C "$source" checkout --detach FETCH_HEAD
+          test "$(git -C "$source" rev-parse HEAD)" = 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc
+          mkdir -p .runtime
+          python runtimes/openevolve/materialize_source.py --source "$source" --destination .runtime/openevolve-source
+          python runtimes/openevolve/verify_build_inputs.py .runtime/openevolve-source
+      - name: Build exact six-patch wheel and isolated installed proof image without publishing
+        run: docker build --iidfile var/openevolve-proof/image.iid -f runtimes/openevolve/Dockerfile.operational-proof .
+      - name: Verify installed imports and actual upstream API with explicit synthetic host doubles
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=$(cat var/openevolve-proof/image.iid)
+          [[ "$image" =~ ^sha256:[a-f0-9]{64}$ ]]
+          cleanup() {
+            for file in var/openevolve-proof/*.cid; do
+              [ -f "$file" ] || continue
+              cid=$(cat "$file")
+              if [[ "$cid" =~ ^[a-f0-9]{64}$ ]]; then docker rm --force "$cid" >/dev/null; fi
+            done
+          }
+          trap cleanup EXIT
+          run_probe() {
+            name="$1"; shift
+            timeout 180 docker run --cidfile "var/openevolve-proof/$name.cid" \
+              --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+              --user 65532:65532 --memory 1g --pids-limit 64 --cpus 1 \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+              --shm-size 16m "$image" "$@" \
+              > "var/openevolve-proof/$name.stdout" 2> "var/openevolve-proof/$name.stderr"
+          }
+          run_probe installed python -I /usr/local/bin/verify_openevolve_proof.py
+          run_probe eligible python -I -m runtimes.openevolve.patches.full_loop_evaluation_smoke
+          run_probe children python -I -m runtimes.openevolve.patches.full_loop_evaluation_smoke --reject children
+          run_probe seed python -I -m runtimes.openevolve.patches.full_loop_evaluation_smoke --reject seed
+          run_probe fallback python -I -m runtimes.openevolve.patches.full_loop_evaluation_smoke --reject fallback
+          run_probe bridge python -I -m runtimes.openevolve.patches.evaluator_bridge_smoke
+          python - <<'PY'
+          import hashlib, json, pathlib
+          root = pathlib.Path('var/openevolve-proof')
+          reports = {}
+          for name in ('installed', 'eligible', 'children', 'seed', 'fallback'):
+              path = root / (name + '.stdout')
+              assert 0 < path.stat().st_size < 65536
+              reports[name] = json.loads(path.read_text().splitlines()[-1])
+          installed = reports['installed']
+          assert installed['isolated_python'] and installed['installed_only']
+          assert installed['imported_module_count'] == 47 and installed['socket_connect_attempts'] == 0
+          assert installed['wheel_sha256'] == '6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c'
+          assert installed['production_admission'] is False
+          expected_paths = set()
+          dockerfile = pathlib.Path('runtimes/openevolve/Dockerfile.operational-proof').read_text()
+          for line in dockerfile.splitlines():
+              if line.startswith('COPY packages/'):
+                  expected_paths.update(line.split()[1:-1])
+          actual_inventory = installed['adapter_inventory']
+          assert set(actual_inventory) == expected_paths
+          assert all(hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == value for name, value in actual_inventory.items())
+          assert installed['adapter_inventory_sha256'] == hashlib.sha256(json.dumps(actual_inventory, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          runtime_inventory = installed['runtime_probe_inventory']
+          expected_runtime = {'runtimes/__init__.py'} | {p.as_posix() for p in pathlib.Path('runtimes/openevolve').rglob('*.py') if '__pycache__' not in p.parts}
+          assert set(runtime_inventory) == expected_runtime
+          assert all(hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == value for name, value in runtime_inventory.items())
+          assert installed['runtime_probe_inventory_sha256'] == hashlib.sha256(json.dumps(runtime_inventory, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          eligible = reports['eligible']
+          assert eligible['actual_api'] == 'run_evolution' and eligible['start_method'] == 'spawn'
+          assert (eligible['fresh_mutations'], eligible['continuation_mutations'], eligible['model_calls'], eligible['candidate_scopes'], eligible['network_attempts']) == (2, 1, 3, 4, 0)
+          assert reports['children']['frontier'] == 2 and reports['children']['population_count'] == 1
+          assert reports['children']['model_calls'] == 2
+          assert reports['seed']['model_calls'] == reports['seed']['checkpoints'] == 0
+          assert reports['fallback']['last_frontier'] == 0
+          bridge = (root / 'bridge.stdout').read_text().strip()
+          assert bridge == 'Installed bridge probes passed: real file loader, thread context, EvaluationResult, source/grant/receipt/drift rejection, no candidate execution; synthetic host only.'
+          reports['bridge'] = {'checks_passed': True, 'claim': bridge}
+          reports['scope'] = 'synthetic API compatibility only; no durable host, financial evaluator or production containment acceptance'
+          (root / 'report.json').write_text(json.dumps(reports, indent=2) + '\n')
+          PY
+      - name: Export bounded exact-head proof artifacts
+        if: always()
+        shell: bash
+        run: |
+          python script/summarize_ci_junit.py var/openevolve-proof/contracts.xml
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path('var/openevolve-proof')
+          root.mkdir(parents=True, exist_ok=True)
+          report = {'head_sha': os.environ['GITHUB_SHA'], 'files': {}}
+          for path in sorted(root.iterdir()):
+              if path.is_file() and path.suffix in ('.stdout', '.stderr', '.xml', '.json', '.iid'):
+                  assert path.stat().st_size < 1048576
+                  report['files'][path.name] = {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'size_bytes': path.stat().st_size}
+          sanitized = pathlib.Path('var/ci-evidence/contracts.xml')
+          if sanitized.is_file():
+              report['files']['sanitized-contracts.xml'] = {'sha256': hashlib.sha256(sanitized.read_bytes()).hexdigest(), 'size_bytes': sanitized.stat().st_size}
+          (root / 'artifact-inventory.json').write_text(json.dumps(report, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: mineagent-openevolve-synthetic-runtime-${{ github.sha }}
+          path: |
+            var/openevolve-proof/report.json
+            var/openevolve-proof/artifact-inventory.json
+            var/openevolve-proof/image.iid
+            var/ci-evidence/contracts.xml
+          retention-days: 14
