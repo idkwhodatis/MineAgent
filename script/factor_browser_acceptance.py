@@ -80,6 +80,11 @@ REQUIRED_FACTOR_MIGRATION_CASES = (
     "test_factor_import_migration_refuses_concurrent_raw_admission_insert",
     "test_factor_migration_rejects_stale_repeatable_read_snapshot[library]",
     "test_factor_migration_rejects_stale_repeatable_read_snapshot[import]",
+    "test_factor_migration_refuses_locked_fk_parent[library-users]",
+    "test_factor_migration_refuses_locked_fk_parent[library-dataset_versions]",
+    "test_factor_migration_refuses_locked_fk_parent[library-strategy_versions]",
+    "test_factor_migration_refuses_locked_fk_parent[import-users]",
+    "test_factor_migration_refuses_locked_fk_parent[import-factor_objects]",
 )
 # Downgrades pass through the newest factor revisions before reaching legacy
 # evidence guards. These regressions must run in the fast factor gate too.

@@ -37,6 +37,8 @@ def downgrade():
     # Empty feature schemas may roll back without blocking legacy migrations.
     # Pending work, immutable evidence and external import dependencies never do.
     # NOWAIT table locks also exclude noncooperative/raw SQL insert races.
+    # Include FK parents: DROP removes their FK triggers and would otherwise
+    # acquire implicit blocking locks after the apparently successful preflight.
     op.execute("""
     DO $$ BEGIN
       IF current_setting('transaction_isolation') <> 'read committed'
@@ -45,7 +47,8 @@ def downgrade():
       THEN RAISE EXCEPTION 'Factor import migration requires quiescent maintenance admission'; END IF;
     END $$;
     LOCK TABLE factor_import_admissions, factor_import_envelopes,
-      factor_versions, feature_snapshots, data_usage_exposures, dataset_versions
+      factor_versions, feature_snapshots, data_usage_exposures, dataset_versions,
+      users, factor_objects
       IN ACCESS EXCLUSIVE MODE NOWAIT;
     DO $$ BEGIN
       IF EXISTS (SELECT 1 FROM factor_import_admissions)

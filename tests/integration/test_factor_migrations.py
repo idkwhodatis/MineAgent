@@ -293,10 +293,11 @@ def test_factor_library_migration_refuses_concurrent_insert(migrated_engine, own
             )
         )
         with (
-            pytest.raises(DBAPIError, match="could not obtain lock"),
+            pytest.raises(DBAPIError) as failure,
             migrated_engine.begin() as connection,
         ):
             migration(connection, "011_note_pin_trigger")
+        assert failure.value.orig.sqlstate == "55P03"
     assert revision(migrated_engine) == before
     with Session(migrated_engine) as session:
         assert session.get(Factor, factor_id) is not None
@@ -467,10 +468,11 @@ def test_factor_import_migration_refuses_concurrent_raw_admission_insert(
             )
         )
         with (
-            pytest.raises(DBAPIError, match="could not obtain lock"),
+            pytest.raises(DBAPIError) as failure,
             migrated_engine.begin() as connection,
         ):
             migration(connection, "012_factor_library")
+        assert failure.value.orig.sqlstate == "55P03"
     assert revision(migrated_engine) == before
     with Session(migrated_engine) as session:
         assert session.get(FactorImportAdmission, admission_id).status == "queued"
@@ -534,3 +536,42 @@ def test_factor_migration_rejects_stale_repeatable_read_snapshot(
             )
             is not None
         )
+
+
+@pytest.mark.parametrize(
+    "stage,parent",
+    [
+        ("library", "users"),
+        ("library", "dataset_versions"),
+        ("library", "strategy_versions"),
+        ("import", "users"),
+        ("import", "factor_objects"),
+    ],
+    ids=[
+        "library-users",
+        "library-dataset_versions",
+        "library-strategy_versions",
+        "import-users",
+        "import-factor_objects",
+    ],
+)
+def test_factor_migration_refuses_locked_fk_parent(migrated_engine, stage, parent):
+    target = "011_note_pin_trigger" if stage == "library" else "012_factor_library"
+    if stage == "library":
+        with migrated_engine.begin() as connection:
+            migration(connection, "012_factor_library")
+    before = revision(migrated_engine)
+    tables = set(inspect(migrated_engine).get_table_names())
+    # Even an otherwise-empty feature schema has FK triggers on these external
+    # parents. A raw reader holding only the parent must cause immediate busy,
+    # never an implicit DROP lock wait ending in statement_timeout (57014).
+    with migrated_engine.begin() as raw_reader:
+        raw_reader.execute(text(f"LOCK TABLE {parent} IN ACCESS SHARE MODE"))
+        with (
+            pytest.raises(DBAPIError) as failure,
+            migrated_engine.begin() as connection,
+        ):
+            migration(connection, target)
+        assert failure.value.orig.sqlstate == "55P03"
+    assert revision(migrated_engine) == before
+    assert set(inspect(migrated_engine).get_table_names()) == tables

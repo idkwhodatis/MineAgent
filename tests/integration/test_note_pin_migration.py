@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
@@ -121,9 +121,12 @@ def test_010_ambiguity_and_011_repair_preserve_pin_admission_and_history(
     probe_pin(migrated_engine, source_values, sqlstate="42702")
     assert stored_notes(migrated_engine) == before
     migrate(migrated_engine, "upgrade", "011_note_pin_trigger")
-    assert set(inspect(migrated_engine).get_table_names()) == tables
+    with migrated_engine.connect() as connection:
+        assert (
+            connection.scalar(text("SELECT version_num FROM alembic_version"))
+            == "011_note_pin_trigger"
+        )
     assert stored_notes(migrated_engine) == before
-    assert api.get(notes.exact_url(first), headers=owner_headers).json() == first
 
     # Original matching registrations remain valid. All existing owner, hash and
     # artifact metadata predicates must still reject incompatible registrations.
@@ -151,6 +154,14 @@ def test_010_ambiguity_and_011_repair_preserve_pin_admission_and_history(
             sqlstate="P0001",
         )
     assert stored_notes(migrated_engine) == before
+
+    # The repaired 011 function has now passed every original pin probe. Restore
+    # the current application head before comparing its table inventory or using
+    # its API; later additive schemas need not exist at the historical 011 target.
+    migrate(migrated_engine, "upgrade", "head")
+    assert set(inspect(migrated_engine).get_table_names()) == tables
+    assert stored_notes(migrated_engine) == before
+    assert api.get(notes.exact_url(first), headers=owner_headers).json() == first
 
     # A removed registration may be retained only by a later revision of that
     # exact same note. Another note cannot borrow the historical registration.

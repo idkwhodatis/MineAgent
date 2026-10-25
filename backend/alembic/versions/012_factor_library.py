@@ -441,9 +441,19 @@ def downgrade():
       THEN RAISE EXCEPTION 'Factor migration requires quiescent maintenance admission'; END IF;
     END $$;
     """)
+    # DROP removes FK triggers on external parents too. Prelock every referenced
+    # parent NOWAIT so those implicit DDL locks cannot wait past this admission.
     op.execute(
         "LOCK TABLE "
-        + ", ".join((*TABLES, "data_usage_exposures", "dataset_versions"))
+        + ", ".join(
+            (
+                *TABLES,
+                "data_usage_exposures",
+                "dataset_versions",
+                "users",
+                "strategy_versions",
+            )
+        )
         + " IN ACCESS EXCLUSIVE MODE NOWAIT"
     )
     occupied = " OR ".join(f"EXISTS (SELECT 1 FROM {table})" for table in TABLES)
