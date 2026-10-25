@@ -307,7 +307,7 @@ def test_neutral_cancellation_interrupts_real_retry_sleep(broker_fixture):
         time.sleep(0.1)
         with factory() as session:
             run = session.get(ResearchRun, fence.run_id)
-            run.status = "cancelling"
+            run.status = "cancel_requested"
             session.commit()
         with pytest.raises(BrokerAbort, match="fence_lost"):
             future.result(timeout=3)

@@ -38,6 +38,12 @@ REQUIRED = MappingProxyType(
             "tests/integration/test_neutral_lifecycle.py::test_neutral_real_scope_substitution_is_rejected[generation]",
             "tests/integration/test_neutral_lifecycle.py::test_neutral_resource_scope_is_not_implicitly_promoted",
             "tests/integration/test_neutral_lifecycle.py::test_neutral_database_loss_does_not_reconnect",
+            "tests/integration/test_neutral_migration.py::test_neutral_zero_argument_immutability_trigger_rejects_changed_values",
+            "tests/integration/test_neutral_migration.py::test_neutral_downgrade_prelocks_every_parent_without_wait[users]",
+            "tests/integration/test_neutral_migration.py::test_neutral_downgrade_prelocks_every_parent_without_wait[research_runs]",
+            "tests/integration/test_neutral_migration.py::test_neutral_downgrade_prelocks_every_parent_without_wait[execution_attempts]",
+            "tests/integration/test_neutral_migration.py::test_neutral_downgrade_prelocks_every_parent_without_wait[research_budget_controls]",
+            "tests/integration/test_neutral_migration.py::test_neutral_downgrade_rejects_stale_snapshot_and_preserves_new_evidence",
             "tests/integration/test_neutral_objects.py::test_neutral_real_equal_bytes_different_kinds_are_separate_and_charged",
             "tests/integration/test_neutral_objects.py::test_neutral_real_exact_republication_reuses_same_kind_object",
             "tests/integration/test_neutral_objects.py::test_neutral_real_object_identity_is_immutable[owner_id]",
@@ -116,12 +122,15 @@ REQUIRED_SOURCES = MappingProxyType(
         "postgres": frozenset(
             {
                 "tests/integration/test_neutral_lifecycle.py",
+                "tests/integration/test_neutral_migration.py",
                 "tests/integration/test_research_process_recovery.py",
                 "tests/integration/test_model_broker_accounting.py",
                 "tests/integration/test_neutral_objects.py",
             }
         ),
-        "isolation": frozenset({"tests/integration/test_research_supervisor_isolation.py"}),
+        "isolation": frozenset(
+            {"tests/integration/test_research_supervisor_isolation.py"}
+        ),
         "restore": frozenset({"tests/integration/test_neutral_restore.py"}),
     }
 )

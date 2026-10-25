@@ -59,10 +59,13 @@ BEGIN
 END $$;
 
 CREATE FUNCTION mineagent_protect_neutral() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE mutable text[] := TG_ARGV; previous text; following text; k text;
+DECLARE mutable text[] := COALESCE(TG_ARGV, ARRAY[]::text[]); previous text; following text; k text;
 BEGIN
  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Neutral evidence is append-only'; END IF;
  IF TG_OP = 'UPDATE' THEN
+  IF TG_NARGS = 0 AND NEW IS DISTINCT FROM OLD THEN
+   RAISE EXCEPTION 'Neutral immutable evidence cannot change';
+  END IF;
   IF to_jsonb(NEW) - mutable IS DISTINCT FROM to_jsonb(OLD) - mutable THEN
    RAISE EXCEPTION 'Neutral immutable identity cannot change';
   END IF;
@@ -350,8 +353,19 @@ def upgrade():
 
 def downgrade():
     # Evidence-bearing downgrades cannot erase conservative accounting or receipts.
-    for table in TABLES:
-        op.execute(f"LOCK TABLE {table} IN ACCESS EXCLUSIVE MODE")
+    op.execute("""DO $$ BEGIN
+      IF current_setting('transaction_isolation') <> 'read committed'
+      THEN RAISE EXCEPTION 'Neutral downgrade requires READ COMMITTED isolation for authoritative emptiness checks'; END IF;
+      IF NOT pg_try_advisory_xact_lock(1413960260, 1129270340)
+      THEN RAISE EXCEPTION 'Neutral migration requires quiescent maintenance admission'; END IF;
+    END $$;""")
+    # FK trigger removal takes implicit locks on parents too. Admit all of them
+    # without waiting, before checking a fresh authoritative emptiness snapshot.
+    op.execute(
+        "LOCK TABLE "
+        + ", ".join((*TABLES, "users", "research_runs", "execution_attempts"))
+        + " IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
     condition = " OR ".join(f"EXISTS(SELECT 1 FROM {table})" for table in TABLES)
     op.execute(
         f"DO $$ BEGIN IF {condition} THEN RAISE EXCEPTION 'Neutral evidence prevents destructive downgrade'; END IF; END $$"
