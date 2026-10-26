@@ -205,7 +205,7 @@ jobs:
           TRADEGRAD_INDEPENDENT_POSTGRES_REQUIRED: "1"
           TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"
           TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"
-        run: .venv-data/bin/python -m pytest tests/integration -q --junitxml=m1-m2-postgres-junit.xml
+        run: .venv-data/bin/python -m pytest tests/integration --maxfail=1 -q --junitxml=m1-m2-postgres-junit.xml
       - name: Observe disposable database capacity after real integration tests
         if: always()
         run: python script/ci_postgres_resources.py --phase after-integration

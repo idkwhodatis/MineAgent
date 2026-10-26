@@ -183,6 +183,7 @@ def test_runner_requires_process_success_and_cleanup_before_erasing_private_file
 
         def run(self, arguments, **kwargs):
             assert "--collect-only" not in arguments
+            assert "--maxfail=1" in arguments
             assert "PYTEST_ADDOPTS" not in kwargs["env"]
             assert kwargs["env"]["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] == "1"
             assert all(node in arguments for node in module.REQUIRED["isolation"])

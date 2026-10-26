@@ -525,6 +525,7 @@ def main():
                 "pytest",
                 *REQUIRED[profile],
                 "-q",
+                "--maxfail=1",
                 "-o",
                 "addopts=",
                 "--basetemp",

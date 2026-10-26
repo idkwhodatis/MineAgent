@@ -181,7 +181,7 @@ BEGIN
   SELECT * INTO op FROM {q}.research_model_operations WHERE id=m.operation_id;
   IF NOT FOUND OR {_scope("op")} IS DISTINCT FROM {sc} OR op.context_id<>s.context_id OR op.state<>'completed'
    OR op.protocol<>m.protocol
-   OR op.purpose<>CASE WHEN m.relation='continuation' THEN 'continuation' ELSE 'chat' END
+   OR op.purpose<>(CASE WHEN m.relation='continuation' THEN 'continuation' ELSE 'chat' END)
    OR op.request->>'kind' IS DISTINCT FROM 'chat' OR op.request->>'model' IS DISTINCT FROM 'fixture.rdagent.v1'
    OR op.request->'response_format' IS DISTINCT FROM '{{"type":"json_object"}}'::jsonb THEN RETURN 'operation_scope'; END IF;
   SELECT count(*) INTO count_transports FROM {q}.research_model_transports WHERE operation_id=op.id;
@@ -192,7 +192,7 @@ BEGIN
    WHERE t.operation_id=op.id AND ({_scope("t")} IS DISTINCT FROM {sc} OR {_scope("o")} IS DISTINCT FROM {sc}
     OR {_scope("br")} IS DISTINCT FROM {sc} OR {_scope("bs")} IS DISTINCT FROM {sc}
     OR t.ordinal NOT BETWEEN 1 AND count_transports OR br.purpose<>'model_transport' OR br.state<>'settled'
-    OR t.state<>CASE WHEN t.ordinal=count_transports THEN 'completed' ELSE 'failed' END
+    OR t.state<>(CASE WHEN t.ordinal=count_transports THEN 'completed' ELSE 'failed' END)
     OR o.outcome<>t.state OR o.usage IS DISTINCT FROM bs.charge OR bs.outcome<>'measured'
     OR EXISTS (SELECT 1 FROM jsonb_each(bs.charge) amount WHERE amount.value::text::numeric>(br.amounts->>amount.key)::numeric)
     OR (o.usage->>'calls')::numeric<>1 OR (br.amounts->>'calls')::numeric<>1)) THEN RETURN 'physical_transport_closure'; END IF;
@@ -213,7 +213,7 @@ BEGIN
    IF NOT FOUND OR {_scope("wp")} IS DISTINCT FROM {sc} OR
     (wp.assembly_part_id,wp.member_id,wp.outcome_id,wp.response_object_id,wp.response_object_kind,wp.response_sha256)
     IS DISTINCT FROM (ap.id,m.id,final_outcome.id,ap.response_object_id,ap.response_object_kind,ap.response_sha256)
-    OR wp.finish_reason<>CASE WHEN idx=count_members-1 THEN 'stop' ELSE 'length' END
+    OR wp.finish_reason<>(CASE WHEN idx=count_members-1 THEN 'stop' ELSE 'length' END)
     THEN RETURN 'selected_read_part'; END IF;
    part_documents:=part_documents||jsonb_build_array(to_jsonb(wp)-ARRAY['id','created_at','owner_id','run_id','attempt_id','generation','witness_id']);
   END IF;

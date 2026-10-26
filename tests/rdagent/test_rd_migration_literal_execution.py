@@ -31,7 +31,29 @@ def test_frozen_ddl_reaches_no_parameter_driver_without_reinterpretation(
     workflow = (ROOT / ".github/workflows/mineagent-adapter-contracts.yml").read_text()
     assert "tests/rdagent/test_rd_migration_literal_execution.py" in workflow
     assert "assert len(cases) == 129" in workflow
+    assert "pytest tests/integration --maxfail=1 -q" in (
+        ROOT / ".github/workflows/v1-validation.yml"
+    ).read_text()
     module = migration()
+    # PL/pgSQL's IF delimiter reader must not consume a CASE's inner THEN.
+    cases = (
+        "CASE WHEN kind='integer' THEN 'number' ELSE kind END",
+        "CASE WHEN m.relation='continuation' THEN 'continuation' ELSE 'chat' END",
+        "CASE WHEN t.ordinal=count_transports THEN 'completed' ELSE 'failed' END",
+        "CASE WHEN idx=count_members-1 THEN 'stop' ELSE 'length' END",
+    )
+    renderers = "\n".join(
+        (ROOT / name).read_text()
+        for name in (
+            "backend/app/rdagent_identity_sql.py",
+            "backend/app/rdagent_source_sql.py",
+        )
+    )
+    for expression in cases:
+        assert "(" + expression + ")" in module.UPGRADE_SQL
+        assert "(" + expression + ")" in renderers
+        assert "<>" + expression not in module.UPGRADE_SQL
+        assert "IS DISTINCT FROM " + expression not in module.UPGRADE_SQL
     # Reproduce the hosted cause: Alembic op.execute(str) coerces to text().
     assert set(text(module.UPGRADE_SQL)._bindparams) == {"0", "1"}
     assert "%" in module.UPGRADE_SQL  # Modulo/LIKE/RAISE syntax cannot be rewritten.

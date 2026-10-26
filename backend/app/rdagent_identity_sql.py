@@ -778,7 +778,7 @@ BEGIN
  END IF;
  kind:=rule->>'type'; title:=rule->>'title';
  IF kind IS NULL THEN RETURN false; END IF;
- IF jsonb_typeof(v) IS DISTINCT FROM CASE WHEN kind='integer' THEN 'number' ELSE kind END THEN RETURN false; END IF;
+ IF jsonb_typeof(v) IS DISTINCT FROM (CASE WHEN kind='integer' THEN 'number' ELSE kind END) THEN RETURN false; END IF;
  IF rule ? 'const' AND v IS DISTINCT FROM rule->'const' THEN RETURN false; END IF;
  IF rule ? 'enum' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(rule->'enum') a WHERE a.value=v) THEN RETURN false; END IF;
  CASE kind
