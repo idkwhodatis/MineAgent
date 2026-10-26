@@ -403,12 +403,90 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     ).toHaveCount(0);
     await expect(page).not.toHaveURL(/import_id=/);
     await page.goto(`/factors?import_id=${admission.id}`);
-    await expect(
-      page.getByRole("link", {
-        name: "Open exact imported factor",
-        exact: true,
-      }),
-    ).toBeVisible({ timeout: 90000 });
+    try {
+      await expect(
+        page.getByRole("link", {
+          name: "Open exact imported factor",
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 90000 });
+    } catch (error) {
+      // Private response is projected to a closed diagnostic only. Preserve the
+      // original assertion and timeout; no retry or success substitution.
+      let http = "none",
+        state = "unknown",
+        code = "none";
+      let envelope = "unknown",
+        bindings = "unknown";
+      try {
+        const observed = await request.get(
+          api(`/factor-imports/${admission.id}`),
+          {
+            headers: authorization(auth),
+            timeout: 5000,
+          },
+        );
+        http = String(observed.status());
+        const body: unknown = await observed.json().catch(() => null);
+        const record =
+          body !== null && typeof body === "object"
+            ? (body as Record<string, unknown>)
+            : undefined;
+        const states = new Set([
+          "queued",
+          "processing",
+          "succeeded",
+          "failed",
+          "blocked",
+        ]);
+        const codes = new Set([
+          "factor_import_failed",
+          "factor_import_interrupted",
+          "factor_import_fence_lost",
+          "factor_busy",
+          "factor_import_busy",
+          "factor_capacity",
+          "factor_recovery_required",
+          "factor_storage_uncertain",
+          "factor_admission_lost",
+          "factor_admission_timeout",
+          "factor_import_unavailable",
+          "factor_package_integrity",
+          "factor_package_schema",
+          "factor_origin_conflict",
+          "factor_dataset_integrity",
+          "factor_source_dataset_unresolved",
+          "factor_import_profile_limit",
+          "unauthorized",
+          "maintenance_busy",
+        ]);
+        state =
+          typeof record?.status === "string" && states.has(record.status)
+            ? record.status
+            : "unknown";
+        const rawCode = record?.error_code ?? record?.code;
+        code =
+          rawCode === undefined || rawCode === null
+            ? "none"
+            : typeof rawCode === "string" && codes.has(rawCode)
+              ? rawCode
+              : "other";
+        envelope = record
+          ? record.result_envelope_id
+            ? "yes"
+            : "no"
+          : "unknown";
+        bindings = record ? (record.local_bindings ? "yes" : "no") : "unknown";
+      } catch {
+        /* A diagnostic read failure must not hide the original failure. */
+      }
+      if (error instanceof Error) {
+        const diagnostic = `FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=${http};state=${state};code=${code};envelope=${envelope};bindings=${bindings}`;
+        error.message += `\n${diagnostic}`;
+        if (typeof error.stack === "string") error.stack += `\n${diagnostic}`;
+      }
+      throw error;
+    }
     const status = await request.get(api(`/factor-imports/${admission.id}`), {
       headers: authorization(auth),
     });

@@ -298,6 +298,51 @@ def import_retry_diagnostics(path: Path) -> list[dict]:
     return result[:16]
 
 
+def import_wait_diagnostics(path: Path) -> list[dict]:
+    """Only finite import wait states leave private reports; never response data."""
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_size > MAX_REPORT_BYTES
+    ):
+        raise ValueError("Bounded browser report required")
+    raw = path.read_bytes()
+    if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("Unsupported report framing")
+    codes = (
+        "factor_import_failed|factor_import_interrupted|factor_import_fence_lost|"
+        "factor_busy|factor_import_busy|factor_capacity|factor_recovery_required|"
+        "factor_storage_uncertain|factor_admission_lost|factor_admission_timeout|"
+        "factor_import_unavailable|factor_package_integrity|factor_package_schema|"
+        "factor_origin_conflict|factor_dataset_integrity|factor_source_dataset_unresolved|"
+        "factor_import_profile_limit|unauthorized|maintenance_busy|none|other"
+    )
+    pattern = re.compile(
+        r"FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=(none|[1-5][0-9]{2});"
+        r"state=(queued|processing|succeeded|failed|blocked|unknown);code=("
+        + codes
+        + r");envelope=(yes|no|unknown);bindings=(yes|no|unknown)(?![A-Za-z0-9_])"
+    )
+    result = []
+    for index, case in enumerate(list(ET.fromstring(raw).iter("testcase"))[:512]):
+        for failure in case:
+            if failure.tag not in {"failure", "error"}:
+                continue
+            for match in list(pattern.finditer(failure.text or ""))[:4]:
+                http, state, code, envelope, bindings = match.groups()
+                result.append(
+                    {
+                        "case_index": index,
+                        "http_status": None if http == "none" else int(http),
+                        "state": state,
+                        "code": code,
+                        "envelope": envelope,
+                        "bindings": bindings,
+                    }
+                )
+    return result[:16]
+
+
 def validated_source(source, root):
     if (
         source.get("GITHUB_ACTIONS") != "true"
@@ -438,6 +483,10 @@ def exercise(owner, root, source, private, node):
             print(
                 "FACTOR_IMPORT_RETRY_DIAGNOSTICS:"
                 + json.dumps(import_retry_diagnostics(report), sort_keys=True)
+            )
+            print(
+                "FACTOR_IMPORT_WAIT_DIAGNOSTICS:"
+                + json.dumps(import_wait_diagnostics(report), sort_keys=True)
             )
             summarize(report, evidence_path(root, source))
     verify_report(report, "browser-import" if imports else "browser")

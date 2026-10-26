@@ -343,3 +343,40 @@ def test_import_retry_diagnostics_export_only_closed_states(tmp_path):
     path.write_text("<!DOCTYPE x><testsuite/>")
     with pytest.raises(ValueError):
         import_retry_diagnostics(path)
+
+    # Wait failures are a separate projection, never an excuse to export the
+    # private status response, identity, source or raw Playwright failure.
+    from script.factor_browser_acceptance import import_wait_diagnostics
+
+    failure.text = (
+        "private-token private-source private-uuid "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=200;state=blocked;code=factor_capacity;envelope=no;bindings=no "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=none;state=unknown;code=none;envelope=unknown;bindings=unknown "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=200;state=private-secret;code=none;envelope=no;bindings=no "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=200;state=failed;code=private-secret;envelope=no;bindings=no "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=999;state=failed;code=none;envelope=no;bindings=no "
+        "FACTOR_IMPORT_WAIT_DIAGNOSTIC_V1:http=200;state=failed;code=none;envelope=no;bindings=no_private"
+    )
+    ET.ElementTree(root).write(path)
+    assert import_wait_diagnostics(path) == [
+        {
+            "case_index": 0,
+            "http_status": 200,
+            "state": "blocked",
+            "code": "factor_capacity",
+            "envelope": "no",
+            "bindings": "no",
+        },
+        {
+            "case_index": 0,
+            "http_status": None,
+            "state": "unknown",
+            "code": "none",
+            "envelope": "unknown",
+            "bindings": "unknown",
+        },
+    ]
+    assert "private" not in str(import_wait_diagnostics(path))
+    path.write_text("<!DOCTYPE x><testsuite/>")
+    with pytest.raises(ValueError):
+        import_wait_diagnostics(path)
