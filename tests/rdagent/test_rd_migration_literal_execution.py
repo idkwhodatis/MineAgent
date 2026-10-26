@@ -123,5 +123,42 @@ def test_frozen_ddl_reaches_no_parameter_driver_without_reinterpretation(
                 "maintenance retained",
                 'SET LOCAL search_path = "public", pg_catalog',
             ]
+            # Exercise the exact standalone fixture calls at the same DBAPI
+            # boundary; a raw percent modulo is not a psycopg placeholder.
+            from psycopg import ProgrammingError
+            from psycopg._queries import PostgresQuery
+            from psycopg.adapt import Transformer
+
+            from backend.app import rdagent_canonical_sql, rdagent_identity_sql
+
+            for name, renderer in (
+                ("test_rdagent_canonical_postgres.py", rdagent_canonical_sql),
+                ("test_rdagent_identity_postgres.py", rdagent_identity_sql),
+            ):
+                fixture_path = ROOT / "tests/integration" / name
+                calls = [
+                    node
+                    for node in ast.walk(ast.parse(fixture_path.read_text()))
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "exec_driver_sql"
+                ]
+                assert len(calls) == 1
+                expression = ast.fix_missing_locations(ast.Expression(calls[0]))
+                eval(  # Exact trusted fixture expression only.
+                    compile(expression, str(fixture_path), "eval"),
+                    {
+                        "connection": connection,
+                        "render_sql": renderer.render_sql,
+                        "schema": "public",
+                    },
+                )
+                statement = renderer.render_sql("public")
+                assert received[-1] == statement
+                PostgresQuery(Transformer()).convert(statement, None)
+            with pytest.raises(ProgrammingError, match="placeholders"):
+                PostgresQuery(Transformer()).convert(
+                    rdagent_canonical_sql.render_sql("public"), {}
+                )
     finally:
         engine.dispose()
