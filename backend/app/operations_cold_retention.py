@@ -158,10 +158,20 @@ def exclusive_maintenance(database: PostgresDatabase, storage_root: Path):
 def _inventory(database, root, policy, limits, deadline, now):
     snapshot = database.source_snapshot(limits)
     keys = _snapshot_manifest_keys(snapshot, limits)
-    first = _scan(root, keys, limits, deadline)
+    first = _scan(
+        root,
+        keys,
+        limits,
+        deadline,
+        research_schema=(snapshot.get("research_closure") or {}).get("schema_version"),
+    )
     protected, trees = _protected(snapshot, first[0], first[2], deadline)
     if snapshot != database.source_snapshot(limits) or first != _scan(
-        root, keys, limits, deadline
+        root,
+        keys,
+        limits,
+        deadline,
+        research_schema=(snapshot.get("research_closure") or {}).get("schema_version"),
     ):
         raise RetentionError("References or storage changed during cold inspection")
     cutoff = (
@@ -427,7 +437,13 @@ def cold_retention(
                     report["retained_files"] -= 1
                 # All survivors, reference bytes and manifests must be identical.
                 final = _scan(
-                    root, _snapshot_manifest_keys(snapshot, limits), limits, deadline
+                    root,
+                    _snapshot_manifest_keys(snapshot, limits),
+                    limits,
+                    deadline,
+                    research_schema=(snapshot.get("research_closure") or {}).get(
+                        "schema_version"
+                    ),
                 )
                 deleted_paths = {entry["path"] for entry in candidates}
                 remaining = {

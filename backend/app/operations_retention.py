@@ -115,6 +115,16 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             if capabilities.research_closure_schema is not None
             else set()
         )
+        | (
+            {"rd_source_closure"}
+            if capabilities.rd_source_closure_schema is not None
+            else set()
+        )
+        | (
+            {"native_closure"}
+            if capabilities.native_closure_schema is not None
+            else set()
+        )
         or snapshot["schema_revision"] not in REVISIONS
         or type(snapshot["postgres_major"]) is not int
         or not 14 <= snapshot["postgres_major"] <= 99
@@ -131,7 +141,11 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
         for row in group:
             if type(row) is not dict or not {"path", "sha256"} <= set(row):
                 raise RetentionError("Unknown database reference shape")
-            _key(row["path"], storage=True)
+            _key(
+                row["path"],
+                storage=True,
+                research_schema=capabilities.research_closure_schema,
+            )
             if not isinstance(row["sha256"], str) or not HEX.fullmatch(row["sha256"]):
                 raise RetentionError("Invalid immutable reference hash")
             if "size_bytes" in row and (
@@ -141,7 +155,13 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
     for item in snapshot["datasets"]:
         if type(item.get("manifest")) is not dict:
             raise RetentionError("Unknown dataset manifest shape")
-        keys.add(_key(item["path"] + "/manifest.json", storage=True))
+        keys.add(
+            _key(
+                item["path"] + "/manifest.json",
+                storage=True,
+                research_schema=capabilities.research_closure_schema,
+            )
+        )
     keys.update(item["path"] for item in snapshot["checkpoints"])
     if "factor_closure" in snapshot:
         try:
@@ -150,7 +170,13 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
                 raise RetentionError("Factor closure revision mismatch")
             for obj in snapshot["factor_closure"]["tables"]["factor_objects"]:
                 if obj["object_kind"] == "snapshot_manifest":
-                    keys.add(_key(obj["storage_key"], storage=True))
+                    keys.add(
+                        _key(
+                            obj["storage_key"],
+                            storage=True,
+                            research_schema=capabilities.research_closure_schema,
+                        )
+                    )
             objects = {
                 obj["id"]: obj
                 for obj in snapshot["factor_closure"]["tables"]["factor_objects"]
@@ -162,6 +188,7 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
                     _key(
                         objects[envelope["archive_object_id"]]["storage_key"],
                         storage=True,
+                        research_schema=capabilities.research_closure_schema,
                     )
                 )
         except (KeyError, TypeError):
@@ -180,10 +207,37 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             raise RetentionError(
                 "Invalid neutral research manifest inventory"
             ) from None
+    if "rd_source_closure" in snapshot:
+        from backend.app.rdagent_backup import manifest_keys as rd_keys
+
+        try:
+            if (
+                snapshot["rd_source_closure"]["schema_version"]
+                != capabilities.rd_source_closure_schema
+            ):
+                raise ValueError("RD source closure revision mismatch")
+            keys.update(
+                rd_keys(snapshot["rd_source_closure"], snapshot["factor_closure"])
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise RetentionError("Invalid RD source manifest inventory") from None
+    from backend.app.native_operations import native_manifest_keys
+
+    try:
+        keys.update(native_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid native HDF manifest inventory") from None
     return keys
 
 
-def _scan(root: Path, manifest_keys: set[str], limits: BackupLimits, deadline: float):
+def _scan(
+    root: Path,
+    manifest_keys: set[str],
+    limits: BackupLimits,
+    deadline: float,
+    *,
+    research_schema=None,
+):
     """Read only through pinned, no-follow directory descriptors; bound all work."""
     files, directories, manifests = {}, {}, {}
     total_bytes = manifest_bytes = 0
@@ -201,7 +255,9 @@ def _scan(root: Path, manifest_keys: set[str], limits: BackupLimits, deadline: f
             for child in children:
                 _deadline(deadline)
                 key = _key(
-                    f"{prefix}/{child.name}" if prefix else child.name, storage=True
+                    f"{prefix}/{child.name}" if prefix else child.name,
+                    storage=True,
+                    research_schema=research_schema,
                 )
                 initial = os.stat(child.name, dir_fd=fd, follow_symlinks=False)
                 if stat.S_ISDIR(initial.st_mode):
@@ -320,11 +376,12 @@ def _protected(snapshot, files, manifests, deadline):
     Retain whole dataset/checkpoint subtrees, not merely enumerated files. All
     other non-temporary objects are retained even when they have no DB pointer.
     """
+    research_schema = (snapshot.get("research_closure") or {}).get("schema_version")
     exact, trees = set(), set()
 
     def check(key, sha, size=None):
         _deadline(deadline)
-        _key(key, storage=True)
+        _key(key, storage=True, research_schema=research_schema)
         entry = files.get(key)
         if (
             not isinstance(sha, str)
@@ -374,6 +431,47 @@ def _protected(snapshot, files, manifests, deadline):
     except (ValueError, TypeError, KeyError, AttributeError):
         raise RetentionError(
             "Neutral research retention closure failed verification"
+        ) from None
+    if "rd_source_closure" in snapshot:
+        from backend.app.rdagent_backup import validate_closure as validate_rd_source
+
+        def read_rd_bytes(key, sha, maximum):
+            check(key, sha)
+            raw = manifests[key]
+            if len(raw) > maximum or hashlib.sha256(raw).hexdigest() != sha:
+                raise ValueError("RD retention bytes differ")
+            return raw
+
+        try:
+            validate_rd_source(
+                snapshot["rd_source_closure"],
+                snapshot["research_closure"],
+                snapshot["factor_closure"],
+                read_rd_bytes,
+                100_000,
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise RetentionError(
+                "RD source retention closure failed verification"
+            ) from None
+    from backend.app.native_operations import validate_native_snapshot
+
+    try:
+        capabilities = capabilities_for(snapshot.get("schema_revision"))
+        validate_native_snapshot(
+            snapshot,
+            capabilities,
+            check,
+            lambda key: _json_manifest(manifests[key]),
+            100_000,
+            inventory=list(files.values()),
+        )
+        if capabilities.native_closure_schema is not None:
+            # No native GC authority: retain journals, staging and opaque orphans.
+            trees.add("factors")
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Native HDF retention closure failed verification"
         ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
@@ -449,13 +547,29 @@ def preview_retention(
         # supported schema, stopped attempts/evaluators, no imports/queue leases.
         snapshot = database.source_snapshot(limits)
         manifest_keys = _snapshot_manifest_keys(snapshot, limits)
-        first = _scan(root, manifest_keys, limits, deadline)
+        first = _scan(
+            root,
+            manifest_keys,
+            limits,
+            deadline,
+            research_schema=(snapshot.get("research_closure") or {}).get(
+                "schema_version"
+            ),
+        )
         protected, trees = _protected(snapshot, first[0], first[2], deadline)
         second_snapshot = database.source_snapshot(limits)
         _snapshot_manifest_keys(second_snapshot, limits)
         if snapshot != second_snapshot:
             raise RetentionError("Database references changed during preview")
-        second = _scan(root, manifest_keys, limits, deadline)
+        second = _scan(
+            root,
+            manifest_keys,
+            limits,
+            deadline,
+            research_schema=(snapshot.get("research_closure") or {}).get(
+                "schema_version"
+            ),
+        )
         if first != second:
             raise RetentionError("Storage changed during preview")
         _deadline(deadline)

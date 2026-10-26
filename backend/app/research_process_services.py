@@ -17,12 +17,15 @@ from packages.research_runtime.process_contracts import (
     canonical,
     digest,
 )
+from packages.research_runtime.process_persistence_codec import (
+    ROW_FIELDS,
+    encode_row,
+    require_persistable,
+)
 
 
 def as_admission(row):
-    return ProcessAdmission(
-        **{name: getattr(row, name) for name in ProcessAdmission.__dataclass_fields__}
-    )
+    return require_persistable({name: getattr(row, name) for name in ROW_FIELDS})
 
 
 def admit_unit(
@@ -88,7 +91,7 @@ def admit_unit(
         # A caller must reconcile the persisted unit; returning existing admission
         # is not authorization to repeat a physical launch.
         raise ProcessError("research_process_already_admitted")
-    row = ResearchProcessAdmission(**admission.__dict__)
+    row = ResearchProcessAdmission(**encode_row(admission))
     session.add(row)
     session.flush()
     session.add(
@@ -252,6 +255,11 @@ def reconcile_attempt_units(session, run_id, attempt_id, generation):
     ).all()
     stopped = 0
     for row in rows:
+        if row.schema_version == "mineagent.process-admission.v2":
+            from backend.app.numeric_process_services import numeric_stop_committed
+
+            stopped += int(numeric_stop_committed(session, row))
+            continue
         state = session.get(ResearchProcessState, row.id)
         stop = session.scalar(
             select(ResearchProcessReceipt).where(

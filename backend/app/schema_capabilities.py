@@ -16,6 +16,8 @@ class SchemaCapabilities:
     factor_closure_schema: str | None = None
     factor_imports: bool = False
     research_closure_schema: str | None = None
+    rd_source_closure_schema: str | None = None
+    native_closure_schema: str | None = None
 
 
 SCHEMA_CAPABILITIES = MappingProxyType(
@@ -72,6 +74,41 @@ SCHEMA_CAPABILITIES = MappingProxyType(
             factor_closure_schema="mineagent.factor-restore-closure.v2",
             factor_imports=True,
             research_closure_schema="mineagent.research-restore-closure.v1",
+        ),
+        "017_numeric_process_boundary": SchemaCapabilities(
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v3",
+        ),
+        "016_process_versioning": SchemaCapabilities(
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v2",
+        ),
+        "018_rd_source_persistence": SchemaCapabilities(
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v4",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v1",
+        ),
+        "019_native_hdf_storage": SchemaCapabilities(
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v4",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v1",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v1",
         ),
     }
 )

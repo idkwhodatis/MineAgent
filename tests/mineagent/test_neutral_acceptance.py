@@ -204,54 +204,38 @@ def test_runner_requires_process_success_and_cleanup_before_erasing_private_file
 
 
 def test_every_authored_real_case_is_pinned_in_exact_profile():
-    """Static collection parity prevents adding a test but omitting its gate."""
-    import ast
-    import itertools
+    """Compare actual pytest IDs, including shared corpus/derived parameters.
+
+    Collection does not execute fixtures, create a database, or satisfy any
+    PostgreSQL/isolation/restore acceptance. Their no-skip gates remain separate.
+    """
+    import subprocess
+    import sys
 
     from script.neutral_acceptance import REQUIRED, REQUIRED_SOURCES
 
     root = Path(__file__).resolve().parents[2]
-    for profile, sources in REQUIRED_SOURCES.items():
-        actual = set()
-        for source in sources:
-            tree = ast.parse((root / source).read_text())
-            for node in tree.body:
-                if not isinstance(
-                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
-                ) or not node.name.startswith("test_"):
-                    continue
-                parameters = []
-                for decorator in node.decorator_list:
-                    if (
-                        not isinstance(decorator, ast.Call)
-                        or not isinstance(decorator.func, ast.Attribute)
-                        or decorator.func.attr != "parametrize"
-                    ):
-                        continue
-                    values = ast.literal_eval(decorator.args[1])
-                    ids = next(
-                        (
-                            ast.literal_eval(keyword.value)
-                            for keyword in decorator.keywords
-                            if keyword.arg == "ids"
-                        ),
-                        None,
-                    )
-                    if ids is None:
-                        assert all(isinstance(value, (str, int)) for value in values), (
-                            "Pin explicit ids for complex parametrization"
-                        )
-                        ids = [str(value) for value in values]
-                    parameters.append(ids)
-                suffixes = (
-                    [""]
-                    if not parameters
-                    else [
-                        "[" + "-".join(values) + "]"
-                        for values in itertools.product(*reversed(parameters))
-                    ]
-                )
-                actual.update(source + "::" + node.name + suffix for suffix in suffixes)
+    sources = sorted(set().union(*REQUIRED_SOURCES.values()))
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", *sources, "--collect-only", "-q"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert collected.returncode == 0, "Required real-test collection failed"
+    assert len(collected.stdout.encode()) <= 2_000_000
+    nodes = [
+        line
+        for line in collected.stdout.splitlines()
+        if any(line.startswith(source + "::") for source in sources)
+    ]
+    assert len(nodes) == len(set(nodes)), "Duplicate required test identity"
+    for profile, profile_sources in REQUIRED_SOURCES.items():
+        actual = {
+            node for node in nodes if node.split("::", 1)[0] in profile_sources
+        }
         assert actual == set(REQUIRED[profile])
 
 

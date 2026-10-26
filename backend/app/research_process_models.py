@@ -16,6 +16,8 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.models import Base, utcnow
+from backend.app.process_admission_ddl_draft import GRAMMAR, HASHES
+from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE as PROFILE_GATE
 
 
 class ResearchProcessAdmission(Base):
@@ -34,7 +36,9 @@ class ResearchProcessAdmission(Base):
     input_sha256: Mapped[str] = mapped_column(String(64))
     reservation_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     image_id: Mapped[str] = mapped_column(String(71))
-    ticket_sha256: Mapped[str] = mapped_column(String(64))
+    schema_version: Mapped[str] = mapped_column(String(40))
+    ipc_policy: Mapped[str] = mapped_column(String(20))
+    ticket_sha256: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
@@ -75,14 +79,9 @@ class ResearchProcessAdmission(Base):
         CheckConstraint(
             "generation > 0 AND launch_ordinal > 0", name="ck_research_process_ordinals"
         ),
-        CheckConstraint(
-            "role = 'neutral_fixture' AND profile = 'neutral_fixture.v1'",
-            name="ck_research_process_profile",
-        ),
-        CheckConstraint(
-            "input_sha256 ~ '^[a-f0-9]{64}$' AND ticket_sha256 ~ '^[a-f0-9]{64}$' AND image_id ~ '^sha256:[a-f0-9]{64}$'",
-            name="ck_research_process_hashes",
-        ),
+        CheckConstraint(GRAMMAR, name="ck_process_versioned_grammar"),
+        CheckConstraint(HASHES, name="ck_process_versioned_hashes"),
+        CheckConstraint(PROFILE_GATE, name="ck_process_v2_unregistered"),
     )
 
 
@@ -104,6 +103,16 @@ class ResearchProcessReceipt(Base):
     )
     __table_args__ = (
         UniqueConstraint("admission_id", "kind"),
+        UniqueConstraint(
+            "owner_id",
+            "run_id",
+            "attempt_id",
+            "generation",
+            "admission_id",
+            "id",
+            "kind",
+            name="uq_process_receipt_scoped_kind",
+        ),
         ForeignKeyConstraint(
             ["owner_id", "run_id", "attempt_id", "generation", "admission_id"],
             [
@@ -115,7 +124,7 @@ class ResearchProcessReceipt(Base):
             ],
         ),
         CheckConstraint(
-            "kind IN ('launch_intent','launch_identity','stop')",
+            "kind IN ('launch_intent','launch_identity','stop','extraction')",
             name="ck_research_process_receipt_kind",
         ),
         CheckConstraint(

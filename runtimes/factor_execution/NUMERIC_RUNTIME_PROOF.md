@@ -88,3 +88,37 @@ Ptrace/signal/protected-FD probes, detached grandchildren, numeric no-reader and
 collector-loss remain open; the stdlib proof does not substitute for these numeric
 cases. Neither pure tests nor local whitelisted HDF constructor checks establish
 actual Docker execution. The ordinary registry remains closed.
+
+## Separate native-loaded containment matrix (hosted execution still required)
+
+Four additional fixed candidate sources import installed NumPy+h5py before any
+probe, in the unchanged credential-dropped numeric child. The tree-quiescence
+case attempts root UID/GID regain, signalling/ptracing protected PID1, opening
+its memory/FD directory and inspecting inherited descriptors. It then forks three
+real detached descendants. Host docker-top observations require four live
+UID65533 processes, one exact parent, three direct children, distinct sessions,
+same private PID namespace and pinned kernel start identities. The known-source
+completion marker is accepted only in the protected post-ECHILD frame; every
+observed descendant must ultimately disappear. A separate tree-deadline case
+keeps those native-loaded processes alive until the original deadline rather
+than claiming graceful parent completion as deadline enforcement.
+
+The full16MiB unread-stream and disconnected-primary-collector cases both require
+the actual protected cap0-root exporter (not a candidate-supplied helper name) to
+remain live in two kernel observations0.25s apart, after all UID65533 processes
+are gone. For no_reader, the collector is not closed until exact pinned kernel
+identities are exited/zombie; DockerStopped124 and final identity absence must
+still follow within the same original8+1second bound. For collector_disconnected,
+the real primary attach connection is closed after the live exporter observation;
+this is connection loss, not a claim that a separate collector process was killed.
+The live-exporter observation is not a kernel blocked-wchan proof.
+No output/child-exit/quiescence frame is claimed for unread or disconnected modes.
+The unrelated host sibling must survive in every case. PID1/runtime privileges,
+seccomp, mounts and output caps are unchanged; the driver alone gains observations.
+
+The backpressure cases concern the candidate's16MiB ABI. The fixed normalizer is
+bounded to10,000rows; its much smaller output may fit daemon buffers, so this
+matrix deliberately does NOT claim a blocked normalizer exporter. Existing
+same-image positive/negative normalizer units still require original deadlines.
+These fixtures neither establish native storage/publication/DB closure nor open
+production registration. No fixture's candidate main is executed on the host.

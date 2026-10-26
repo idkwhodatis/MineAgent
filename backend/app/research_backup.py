@@ -18,6 +18,9 @@ from sqlalchemy import text
 from backend.app.schema_capabilities import capabilities_for
 
 SCHEMA = "mineagent.research-restore-closure.v1"
+SCHEMA_V2 = "mineagent.research-restore-closure.v2"
+SCHEMA_V3 = "mineagent.research-restore-closure.v3"
+SCHEMA_V4 = "mineagent.research-restore-closure.v4"
 NAMESPACES = frozenset({"research-objects", "research-processes"})
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 # Literal field inventories are intentionally not derived from ORM reflection:
@@ -38,6 +41,28 @@ FIELDS = {
     "research_process_receipts": "id owner_id run_id attempt_id generation admission_id kind payload payload_sha256 created_at",
     "research_process_states": "admission_id owner_id run_id attempt_id generation status updated_at",
 }
+FIELDS_V2 = {
+    **FIELDS,
+    "research_process_admissions": FIELDS["research_process_admissions"]
+    + " schema_version ipc_policy",
+}
+
+FIELDS_V4 = {
+    **FIELDS_V2,
+    "research_model_operations": FIELDS_V2["research_model_operations"] + " protocol",
+}
+
+
+def closure_fields(schema):
+    if schema == SCHEMA:
+        return FIELDS
+    if schema == SCHEMA_V4:
+        return FIELDS_V4
+    if schema in {SCHEMA_V2, SCHEMA_V3}:
+        return FIELDS_V2
+    raise ValueError("Unsupported neutral research closure")
+
+
 PRIMARY_KEYS = {
     "research_object_outcomes": "publication_id",
     "research_process_states": "admission_id",
@@ -59,13 +84,19 @@ def validate_absence(inventory):
         raise ValueError("Neutral files require a neutral closure capability")
 
 
-def validate_path(key):
+def validate_path(key, *, schema=None):
     """Closed file AND directory prefixes, including empty directory inventory."""
     from packages.research_runtime.object_identity import (
         OBJECT_KINDS,
         parse_storage_key,
     )
 
+    if schema == SCHEMA_V4:
+        from packages.rdagent_adapter.object_identity import KIND, parse_storage_key
+
+        OBJECT_KINDS = {**OBJECT_KINDS, KIND: ("json", "application/json")}
+    elif schema not in {None, SCHEMA, SCHEMA_V2, SCHEMA_V3}:
+        raise ValueError("Unsupported research path grammar revision")
     parts = key.split("/")
     if parts[0] not in NAMESPACES:
         return
@@ -86,16 +117,28 @@ def validate_path(key):
     _uuid(parts[2])
     if len(parts) == 3:
         return
+    if parts[3] == "output":
+        if len(parts) == 4 or (
+            len(parts) == 5 and parts[4] in {"result.h5", "values.parquet"}
+        ):
+            return
+        raise ValueError("Unknown numeric output")
     if parts[3] != "control":
         raise ValueError("Unknown or active neutral process directory")
     if len(parts) == 4:
         return
-    if len(parts) != 5 or parts[4] not in {"launch.json", "identity.json", "stop.json"}:
+    if len(parts) != 5 or parts[4] not in {
+        "launch.json",
+        "identity.json",
+        "stop.json",
+        "extraction.json",
+    }:
         raise ValueError("Unknown neutral process journal")
 
 
 def read_closure(connection, maximum_rows, *, revision, maximum_bytes=32_000_000):
-    if capabilities_for(revision).research_closure_schema != SCHEMA:
+    schema = capabilities_for(revision).research_closure_schema
+    if schema not in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4}:
         raise ValueError("Unsupported neutral research closure capability")
     count = size = 0
 
@@ -132,7 +175,7 @@ def read_closure(connection, maximum_rows, *, revision, maximum_bytes=32_000_000
         ),
     }
     closure = {
-        "schema_version": SCHEMA,
+        "schema_version": schema,
         "tables": tables,
         "external_bindings": external,
     }
@@ -150,7 +193,7 @@ def _indexes(closure, maximum_rows):
     if (
         type(closure) is not dict
         or set(closure) != {"schema_version", "tables", "external_bindings"}
-        or closure["schema_version"] != SCHEMA
+        or closure["schema_version"] not in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4}
     ):
         raise ValueError("Unsupported neutral research closure")
     tables, external = closure["tables"], closure["external_bindings"]
@@ -162,7 +205,7 @@ def _indexes(closure, maximum_rows):
     ):
         raise ValueError("Incomplete neutral research closure")
     expected = {
-        **FIELDS,
+        **closure_fields(closure["schema_version"]),
         "runs": "id owner_id generation purpose engine status",
         "attempts": "id owner_id run_id generation status sandbox_stopped finished_at",
     }
@@ -189,6 +232,12 @@ def _indexes(closure, maximum_rows):
                 raise ValueError("Invalid neutral closure generation")
             index[row[key]] = row
         indexes[name] = index
+    if closure["schema_version"] not in {SCHEMA_V3, SCHEMA_V4} and any(
+        row.get("schema_version", "mineagent.process-admission.v1")
+        != "mineagent.process-admission.v1"
+        for row in tables["research_process_admissions"]
+    ):
+        raise ValueError("Numeric process requires closure v3")
     terminal = {"paused", "cancelled", "failed", "interrupted", "succeeded"}
     if any(row["status"] not in terminal for row in external["runs"]):
         raise ValueError("Active runs cannot enter neutral cold closure")
@@ -214,8 +263,38 @@ def _indexes(closure, maximum_rows):
                     )
                 ):
                     raise ValueError("Missing or substituted neutral run/attempt")
-                if run["purpose"] != "legacy_strategy" or run["engine"] != "legacy":
-                    raise ValueError("N1 does not admit new research engines")
+                identity = (run["purpose"], run["engine"])
+                allowed = {("legacy_strategy", "legacy")}
+                if closure["schema_version"] == SCHEMA_V4:
+                    allowed.add(("factor_research", "rdagent"))
+                if identity not in allowed:
+                    raise ValueError("Versioned research identity is not admitted")
+                if (
+                    name == "research_model_operations"
+                    and closure["schema_version"] == SCHEMA_V4
+                    and (
+                        (row["protocol"] == "mineagent.neutral-model.v1")
+                        != (run["engine"] == "legacy")
+                    )
+                ):
+                    raise ValueError("Run/model protocol mismatch")
+                if (
+                    name == "research_operation_contexts"
+                    and closure["schema_version"] == SCHEMA_V4
+                ):
+                    expected_context = (
+                        "mineagent.neutral-fixture-context.v1"
+                        if run["engine"] == "legacy"
+                        else "mineagent.rdagent-context.v1"
+                    )
+                    if row["context"].get("schema_version") != expected_context:
+                        raise ValueError("Run/context protocol mismatch")
+                if (
+                    name == "research_budget_reservations"
+                    and row["purpose"] == "engine_mutation"
+                    and run["engine"] != "rdagent"
+                ):
+                    raise ValueError("Mutation reservation requires RD identity")
     return indexes
 
 
@@ -230,7 +309,11 @@ def manifest_keys(closure):
     for row in tables["research_process_admissions"]:
         keys.update(
             f"research-processes/{row['owner_id']}/{row['id']}/control/{name}.json"
-            for name in ("launch", "identity", "stop")
+            for name in (
+                ("launch", "identity", "stop", "extraction")
+                if row.get("schema_version") == "mineagent.process-admission.v2"
+                else ("launch", "identity", "stop")
+            )
         )
     return keys
 
@@ -240,11 +323,19 @@ def validate_closure(closure, check_object, read_json, maximum_rows, *, inventor
     physical = {entry["path"]: entry for entry in inventory}
     if len(physical) != len(inventory):
         raise ValueError("Duplicate physical inventory entry")
-    _validate_objects(indexes, physical, check_object, read_json)
+    _validate_objects(
+        indexes,
+        physical,
+        check_object,
+        read_json,
+        rd_source=closure["schema_version"] == SCHEMA_V4,
+    )
     _validate_processes(indexes, physical, check_object, read_json)
     from backend.app.research_broker_services import validate_accounting_closure
 
-    validate_accounting_closure(closure["tables"], indexes)
+    validate_accounting_closure(
+        closure["tables"], indexes, rd_source=closure["schema_version"] == SCHEMA_V4
+    )
     from packages.research_runtime.broker_contracts import (
         RESPONSE,
         canonical_bytes,
@@ -262,13 +353,38 @@ def validate_closure(closure, check_object, read_json, maximum_rows, *, inventor
         transport = indexes["research_model_transports"][outcome["transport_id"]]
         operation = indexes["research_model_operations"][transport["operation_id"]]
         obj = indexes["research_objects"][outcome["response_object_id"]]
-        response = RESPONSE.validate_json(
-            canonical_bytes(read_json(obj["storage_key"]))
-        )
-        validate_response(parse_request(operation["request"]), response)
+        payload = read_json(obj["storage_key"])
+        protocol = operation.get("protocol", "mineagent.neutral-model.v1")
+        if (
+            closure["schema_version"] == SCHEMA_V4
+            and protocol != "mineagent.neutral-model.v1"
+        ):
+            from packages.rdagent_adapter.persisted_broker import (
+                parse_request as versioned_request,
+            )
+            from packages.rdagent_adapter.persisted_broker import (
+                validate_response as versioned_response,
+            )
+            from packages.research_runtime.engine_broker_contracts import (
+                RDChatResponse,
+                RDEmbeddingResponse,
+            )
+
+            response_type = (
+                RDChatResponse
+                if protocol == "mineagent.rdagent-chat.v1"
+                else RDEmbeddingResponse
+            )
+            response = response_type.model_validate_json(canonical_bytes(payload))
+            versioned_response(
+                protocol, versioned_request(protocol, operation["request"]), response
+            )
+        else:
+            response = RESPONSE.validate_json(canonical_bytes(payload))
+            validate_response(parse_request(operation["request"]), response)
 
 
-def _validate_objects(indexes, physical, check, read_json):
+def _validate_objects(indexes, physical, check, read_json, *, rd_source=False):
     from packages.research_runtime.object_identity import (
         object_identity,
         parse_storage_key,
@@ -276,6 +392,13 @@ def _validate_objects(indexes, physical, check, read_json):
         validate_publication_journal,
     )
 
+    if rd_source:
+        from packages.rdagent_adapter.object_identity import (
+            object_identity,
+            parse_storage_key,
+            publication_journal,
+            validate_publication_journal,
+        )
     objects = indexes["research_objects"]
     publications = indexes["research_object_publications"]
     outcomes = indexes["research_object_outcomes"]
@@ -429,6 +552,13 @@ def _validate_processes(indexes, physical, check, read_json):
     for receipt in receipts.values():
         receipts_by_admission[receipt["admission_id"]].append(receipt)
     for row in admissions.values():
+        if row.get("schema_version") == "mineagent.process-admission.v2":
+            from backend.app.numeric_process_backup import validate_numeric_closure_unit
+
+            validate_numeric_closure_unit(
+                row, indexes, physical, check, read_json, allowed, reservation_ids
+            )
+            continue
         reservation = indexes["research_budget_reservations"].get(row["reservation_id"])
         if (
             reservation is None
@@ -482,7 +612,14 @@ def _validate_processes(indexes, physical, check, read_json):
         ):
             values[field] = UUID(values[field])
         try:
-            admission = ProcessAdmission(**values)
+            if "schema_version" in values:
+                from packages.research_runtime.process_persistence_codec import (
+                    require_persistable,
+                )
+
+                admission = require_persistable(values)
+            else:
+                admission = ProcessAdmission(**values)
             launch = journals["launch"]
             if (
                 set(launch)

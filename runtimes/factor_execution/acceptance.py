@@ -160,7 +160,28 @@ def frozen_inputs(candidate_image, normalizer_image, *, source_bytes=None):
     return prefix, dict(inputs), ns
 
 
-def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=None):
+def exercise(
+    image,
+    folder,
+    *,
+    role,
+    inventory,
+    input_bytes,
+    rejected_exit_code=None,
+    observation_mode="normal",
+):
+    if observation_mode not in (
+        "normal",
+        "tree_quiescence",
+        "tree_deadline",
+        "no_reader",
+        "collector_disconnected",
+    ):
+        raise ValueError("unknown fixed observation mode")
+    if observation_mode != "normal" and (
+        role != "candidate" or rejected_exit_code is not None
+    ):
+        raise ValueError("containment observation uses maintained candidate only")
     folder.mkdir(mode=0o755)
     inputs, hashes = {}, {}
     for destination, data in sorted(input_bytes.items()):
@@ -223,6 +244,11 @@ def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=
         args.extend(["--mount", f"type=bind,src={source},dst={destination},readonly"])
     args.extend([image, deadline])
     cid, reader, owner = "", None, None
+    sibling = subprocess.Popen(["sleep", "60"])
+    observed_tree = exporter_observed = kernel_before_close = False
+    frame_observed = stream_complete = False
+    content, observed_child_exit_code = b"", None
+    basename = "result.h5" if role == "candidate" else "values.parquet"
     try:
         cid = command(*args, timeout=remaining_command_budget(limit))
         verify_inspect(
@@ -275,46 +301,76 @@ def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=
         )
         owner.kill()
         owner.wait(timeout=1)
-        kind, payload = read_numeric_frame(reader, original)
-        require_live_numeric_frame(
-            inspect(cid, timeout=remaining_command_budget(limit)),
-            time.monotonic(),
-            original,
-        )
-        basename = "result.h5" if role == "candidate" else "values.parquet"
-        if rejected_exit_code is None:
-            if kind != 2:
-                raise AssertionError("maintained numeric fixture failed")
-            content = validate_export(payload, expected_basename=basename)
-            observed_child_exit_code = 0
-        else:
-            if kind != 3:
-                raise AssertionError("adverse numeric case exported output")
-            observed_child_exit_code = validate_rejection(
-                payload,
-                expected_basename=basename,
-                expected_exit_code=rejected_exit_code,
+        if observation_mode in ("tree_quiescence", "tree_deadline"):
+            from runtimes.factor_execution.containment_observation import observe_tree
+
+            observed.update(observe_tree(cid, leader, original, limit))
+            observed_tree = True
+        if observation_mode in ("no_reader", "collector_disconnected"):
+            from runtimes.factor_execution.containment_observation import (
+                observe_exporter,
             )
-            content = b""
-        rows = command(
-            "docker",
-            "top",
-            cid,
-            "-eo",
-            "pid,uid",
-            timeout=remaining_command_budget(limit),
-        ).splitlines()[1:]
-        if any(row.split()[1] == "65533" for row in rows):
-            raise AssertionError("numeric child survived protected quiescence")
-        observed.update(
-            {int(row.split()[0]): process_identity(int(row.split()[0])) for row in rows}
-        )
-        if any(identity is None for identity in observed.values()):
-            raise AssertionError("incomplete numeric process identity")
-        # Normal-reading case drains the entire channel and rejects later frames.
-        # The separate no-reader adversarial profile uses kernel-exit-before-close;
-        # this normal case deliberately makes no such ordering claim.
-        require_complete_numeric_stream(reader, limit)
+
+            observed.update(observe_exporter(cid, leader, original, limit))
+            exporter_observed = True
+            if observation_mode == "no_reader":
+                # A pinned exited/zombie PID cannot execute; this is NOT yet reaped.
+                wait_kernel_exit(observed, limit)
+                kernel_before_close = True
+            reader.close()
+        elif observation_mode == "tree_deadline":
+            require_complete_numeric_stream(reader, limit)
+            stream_complete = True
+        else:
+            kind, payload = read_numeric_frame(reader, original)
+            require_live_numeric_frame(
+                inspect(cid, timeout=remaining_command_budget(limit)),
+                time.monotonic(),
+                original,
+            )
+            basename = "result.h5" if role == "candidate" else "values.parquet"
+            if rejected_exit_code is None:
+                if kind != 2:
+                    raise AssertionError("maintained numeric fixture failed")
+                content = validate_export(payload, expected_basename=basename)
+                observed_child_exit_code = 0
+            else:
+                if kind != 3:
+                    raise AssertionError("adverse numeric case exported output")
+                observed_child_exit_code = validate_rejection(
+                    payload,
+                    expected_basename=basename,
+                    expected_exit_code=rejected_exit_code,
+                )
+                content = b""
+            rows = command(
+                "docker",
+                "top",
+                cid,
+                "-eo",
+                "pid,uid",
+                timeout=remaining_command_budget(limit),
+            ).splitlines()[1:]
+            if any(row.split()[1] == "65533" for row in rows):
+                raise AssertionError("numeric child survived protected quiescence")
+            observed.update(
+                {
+                    int(row.split()[0]): process_identity(int(row.split()[0]))
+                    for row in rows
+                }
+            )
+            if any(identity is None for identity in observed.values()):
+                raise AssertionError("incomplete numeric process identity")
+            # Normal-reading case drains the entire channel and rejects later frames.
+            # The separate no-reader adversarial profile uses kernel-exit-before-close;
+            # this normal case deliberately makes no such ordering claim.
+            require_complete_numeric_stream(reader, limit)
+            frame_observed = stream_complete = True
+            if observation_mode == "tree_quiescence":
+                from runtimes.factor_execution.containment_fixture import MARKER
+
+                if content != MARKER:
+                    raise AssertionError("native protection checks did not complete")
         wait_kernel_exit(observed, limit)
         while True:
             stopped = inspect(cid, timeout=remaining_command_budget(limit))
@@ -326,6 +382,8 @@ def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=
             raise AssertionError("numeric original deadline/positive stop mismatch")
         if any(process_identity(pid) == identity for pid, identity in observed.items()):
             raise AssertionError("observed numeric PID survived")
+        if sibling.poll() is not None:
+            raise AssertionError("unrelated host sibling was killed")
         for destination, source in inputs.items():
             current = Path(source).read_bytes()
             assert {
@@ -344,15 +402,25 @@ def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=
             "output_bytes": len(content),
             "positive_stop_verified": True,
             "original_deadline_verified": True,
-            "complete_output_stream_verified": True,
-            "frame_received_while_unit_alive": True,
+            "complete_output_stream_verified": stream_complete,
+            "frame_received_while_unit_alive": frame_observed,
             "launch_owner_killed": True,
             "all_observed_descendants_stopped": True,
-            "protected_quiescence_frame_verified": True,
+            "protected_quiescence_frame_verified": frame_observed,
+            "observation_mode": observation_mode,
+            "four_live_candidate_processes_observed": observed_tree,
+            "live_protected_exporter_observed_twice": exporter_observed,
+            "kernel_exit_before_reader_close_verified": kernel_before_close,
+            "primary_collector_disconnected": observation_mode
+            == "collector_disconnected",
+            "host_sibling_survived": True,
             "elapsed_seconds": elapsed,
             "exit_code": 124,
         }
     finally:
+        if sibling.poll() is None:
+            sibling.kill()
+            sibling.wait(timeout=1)
         if owner is not None and owner.poll() is None:
             owner.kill()
             owner.wait(timeout=1)

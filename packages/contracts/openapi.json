@@ -294,7 +294,11 @@
               "012_factor_library",
               "013_factor_import",
               "014_run_identity",
-              "015_neutral_primitives"
+              "015_neutral_primitives",
+              "016_process_versioning",
+              "017_numeric_process_boundary",
+              "018_rd_source_persistence",
+              "019_native_hdf_storage"
             ],
             "title": "Schema Revision",
             "type": "string"

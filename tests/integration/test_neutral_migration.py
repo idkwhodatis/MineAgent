@@ -78,7 +78,7 @@ def test_neutral_downgrade_prelocks_every_parent_without_wait(migrated_engine, p
     with migrated_engine.connect() as connection:
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "015_neutral_primitives"
+            == "019_native_hdf_storage"
         )
 
 
@@ -108,7 +108,7 @@ def test_neutral_downgrade_rejects_stale_snapshot_and_preserves_new_evidence(
         )
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "015_neutral_primitives"
+            == "019_native_hdf_storage"
         )
     with (
         pytest.raises(DBAPIError, match="Neutral evidence prevents"),

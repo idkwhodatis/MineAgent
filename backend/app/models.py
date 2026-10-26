@@ -26,6 +26,9 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+from backend.app.rdagent_persistence_ddl import RUN_CONFIG as RD_RUN_CONFIG
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -144,7 +147,7 @@ class ResearchRun(Base):
         String(40), default="legacy", server_default="legacy"
     )
     dataset_version_id: Mapped[UUID] = mapped_column(ForeignKey("dataset_versions.id"))
-    strategy_version_id: Mapped[UUID] = mapped_column(
+    strategy_version_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("strategy_versions.id")
     )
     experiment_id: Mapped[UUID | None] = mapped_column(ForeignKey("experiments.id"))
@@ -185,11 +188,11 @@ class ResearchRun(Base):
         UniqueConstraint("owner_id", "id", name="uq_research_run_owner_id"),
         CheckConstraint("generation > 0"),
         CheckConstraint(
-            "purpose = 'legacy_strategy' AND engine = 'legacy'",
+            "(purpose = 'legacy_strategy' AND engine = 'legacy') OR (purpose = 'factor_research' AND engine = 'rdagent')",
             name="ck_research_run_identity",
         ),
         CheckConstraint(
-            "mineagent_legacy_run_config(config) IS TRUE",
+            RD_RUN_CONFIG,
             name="ck_research_run_legacy_config",
         ),
         CheckConstraint(
@@ -978,9 +981,14 @@ class ResearchNoteEvidencePin(Base):
 
 
 # Register independent MineAgent tables only after legacy declarations exist.
-from backend.app import factor_models as _factor_models  # noqa: E402,F401
-from backend.app import factor_import_models as _factor_import_models  # noqa: E402,F401
+from backend.app import factor_import_models as _factor_import_models  # noqa: F401
+from backend.app import factor_models as _factor_models  # noqa: F401
 
-from backend.app import research_object_models as _research_object_models  # noqa: E402,F401
-from backend.app import research_broker_models as _research_broker_models  # noqa: E402,F401
-from backend.app import research_process_models as _research_process_models  # noqa: E402,F401
+# Revision019 native physical evidence; no runtime registration.
+from backend.app import factor_native_models as _factor_native_models  # noqa: F401
+
+# Revision018 source persistence; no engine dispatcher/launcher registration.
+from backend.app import rdagent_models as _rdagent_models  # noqa: F401
+from backend.app import research_broker_models as _research_broker_models  # noqa: F401
+from backend.app import research_object_models as _research_object_models  # noqa: F401
+from backend.app import research_process_models as _research_process_models  # noqa: F401

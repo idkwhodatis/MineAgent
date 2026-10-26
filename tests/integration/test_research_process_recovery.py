@@ -285,6 +285,8 @@ def test_process_insert_enforces_composite_scope(
         reservation_id = reservation.id
     values = {
         **admission.__dict__,
+        "schema_version": "mineagent.process-admission.v1",
+        "ipc_policy": "host_ticket",
         "id": uuid4(),
         "reservation_id": reservation_id,
         "logical_operation_id": uuid4(),

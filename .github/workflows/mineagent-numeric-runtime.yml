@@ -10,6 +10,10 @@ on:
       - "runtimes/hostile_deadline/**"
       - "packages/rdagent_adapter/**"
       - "tests/rdagent/**"
+      - "backend/**"
+      - "workers/research/numeric*"
+      - "packages/research_runtime/numeric*"
+      - "tests/integration/test_numeric*"
       - ".github/workflows/mineagent-numeric-runtime.yml"
   workflow_dispatch:
 
@@ -19,7 +23,14 @@ permissions:
 jobs:
   maintained-numeric-fixture:
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      POSTGRES_USER: tradegrad_ci
+      POSTGRES_DB: tradegrad_ci
+      DATA_PROVIDER_MODE: fixture
+      E2E_LIVE_PROVIDERS: "0"
+      MODEL_PROFILES_ENABLED: "false"
+      MINEAGENT_PERSISTED_NUMERIC_REQUIRED: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -27,6 +38,8 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+      - name: Materialize unchanged legacy compatibility sources
+        run: python script/bootstrap_tradegrad_compat.py
       - name: Install unchanged host test closure
         run: python -m pip install --require-hashes -r backend/requirements.lock
       - name: Fetch only exact existing numeric wheels
@@ -36,11 +49,11 @@ jobs:
           python -m pip download --require-hashes --only-binary=:all: --no-deps -r runtimes/factor_normalizer/requirements.lock -d .wheelhouse-factor-numeric
       - name: Validate separate disabled numeric contracts
         run: |
-          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_adverse.py tests/rdagent/test_rdagent_numeric_workflow.py -q --junitxml=var/numeric-proof/contracts.xml
+          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_adverse.py tests/rdagent/test_rdagent_numeric_containment.py tests/rdagent/test_rdagent_numeric_workflow.py -q --junitxml=var/numeric-proof/contracts.xml
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('var/numeric-proof/contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 301
+          assert len(cases) == 343
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PY
       - name: Materialize exact pinned base in local Docker daemon
@@ -88,6 +101,78 @@ jobs:
             --candidate-image "$(cat var/numeric-proof/candidate.iid)" \
             --normalizer-image "$(cat var/numeric-proof/normalizer.iid)" \
             --output var/numeric-proof/adverse-acceptance.json
+      - name: Require native-loaded descendant containment and actual unread exporter stop
+        run: |
+          python -m runtimes.factor_execution.containment_acceptance --run-maintained-containment-docker-fixtures \
+            --candidate-image "$(cat var/numeric-proof/candidate.iid)" \
+            --normalizer-image "$(cat var/numeric-proof/normalizer.iid)" \
+            --output var/numeric-proof/containment-acceptance.json
+      - name: Generate masked disposable database credentials
+        run: python script/ci_test_environment.py
+      - name: Start exact disposable PostgreSQL for composed persisted numeric gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/numeric-private
+          docker run --detach --name mineagent-numeric-postgres --cidfile "$GITHUB_WORKSPACE/var/numeric-private/postgres.cid" \
+            --label io.mineagent.ci=numeric-postgres --publish 127.0.0.1:5432:5432 \
+            --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
+            --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
+            --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
+            --health-interval 2s --health-timeout 5s --health-retries 30 postgres:18.6 >/dev/null
+          for attempt in $(seq 1 90); do
+            state=$(docker inspect --format '{{.State.Health.Status}}' mineagent-numeric-postgres)
+            if [ "$state" = healthy ]; then exit 0; fi
+            if [ "$state" = unhealthy ]; then break; fi
+            sleep 1
+          done
+          echo 'Disposable PostgreSQL was not healthy' >&2
+          exit 1
+      - name: Require actual persisted source candidate native claim normalizer and stale fence gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MINEAGENT_NUMERIC_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NUMERIC_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          status=0
+          python -m pytest tests/integration/test_numeric_persisted_runtime.py -q \
+            --junitxml=var/numeric-private/persisted.xml || status=$?
+          python - <<'PYNUMERIC'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/persisted.xml')
+          summarize(source,Path('var/numeric-proof/persisted-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==2
+          assert {case.get('name') for case in cases}=={
+            'test_actual_source_candidate_native_claim_normalizer_stops',
+            'test_actual_lost_fence_keeps_containment_without_output_import'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYNUMERIC
+          test "$status" = 0
+      - name: Confirm exact numeric units are absent without label-based removal
+        if: always()
+        run: |
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
+          test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
+      - name: Remove only exact disposable numeric PostgreSQL
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$GITHUB_WORKSPACE/var/numeric-private/postgres.cid"
+          if [ ! -f "$file" ] || [ -L "$file" ]; then
+            ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.ci=numeric-postgres)
+            test -z "$ids"
+            exit 0
+          fi
+          id=$(cat "$file")
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          actual=$(timeout 15s docker inspect --format '{{.Id}}|{{.Name}}|{{index .Config.Labels "io.mineagent.ci"}}' "$id")
+          test "$actual" = "$id|/mineagent-numeric-postgres|numeric-postgres"
+          timeout 30s docker rm --force --volumes "$id" >/dev/null
+          test -z "$(timeout 15s docker ps --all --quiet --no-trunc --filter "id=$id")"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

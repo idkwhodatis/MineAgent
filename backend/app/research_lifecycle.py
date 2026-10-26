@@ -27,10 +27,15 @@ from contextvars import ContextVar
 from sqlalchemy import event, select, text
 
 from packages.research_runtime.fences import AttemptFence
+from packages.research_runtime.resource_scopes import (
+    SCOPES,
+    advisory_lock_plan,
+    scope_supplies,
+)
 
 _neutral_scope = ContextVar("mineagent_neutral_transaction", default=None)
 _NEUTRAL_KEY = "mineagent_neutral_transaction"
-_RESOURCE_SCOPES = frozenset({"none", "objects", "processes"})
+_RESOURCE_SCOPES = SCOPES
 
 
 def _neutral_error(code="neutral_transaction_lost"):
@@ -70,8 +75,17 @@ def _check_neutral_fence(run, attempt, fence):
         or attempt.finished_at is not None
     ):
         raise _neutral_error("attempt_fenced")
-    # N1 installs primitives only: no new engine or runnable placeholder route.
-    require_legacy_run(run)
+    # Revision018 permits exact RD persistence, never dispatcher/launcher entry.
+    # Legacy public services still call require_legacy_run directly.
+    if (run.purpose, run.engine) == ("factor_research", "rdagent"):
+        from packages.rdagent_adapter.persisted_identity import require_source_identity
+
+        try:
+            require_source_identity(run)
+        except ValueError:
+            raise _neutral_error("unsupported_run_identity") from None
+    else:
+        require_legacy_run(run)
 
 
 def require_neutral_transaction(session, fence: AttemptFence, *, resource_scope=None):
@@ -82,7 +96,10 @@ def require_neutral_transaction(session, fence: AttemptFence, *, resource_scope=
         or state is None
         or _neutral_scope.get() is not state
         or state["fence"] != fence
-        or (resource_scope is not None and state["resource_scope"] != resource_scope)
+        or (
+            resource_scope is not None
+            and not scope_supplies(state["resource_scope"], resource_scope)
+        )
         or session.get_transaction() is not state["transaction"]
         or not state["transaction"].is_active
         or not session.is_active
@@ -107,7 +124,11 @@ def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
 
     from backend.app.models import ExecutionAttempt, ResearchRun
 
-    if type(fence) is not AttemptFence or resource_scope not in _RESOURCE_SCOPES:
+    if (
+        type(fence) is not AttemptFence
+        or type(resource_scope) is not str
+        or resource_scope not in _RESOURCE_SCOPES
+    ):
         raise _neutral_error("neutral_contract_invalid")
     if _neutral_scope.get() is not None:
         raise _neutral_error("neutral_transaction_nested")
@@ -119,10 +140,8 @@ def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
         if session.in_transaction():
             raise _neutral_error("neutral_transaction_nested")
         with session.begin() as transaction:
-            _try_neutral_lock(session, f"submit:{fence.owner_id}")
-            if resource_scope != "none":
-                _try_neutral_lock(session, "research-physical-quota")
-                _try_neutral_lock(session, f"research-publish:{fence.owner_id}")
+            for lock_scope in advisory_lock_plan(fence.owner_id, resource_scope):
+                _try_neutral_lock(session, lock_scope)
             run = session.scalar(
                 select(ResearchRun)
                 .where(

@@ -378,9 +378,9 @@ def test_file_replaced_between_scans_is_rejected_even_with_same_bytes(
     original = retention._scan
     calls = 0
 
-    def scan(*args):
+    def scan(*args, **kwargs):
         nonlocal calls
-        result = original(*args)
+        result = original(*args, **kwargs)
         calls += 1
         if calls == 1:
             path = source[0] / TEMP
@@ -544,9 +544,9 @@ def test_root_replacement_between_scans_is_rejected(source, monkeypatch):
     original = retention._scan
     calls = 0
 
-    def scan(*args):
+    def scan(*args, **kwargs):
         nonlocal calls
-        result = original(*args)
+        result = original(*args, **kwargs)
         calls += 1
         if calls == 1:
             root = source[0]

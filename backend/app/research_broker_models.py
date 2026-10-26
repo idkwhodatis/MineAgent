@@ -117,7 +117,7 @@ class ResearchBudgetReservation(BoundRecord, Base):
             "owner_id", "run_id", "attempt_id", "generation", "purpose", "logical_key"
         ),
         CheckConstraint(
-            "purpose IN ('model_transport','process_unit','object_storage')"
+            "purpose IN ('model_transport','process_unit','object_storage','engine_mutation')"
         ),
         CheckConstraint("state IN ('reserved','uncertain','settled')"),
         CheckConstraint(
@@ -154,7 +154,7 @@ class ResearchOperationContext(BoundRecord, Base):
         ),
         CheckConstraint("context_sha256 ~ '^[0-9a-f]{64}$'"),
         CheckConstraint(
-            "(jsonb_typeof(context) = 'object' AND context ?& ARRAY['schema_version','scenario','ordinal'] AND context - ARRAY['schema_version','scenario','ordinal'] = '{}'::jsonb AND context->>'schema_version' = 'mineagent.neutral-fixture-context.v1' AND context->>'scenario' IN ('chat','embedding','retry','continuation','cancellation') AND jsonb_typeof(context->'ordinal') = 'number' AND context->>'ordinal' ~ '^[0-9]+$' AND (context->>'ordinal')::numeric BETWEEN 0 AND 1000000) IS TRUE"
+            "(((jsonb_typeof(context) = 'object' AND context ?& ARRAY['schema_version','scenario','ordinal'] AND context - ARRAY['schema_version','scenario','ordinal'] = '{}'::jsonb AND context->>'schema_version' = 'mineagent.neutral-fixture-context.v1' AND context->>'scenario' IN ('chat','embedding','retry','continuation','cancellation') AND jsonb_typeof(context->'ordinal') = 'number' AND context->>'ordinal' ~ '^[0-9]+$' AND (context->>'ordinal')::numeric BETWEEN 0 AND 1000000) IS TRUE) OR mineagent_rd_source_context(context) IS TRUE)"
         ),
     )
 
@@ -176,6 +176,11 @@ class ResearchContextAbort(BoundRecord, Base):
 
 class ResearchModelOperation(BoundRecord, Base):
     __tablename__ = "research_model_operations"
+    protocol: Mapped[str] = mapped_column(
+        String(60),
+        default="mineagent.neutral-model.v1",
+        server_default="mineagent.neutral-model.v1",
+    )
     context_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     purpose: Mapped[str] = mapped_column(String(20))
     ordinal: Mapped[int] = mapped_column(Integer)
@@ -200,7 +205,10 @@ class ResearchModelOperation(BoundRecord, Base):
         CheckConstraint("request_object_kind = 'model_request'"),
         CheckConstraint("request_sha256 ~ '^[0-9a-f]{64}$'"),
         CheckConstraint("state IN ('open','completed','unknown','aborted')"),
-        CheckConstraint("mineagent_broker_request(request) IS TRUE"),
+        CheckConstraint(
+            "((protocol = 'mineagent.neutral-model.v1' AND mineagent_broker_request(request) IS TRUE) OR (protocol IN ('mineagent.rdagent-chat.v1','mineagent.rdagent-embedding.v1') AND mineagent_rd_source_request(request, protocol) IS TRUE))",
+            name="ck_model_versioned_request",
+        ),
     )
 
 

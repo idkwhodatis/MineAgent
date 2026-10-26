@@ -120,3 +120,35 @@ containment; restore never executes a checkpoint or starts a unit. Neutral files
 have no garbage-collection deletion authority in this cut. Historical 011/013
 archives are checked before upgrade and retain old note/package/result pins.
 Downgrade refuses to erase any neutral evidence.
+
+## Explicit process persistence versions (revision 016)
+
+`016_process_versioning` is a persistence/restore compatibility increment, **not
+engine or v2 process activation**. Every existing admission is backfilled with
+`schema_version=mineagent.process-admission.v1` and `ipc_policy=host_ticket`.
+Both fields must be supplied explicitly on new writes; there are no continuing
+SQL or ORM defaults. The immutable v1 public admission, ticket, launch intent and
+journal hashes remain byte-identical. No receipt or stored journal is rewritten.
+
+The versioned grammar distinguishes a controller host ticket from a numeric
+candidate/normalizer/native evaluator that declares no IPC. Nevertheless the
+separate database profile gate and service issuer reject **every v2 declaration**.
+A declaration/codec is not a launch or authentication capability. Registering a
+future profile still requires exact image/launcher/peer/deadline/stop acceptance;
+this revision does not provide it.
+
+Upgrade/downgrade require READ COMMITTED, exclusive maintenance admission and a
+non-waiting admission-table lock. Constant-column backfill does not bypass the
+immutable-row trigger via UPDATE. Downgrade refuses any non-v1 policy evidence
+before removing its discriminator columns.
+
+Historical revision 015 backups retain research closure v1 and its original row
+inventory. Revision 016 uses closure v2, which includes the two explicit columns.
+Backup and retention validate the exact revision-to-closure mapping. Old process
+journals remain valid because v1 commitments omit database-only discriminators.
+Cold-restore acceptance now includes actual stopped-process evidence at both
+015 and 016, followed by upgrade and fresh publication at the current revision.
+
+Required hosted neutral acceptance is 81 PostgreSQL cases, 9 actual isolation
+cases and 4 cold-restore cases, all without skips. Local unit/collection checks
+cannot substitute for these gates or the independent full application gate.

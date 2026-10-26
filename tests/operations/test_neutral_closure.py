@@ -9,6 +9,7 @@ import pytest
 
 from backend.app.research_backup import (
     FIELDS,
+    FIELDS_V2,
     SCHEMA,
     canonical,
     manifest_keys,
@@ -193,7 +194,7 @@ def test_neutral_closure_rejects_incomplete_or_substituted_evidence(mutation):
     closure, files = object_closure()
     tables = closure["tables"]
     if mutation == "future":
-        closure["schema_version"] = "mineagent.research-restore-closure.v2"
+        closure["schema_version"] = "mineagent.research-restore-closure.v999"
     elif mutation == "missing":
         del tables["research_process_receipts"]
     elif mutation == "extra":
@@ -254,6 +255,8 @@ def test_literal_closure_inventory_matches_exact_current_tables():
         ResearchProcessState,
     )
 
+    from backend.app.research_backup import FIELDS_V4
+
     models = (
         *BROKER_TABLES,
         ResearchObject,
@@ -266,7 +269,7 @@ def test_literal_closure_inventory_matches_exact_current_tables():
     assert {model.__tablename__ for model in models} == set(FIELDS)
     for model in models:
         assert set(model.__table__.columns.keys()) == set(
-            FIELDS[model.__tablename__].split()
+            FIELDS_V4[model.__tablename__].split()
         )
 
 
@@ -514,4 +517,45 @@ def test_abort_context_evidence_preserves_ledger_and_rejects_substitution(mutati
     else:
         abort["reason"] = "future_reason"
     with pytest.raises(ValueError):
+        verify(closure, files)
+
+
+def test_versioned_process_closure_preserves_legacy_journal_bytes():
+    from backend.app.research_backup import SCHEMA_V2
+
+    closure, files = process_closure()
+    original_files = copy.deepcopy(files)
+    closure["schema_version"] = SCHEMA_V2
+    for row in closure["tables"]["research_process_admissions"]:
+        row.update(
+            schema_version="mineagent.process-admission.v1", ipc_policy="host_ticket"
+        )
+    verify(closure, files)
+    assert files == original_files
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing_version", "missing_policy", "none", "v2", "old_schema_new_fields"],
+)
+def test_versioned_process_closure_rejects_discriminator_drift(mutation):
+    from backend.app.research_backup import SCHEMA_V2
+
+    closure, files = process_closure()
+    closure["schema_version"] = SCHEMA_V2
+    row = closure["tables"]["research_process_admissions"][0]
+    row.update(
+        schema_version="mineagent.process-admission.v1", ipc_policy="host_ticket"
+    )
+    if mutation == "missing_version":
+        row.pop("schema_version")
+    elif mutation == "missing_policy":
+        row.pop("ipc_policy")
+    elif mutation == "none":
+        row.update(ipc_policy="none", ticket_sha256=None)
+    elif mutation == "v2":
+        row["schema_version"] = "mineagent.process-admission.v2"
+    else:
+        closure["schema_version"] = SCHEMA
+    with pytest.raises((ValueError, KeyError)):
         verify(closure, files)

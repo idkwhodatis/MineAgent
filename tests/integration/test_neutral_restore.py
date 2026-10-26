@@ -19,7 +19,7 @@ from test_backup_restore import drill_databases as shared_drill_databases
 
 drill_databases = shared_drill_databases
 pytestmark = pytest.mark.postgres
-HEAD = "015_neutral_primitives"
+HEAD = "019_native_hdf_storage"
 
 
 def _required_image():
@@ -249,8 +249,18 @@ def test_historical_upgrade_preserves_legacy_pins_and_allows_neutral_publication
         restored.dispose()
 
 
+@pytest.mark.parametrize(
+    "backup_revision",
+    [
+        "015_neutral_primitives",
+        "016_process_versioning",
+        "017_numeric_process_boundary",
+        "018_rd_source_persistence",
+        "019_native_hdf_storage",
+    ],
+)
 def test_neutral_cold_restore_preserves_rows_bytes_and_uncertain_accounting(
-    drill_databases, tmp_path: Path
+    drill_databases, tmp_path: Path, backup_revision
 ):
     from test_research_process_recovery import actual_peer
 
@@ -343,6 +353,20 @@ def test_neutral_cold_restore_preserves_rows_bytes_and_uncertain_accounting(
         with neutral_transaction(factory, fence) as session:
             abort_context(session, fence, context_id, reason="uncertain_transport")
         _finish(source, fence)
+        if backup_revision != HEAD:
+            from alembic import command
+            from alembic.config import Config
+
+            config = Config(
+                str(Path(__file__).resolve().parents[2] / "backend/alembic.ini")
+            )
+            config.set_main_option(
+                "script_location",
+                str(Path(__file__).resolve().parents[2] / "backend/alembic"),
+            )
+            with source.begin() as connection:
+                config.attributes["connection"] = connection
+                command.downgrade(config, backup_revision)
         source_db = PostgresDatabase(
             drill_databases.source.render_as_string(hide_password=False)
         )
@@ -367,7 +391,7 @@ def test_neutral_cold_restore_preserves_rows_bytes_and_uncertain_accounting(
         before = legacy._historical_snapshot(source)
         before_files = factors._files(storage)
         manifest = _roundtrip(drill_databases, tmp_path, source, storage, target)
-        assert manifest["schema_revision"] == HEAD
+        assert manifest["schema_revision"] == backup_revision
         legacy._assert_historical_snapshot(restored, before)
         assert factors._files(target) == before_files
         restored_db = PostgresDatabase(
@@ -376,6 +400,7 @@ def test_neutral_cold_restore_preserves_rows_bytes_and_uncertain_accounting(
         assert (
             restored_db.source_snapshot(BackupLimits())["research_closure"] == closure
         )
+        legacy._upgrade(restored, HEAD)
         legacy._reopen_restored_notes(restored, target, notes)
         _publish_after_restore(restored, target)
         for key, data in before_files.items():

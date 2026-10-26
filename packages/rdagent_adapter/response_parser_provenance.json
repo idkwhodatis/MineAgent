@@ -1,0 +1,10 @@
+{
+  "class": "JSONParser",
+  "fragment_definition": "AST source segment of JSONParser plus one LF",
+  "fragment_sha256": "a5a6a4a397f86b71caac2b1e056d200411c9d6254dff5e81d84aad8c19d1a583",
+  "license": "runtimes/rdagent/LICENSE.rdagent",
+  "reasoning_think_rm": false,
+  "upstream_commit": "484776c211e4fbbeef03e0ec00d6bbee7362a4f4",
+  "upstream_file_sha256": "3708c933a5d3cd389093620f92eb670023a4e63ae6e26e9bd6a02b29fd684a79",
+  "upstream_path": "rdagent/oai/backend/base.py"
+}

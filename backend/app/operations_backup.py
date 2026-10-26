@@ -608,6 +608,30 @@ class PostgresDatabase:
                 references += rows(
                     "SELECT storage_key AS path, sha256, size_bytes FROM research_objects ORDER BY storage_key"
                 )
+            rd_source_closure = None
+            if capabilities.rd_source_closure_schema is not None:
+                from backend.app.rdagent_backup import (
+                    read_closure as read_rd_source_closure,
+                )
+
+                try:
+                    rd_source_closure = read_rd_source_closure(
+                        connection,
+                        limits.max_files,
+                        revision=revisions[0],
+                        maximum_bytes=limits.max_manifest_bytes,
+                    )
+                except (ValueError, TypeError, KeyError):
+                    raise BackupError("Invalid RD source restore closure") from None
+            from backend.app.native_operations import read_native_snapshot
+
+            try:
+                native_closure, native_references = read_native_snapshot(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid native HDF restore closure") from None
+            references += native_references
             if len(references) + len(datasets) > limits.max_files:
                 raise BackupError("Database reference inventory exceeds its limit")
             return {
@@ -624,6 +648,16 @@ class PostgresDatabase:
                 **(
                     {"research_closure": research_closure}
                     if research_closure is not None
+                    else {}
+                ),
+                **(
+                    {"rd_source_closure": rd_source_closure}
+                    if rd_source_closure is not None
+                    else {}
+                ),
+                **(
+                    {"native_closure": native_closure}
+                    if native_closure is not None
                     else {}
                 ),
             }
@@ -647,7 +681,7 @@ def _directory(path: Path) -> Path:
     return path
 
 
-def _key(value: str, *, storage: bool = False) -> str:
+def _key(value: str, *, storage: bool = False, research_schema=None) -> str:
     if not isinstance(value, str) or not value or len(value) > 1500:
         raise BackupError("Invalid manifest path")
     parts = value.split("/")
@@ -663,7 +697,7 @@ def _key(value: str, *, storage: bool = False) -> str:
         from backend.app.research_backup import validate_path
 
         try:
-            validate_path(value)
+            validate_path(value, schema=research_schema)
         except (ValueError, TypeError, KeyError):
             raise BackupError("Unsupported neutral research storage layout") from None
     return value
@@ -717,7 +751,7 @@ def _hash_file(root: Path, key: str, maximum: int) -> dict:
 
 
 def _inventory(
-    root: Path, limits: BackupLimits, *, storage: bool
+    root: Path, limits: BackupLimits, *, storage: bool, research_schema=None
 ) -> tuple[list[dict], list[str]]:
     _directory(root)
     entries, directories, pending = [], [], [root]
@@ -728,7 +762,7 @@ def _inventory(
             for child in children:
                 path = Path(child.path)
                 key = path.relative_to(root).as_posix()
-                _key(key, storage=storage)
+                _key(key, storage=storage, research_schema=research_schema)
                 info = path.lstat()
                 if stat.S_ISDIR(info.st_mode):
                     directories.append(key)
@@ -795,10 +829,11 @@ def _read_json(root: Path, key: str, limits: BackupLimits):
 def _validate_references(
     root: Path, inventory: list[dict], snapshot: dict, limits: BackupLimits
 ):
+    research_schema = (snapshot.get("research_closure") or {}).get("schema_version")
     by_key = {entry["path"]: entry for entry in inventory}
 
     def check(key, digest, size=None):
-        _key(key, storage=True)
+        _key(key, storage=True, research_schema=research_schema)
         if not isinstance(digest, str) or not HEX.fullmatch(digest):
             raise BackupError("Invalid immutable database reference hash")
         entry = by_key.get(key)
@@ -848,6 +883,11 @@ def _validate_references(
 
     try:
         if research_revision:
+            if (
+                snapshot["research_closure"]["schema_version"]
+                != capabilities.research_closure_schema
+            ):
+                raise ValueError("Neutral closure revision mismatch")
             validate_closure(
                 snapshot["research_closure"],
                 check,
@@ -861,10 +901,71 @@ def _validate_references(
         raise BackupError(
             "Neutral research restore closure failed verification"
         ) from None
+    rd_revision = capabilities.rd_source_closure_schema is not None
+    if rd_revision != ("rd_source_closure" in snapshot):
+        raise BackupError("RD source closure capability does not match schema")
+    if rd_revision:
+        from backend.app.rdagent_backup import (
+            validate_closure as validate_rd_source_closure,
+        )
+
+        def read_rd_bytes(key, expected_sha256, maximum_bytes):
+            check(key, expected_sha256)
+            maximum = min(limits.max_file_bytes, maximum_bytes)
+            stream, before = _open_file(root, key)
+            with stream:
+                if before.st_size > maximum:
+                    raise BackupError("RD retained evidence exceeds its bound")
+                content = stream.read(maximum + 1)
+                after = os.fstat(stream.fileno())
+            if (
+                len(content) != before.st_size
+                or hashlib.sha256(content).hexdigest() != expected_sha256
+                or (
+                    before.st_dev,
+                    before.st_ino,
+                    before.st_size,
+                    before.st_mtime_ns,
+                    before.st_ctime_ns,
+                )
+                != (
+                    after.st_dev,
+                    after.st_ino,
+                    after.st_size,
+                    after.st_mtime_ns,
+                    after.st_ctime_ns,
+                )
+            ):
+                raise BackupError("RD retained evidence changed while read")
+            return content
+
+        try:
+            validate_rd_source_closure(
+                snapshot["rd_source_closure"],
+                snapshot["research_closure"],
+                snapshot["factor_closure"],
+                read_rd_bytes,
+                limits.max_files,
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            raise BackupError("RD source restore closure failed verification") from None
+    from backend.app.native_operations import validate_native_snapshot
+
+    try:
+        validate_native_snapshot(
+            snapshot,
+            capabilities,
+            check,
+            lambda path: _read_json(root, path, limits)[0],
+            limits.max_files,
+            inventory=inventory,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Native HDF restore closure failed verification") from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:
-        base = _key(item["path"], storage=True)
+        base = _key(item["path"], storage=True, research_schema=research_schema)
         manifest_key = f"{base}/manifest.json"
         check(manifest_key, item["sha256"])
         manifest, _ = _read_json(root, manifest_key, limits)
@@ -1013,9 +1114,14 @@ def create_backup(
     ):
         raise BackupError("Backup and storage trees must be disjoint")
     snapshot = database.source_snapshot(limits)
+    research_schema = capabilities_for(
+        snapshot["schema_revision"]
+    ).research_closure_schema
     environment = database.environment()
     tools.check_versions(environment, snapshot["postgres_major"], limits)
-    entries, directories = _inventory(storage_root, limits, storage=True)
+    entries, directories = _inventory(
+        storage_root, limits, storage=True, research_schema=research_schema
+    )
     _validate_references(storage_root, entries, snapshot, limits)
     destination = _new_directory(destination, durable_parent)
     provision_directory(destination / "storage", durable_parent=destination)
@@ -1060,7 +1166,9 @@ def create_backup(
     if snapshot != database.source_snapshot(limits) or (
         entries,
         directories,
-    ) != _inventory(storage_root, limits, storage=True):
+    ) != _inventory(
+        storage_root, limits, storage=True, research_schema=research_schema
+    ):
         raise BackupError("Source changed during backup; keep all writers stopped")
     manifest = {
         "format": FORMAT,
@@ -1131,6 +1239,9 @@ def verify_backup(
             raise ValueError
     except (TypeError, ValueError):
         raise BackupError("Invalid backup timestamp") from None
+    research_schema = capabilities_for(
+        manifest["schema_revision"]
+    ).research_closure_schema
     files, directories = manifest["files"], manifest["storage_directories"]
     if (
         not isinstance(files, list)
@@ -1148,7 +1259,7 @@ def verify_backup(
         if key != "database.dump":
             if not key.startswith("storage/"):
                 raise BackupError("Unexpected backup file")
-            _key(key[8:], storage=True)
+            _key(key[8:], storage=True, research_schema=research_schema)
         maximum = (
             limits.max_dump_bytes if key == "database.dump" else limits.max_file_bytes
         )
@@ -1165,7 +1276,10 @@ def verify_backup(
         total += item["size_bytes"]
     if total > limits.max_total_bytes or "database.dump" not in declared:
         raise BackupError("Missing archive or excessive backup bytes")
-    safe_dirs = [_key(value, storage=True) for value in directories]
+    safe_dirs = [
+        _key(value, storage=True, research_schema=research_schema)
+        for value in directories
+    ]
     if len(set(safe_dirs)) != len(safe_dirs):
         raise BackupError("Duplicate directory entry")
     actual, actual_dirs = _inventory(root, limits, storage=False)

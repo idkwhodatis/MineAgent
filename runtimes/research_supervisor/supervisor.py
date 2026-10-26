@@ -377,7 +377,19 @@ def assert_quiescent(root):
                     count += 1
                     if count > MAX_UNITS or str(UUID(unit)) != unit:
                         raise ProcessError("research_process_journal")
-                    validate_stopped_journal(namespace / owner / unit)
+                    operation = namespace / owner / unit
+                    record = read_record(operation / "control" / "launch.json")
+                    if (
+                        record.get("schema_version")
+                        == "mineagent.numeric-process-launch.v2"
+                    ):
+                        from runtimes.research_supervisor.numeric_journal import (
+                            validate_numeric_quiescence,
+                        )
+
+                        validate_numeric_quiescence(operation, record)
+                    else:
+                        validate_stopped_journal(operation)
             finally:
                 os.close(owner_fd)
     except (OSError, ValueError, TypeError, KeyError):

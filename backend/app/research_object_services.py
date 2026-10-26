@@ -29,13 +29,15 @@ from backend.app.research_object_models import (
     ResearchObjectPublication,
 )
 from backend.app.services import DomainError
+from packages.rdagent_adapter.object_identity import (
+    identity_for_content,
+    parse_storage_key,
+    publication_journal,
+)
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.object_identity import (
     MAX_JOURNAL_BYTES,
     MAX_OBJECT_BYTES,
-    identity_for_content,
-    parse_storage_key,
-    publication_journal,
 )
 
 INSTALLATION_MAX_BYTES = 2 * 1024**3
@@ -88,6 +90,7 @@ def physical_inventory(
                             "model_request",
                             "model_response",
                             "process_receipt",
+                            "factor_response_assembly",
                         }:
                             raise _error()
                     else:
@@ -247,6 +250,10 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
     require_neutral_transaction(session, fence, resource_scope="objects")
     from backend.app.research_broker_services import require_reservation
 
+    if kind == "factor_response_assembly":
+        from backend.app.rdagent_services import require_research_spec
+
+        require_research_spec(session, fence)
     identity = identity_for_content(fence.owner_id, kind, content)
     peak = 2 * len(content) + 2 * MAX_JOURNAL_BYTES
     require_reservation(

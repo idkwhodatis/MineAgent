@@ -23,7 +23,6 @@ from packages.research_runtime.broker_contracts import (
     ObjectRef,
     digest,
     parse_request,
-    validate_response,
 )
 from packages.research_runtime.budget_contracts import BudgetVector, validate_ledger
 from packages.research_runtime.control import BrokerAbort
@@ -102,8 +101,15 @@ def reserve_budget(
     session, fence, *, purpose: str, logical_key: str, amounts: BudgetVector
 ):
     budget = _budget(session, fence)
+    if purpose == "engine_mutation":
+        from backend.app.rdagent_services import require_research_spec
+
+        require_research_spec(session, fence)
+        if amounts != BudgetVector(mutation_slots=1):
+            raise BrokerAbort("invalid_accounting")
     if (
-        purpose not in {"model_transport", "process_unit", "object_storage"}
+        purpose
+        not in {"model_transport", "process_unit", "object_storage", "engine_mutation"}
         or not isinstance(logical_key, str)
         or not 1 <= len(logical_key) <= 128
         or not logical_key.isascii()
@@ -340,6 +346,10 @@ def open_operation(
     ):
         raise BrokerAbort("invalid_accounting")
     _require_context_open(session, context_id)
+    from backend.app.models import ResearchRun
+    from backend.app.research_lifecycle import require_legacy_run
+
+    require_legacy_run(session.get(ResearchRun, fence.run_id))
     typed = parse_request(request.model_dump(mode="json"))
     if (purpose == "embedding") != (typed.kind == "embedding"):
         raise BrokerAbort("request_drift")
@@ -368,6 +378,7 @@ def open_operation(
         id=uuid4(),
         **_values(fence),
         context_id=context_id,
+        protocol="mineagent.neutral-model.v1",
         purpose=purpose,
         ordinal=ordinal,
         request=typed.model_dump(mode="json"),
@@ -394,6 +405,29 @@ def request_reservation(request) -> BudgetVector:
     else:
         tokens = sum(len(s.encode()) for s in typed.inputs)
     return BudgetVector(calls=1, tokens=tokens)
+
+
+def _versioned_reservation(operation):
+    from packages.rdagent_adapter.persisted_broker import (
+        request_reservation as versioned,
+    )
+
+    return versioned(operation.protocol, operation.request)
+
+
+def _versioned_response(operation, response):
+    from packages.rdagent_adapter.persisted_broker import (
+        parse_request as versioned_request,
+    )
+    from packages.rdagent_adapter.persisted_broker import (
+        validate_response as versioned_response,
+    )
+
+    return versioned_response(
+        operation.protocol,
+        versioned_request(operation.protocol, operation.request),
+        response,
+    )
 
 
 def reserve_transport(session, fence, operation_id, expected_request_sha256: str):
@@ -426,7 +460,7 @@ def reserve_transport(session, fence, operation_id, expected_request_sha256: str
         fence,
         purpose="model_transport",
         logical_key=f"transport:{operation_id}:{ordinal}",
-        amounts=request_reservation(operation.request),
+        amounts=_versioned_reservation(operation),
     )
     transport = ResearchModelTransport(
         id=uuid4(),
@@ -497,7 +531,7 @@ def settle_transport(
     if outcome == "completed":
         if response is None:
             raise BrokerAbort("publication_failed")
-        validate_response(parse_request(operation.request), response)
+        _versioned_response(operation, response)
         if response_object is None or digest(response) != response_object.sha256:
             raise BrokerAbort("publication_failed")
         _object(session, fence.owner_id, response_object, "model_response")
@@ -565,7 +599,7 @@ def replay_completed(session, fence, operation_id, request_sha256: str):
     return ref
 
 
-def validate_accounting_closure(tables, indexes):
+def validate_accounting_closure(tables, indexes, *, rd_source=False):
     """Validate restored evidence without launching, refunding or redispatching."""
     from collections import defaultdict
 
@@ -650,11 +684,13 @@ def validate_accounting_closure(tables, indexes):
                 "logical_key",
             )
         )
-        if identity in reservation_keys or reservation["purpose"] not in {
-            "model_transport",
-            "process_unit",
-            "object_storage",
-        }:
+        allowed_purposes = {"model_transport", "process_unit", "object_storage"}
+        if rd_source:
+            allowed_purposes.add("engine_mutation")
+        if (
+            identity in reservation_keys
+            or reservation["purpose"] not in allowed_purposes
+        ):
             raise ValueError("Invalid reservation identity")
         reservation_keys.add(identity)
         key = (str(reservation["owner_id"]), str(reservation["run_id"]))
@@ -683,7 +719,12 @@ def validate_accounting_closure(tables, indexes):
             raise ValueError("Budget projections do not conserve immutable ledger")
     context_keys = set()
     for context in rows("research_operation_contexts"):
-        typed = FixtureContext.model_validate(context["context"])
+        if rd_source:
+            from packages.rdagent_adapter.persisted_broker import validate_context
+
+            typed = validate_context(context["context"])
+        else:
+            typed = FixtureContext.model_validate(context["context"])
         if digest(typed) != context["context_sha256"]:
             raise ValueError("Context canonical hash mismatch")
         key = tuple(
@@ -718,7 +759,14 @@ def validate_accounting_closure(tables, indexes):
             operation["state"] == "aborted" and not revoked
         ):
             raise ValueError("Operation disagrees with durable context revocation")
-        request = parse_request(operation["request"])
+        if rd_source:
+            from packages.rdagent_adapter.persisted_broker import (
+                parse_request as versioned,
+            )
+
+            request = versioned(operation["protocol"], operation["request"])
+        else:
+            request = parse_request(operation["request"])
         if (
             digest(request) != operation["request_sha256"]
             or operation["purpose"] not in {"chat", "embedding", "continuation"}

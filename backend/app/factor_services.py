@@ -75,7 +75,16 @@ def try_lock(session, scope):
         raise DomainError("factor_busy", "Factor publication is busy; retry later", 503)
 
 
-def physical_inventory(root_fd, owner_id, deadline, max_files, *, allow_staging=False):
+def physical_inventory(
+    root_fd,
+    owner_id,
+    deadline,
+    max_files,
+    *,
+    allow_staging=False,
+    native=False,
+    native_entries=None,
+):
     """Descriptor-pinned, bounded no-follow traversal; unknown staging fails closed."""
     total = owned = count = 0
 
@@ -105,7 +114,10 @@ def physical_inventory(root_fd, owner_id, deadline, max_files, *, allow_staging=
                         "Unknown factor owner namespace",
                         409,
                     ) from None
-            elif len(parts) == 1 and name not in {"objects", "staging", "datasets"}:
+            elif len(parts) == 1 and name not in (
+                {"objects", "staging", "datasets"}
+                | ({"native-journals"} if native else set())
+            ):
                 raise DomainError(
                     "factor_storage_uncertain", "Unknown factor storage layout", 409
                 )
@@ -123,7 +135,7 @@ def physical_inventory(root_fd, owner_id, deadline, max_files, *, allow_staging=
             try:
                 info = os.fstat(child)
                 if stat.S_ISDIR(info.st_mode):
-                    if len(parts) >= 2 and parts[1] == "objects":
+                    if len(parts) >= 2 and parts[1] in {"objects", "native-journals"}:
                         raise DomainError(
                             "factor_storage_uncertain",
                             "Unexpected nested object directory",
@@ -134,13 +146,23 @@ def physical_inventory(root_fd, owner_id, deadline, max_files, *, allow_staging=
                     stat.S_ISREG(info.st_mode)
                     and info.st_nlink == 1
                     and (
-                        (len(parts) == 2 and parts[1] == "objects")
+                        (
+                            len(parts) == 2
+                            and (
+                                parts[1] == "objects"
+                                or (native and parts[1] == "native-journals")
+                            )
+                        )
                         or (len(parts) == 3 and parts[1] == "datasets")
                         or (allow_staging and len(parts) >= 2 and parts[1] == "staging")
                     )
                 ):
                     if parts[1] == "objects" and not re.fullmatch(
-                        r"(?:[a-f0-9]{64}\.(?:py|json|parquet|zip)|\.[a-f0-9]{64}\.(?:py|json|parquet|zip)\.[a-f0-9]{32}\.tmp)",
+                        (
+                            r"(?:[a-f0-9]{64}\.(?:py|json|parquet|zip|h5)|\.[a-f0-9]{64}\.(?:py|json|parquet|zip|h5)\.[a-f0-9]{32}\.tmp)"
+                            if native
+                            else r"(?:[a-f0-9]{64}\.(?:py|json|parquet|zip)|\.[a-f0-9]{64}\.(?:py|json|parquet|zip)\.[a-f0-9]{32}\.tmp)"
+                        ),
                         name,
                     ):
                         raise DomainError(
@@ -157,6 +179,33 @@ def physical_inventory(root_fd, owner_id, deadline, max_files, *, allow_staging=
                             "Unknown fixture dataset file",
                             409,
                         )
+                    if native and (parts[1] == "native-journals" or ".h5" in name):
+                        if parts[1] == "native-journals":
+                            if not re.fullmatch(r"[a-f0-9-]{36}\.json", name):
+                                raise DomainError(
+                                    "native_recovery_required",
+                                    "Unknown or temporary native journal",
+                                    409,
+                                )
+                            if (
+                                str(UUID(name[:-5])) != name[:-5]
+                                or info.st_size > 65536
+                            ):
+                                raise DomainError(
+                                    "native_recovery_required",
+                                    "Invalid native journal",
+                                    409,
+                                )
+                        elif name.startswith(".") or info.st_size > 16777216:
+                            raise DomainError(
+                                "native_recovery_required",
+                                "Native temporary or oversized object",
+                                409,
+                            )
+                        if native_entries is not None:
+                            native_entries.append(
+                                ("factors/" + "/".join(child_parts), info.st_size)
+                            )
                     total += info.st_size
                     if parts[0] == str(owner_id):
                         owned += info.st_size
@@ -249,15 +298,44 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                         exc.code, "Factor operation requires verified recovery", 409
                     ) from None
                 maximum = getattr(settings, "factor_max_files", 10000)
-                total, owned, count = physical_inventory(
-                    fd, owner_id, deadline, maximum, allow_staging=True
+                from backend.app.factor_native_services import (
+                    native_capability,
+                    pending_native_usage,
+                    verify_native_journals,
                 )
+                from backend.app.rdagent_source_capacity import (
+                    pending_source_usage_for_schema,
+                )
+
+                pending_total, pending_owned, pending_entries = (
+                    pending_source_usage_for_schema(session, owner_id)
+                )
+
+                native = native_capability(session)
+                native_entries = []
+                total, owned, count = physical_inventory(
+                    fd,
+                    owner_id,
+                    deadline,
+                    maximum,
+                    allow_staging=True,
+                    native=native,
+                    native_entries=native_entries,
+                )
+                if native:
+                    verify_native_journals(session, native_entries, settings)
+                    held_total, held_owned, held_entries = pending_native_usage(
+                        session, owner_id
+                    )
+                    total += held_total
+                    owned += held_owned
+                    count += held_entries
                 if (
-                    total + peak_bytes
+                    total + pending_total + peak_bytes
                     > getattr(settings, "factor_installation_max_bytes", 2 * 1024**3)
-                    or owned + peak_bytes
+                    or owned + pending_owned + peak_bytes
                     > getattr(settings, "factor_owner_max_bytes", 512 * 1024**2)
-                    or count + peak_files > maximum
+                    or count + pending_entries + peak_files > maximum
                 ):
                     raise DomainError(
                         "factor_capacity", "Factor physical quota exceeded", 409
@@ -270,12 +348,31 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                     raise DomainError(
                         exc.code, "Factor operation requires verified recovery", 409
                     ) from None
-                final_total, final_owned, _ = physical_inventory(
-                    fd, owner_id, deadline, maximum, allow_staging=True
+                native_entries = []
+                final_total, final_owned, final_count = physical_inventory(
+                    fd,
+                    owner_id,
+                    deadline,
+                    maximum,
+                    allow_staging=True,
+                    native=native,
+                    native_entries=native_entries,
+                )
+                if native:
+                    verify_native_journals(session, native_entries, settings)
+                    held_total, held_owned, held_entries = pending_native_usage(
+                        session, owner_id
+                    )
+                    final_total += held_total
+                    final_owned += held_owned
+                    final_count += held_entries
+                pending_total, pending_owned, pending_entries = (
+                    pending_source_usage_for_schema(session, owner_id)
                 )
                 if (
-                    final_total > settings.factor_installation_max_bytes
-                    or final_owned > settings.factor_owner_max_bytes
+                    final_total + pending_total > settings.factor_installation_max_bytes
+                    or final_owned + pending_owned > settings.factor_owner_max_bytes
+                    or final_count + pending_entries > maximum
                 ):
                     raise DomainError(
                         "factor_capacity",
