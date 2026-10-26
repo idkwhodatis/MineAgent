@@ -1,0 +1,50 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	# Access logging is deliberately not enabled: no request URLs or auth headers.
+	header {
+		# Apply after upstream handlers write, including non-2xx API responses.
+		defer
+		X-Content-Type-Options nosniff
+		Cache-Control no-store
+	}
+	request_body {
+		# Same 11 MiB API upload boundary as the prior frontend.
+		max_size 11534336
+	}
+	route {
+		handle /healthz {
+			respond "alive\n" 200
+		}
+		handle /api/* {
+			# Native WebSocket upgrades; immediate authenticated SSE flushing.
+			# No trusted_proxies: caller-supplied forwarded headers confer no trust.
+			reverse_proxy api:8000 {
+				header_up X-Forwarded-Proto {scheme}
+				# text/event-stream flushes immediately by default. Do not use a
+				# negative flush_interval: preserve backend cancellation on disconnect.
+				transport http {
+					read_timeout 3600s
+				}
+			}
+		}
+		handle {
+			root * /srv
+			try_files {path} /index.html
+			@index path / /index.html
+			handle @index {
+				# Only the rendered index is served from writable tmpfs.
+				root * /tmp
+				rewrite * /mineagent-index.html
+				file_server
+			}
+			handle {
+				file_server
+			}
+		}
+	}
+}

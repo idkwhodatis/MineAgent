@@ -7,7 +7,7 @@ set -euo pipefail
 : "${TRADEGRAD_STATE_ROOT:?}"
 : "${TRADEGRAD_PYTHON_IMAGE:?Resolve official app/frontend base digests in a preceding step}"
 : "${TRADEGRAD_NODE_IMAGE:?}"
-: "${TRADEGRAD_NGINX_IMAGE:?}"
+: "${TRADEGRAD_CADDY_IMAGE:?}"
 compose=(docker --host "unix://${TRADEGRAD_DOCKER_SOCKET:?}" compose -f infra/compose.full.yml)
 cleanup() {
   outcome=$?

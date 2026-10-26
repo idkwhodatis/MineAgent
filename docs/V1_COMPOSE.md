@@ -24,7 +24,7 @@ job supplied those outcomes at its recorded source revision.
 
 ## Roles and boundaries
 
-- `frontend`: built Vite assets served by a non-root, read-only nginx container;
+- `frontend`: built Vite assets served by a non-root, read-only Caddy container;
   the only published endpoint is `127.0.0.1:8080` (port configurable). `/api` is
   same-origin; authenticated SSE is unbuffered, uncached and not access-logged.
 - `api`: API lock only, no engine/provider/model SDKs, no Docker client/socket,
@@ -124,8 +124,8 @@ Required settings:
   final source tree, after all completion patches are integrated.
 
 The separately locked application stages use Python 3.12.14, while the frontend
-uses the Node 24 line and nginx stable-alpine by default. Optional
-`TRADEGRAD_PYTHON_IMAGE`, `TRADEGRAD_NODE_IMAGE` and `TRADEGRAD_NGINX_IMAGE` select
+uses the Node 24 line and Caddy 2.11.7-alpine by default. Optional
+`TRADEGRAD_PYTHON_IMAGE`, `TRADEGRAD_NODE_IMAGE` and `TRADEGRAD_CADDY_IMAGE` select
 reviewed app/frontend base digests. The hosted gate resolves those official
 bases to immutable repository digests before building. Operator defaults and
 the unchanged evaluator Python tag are not OCI-digest-pinned by this change. Preserve
@@ -244,7 +244,7 @@ Actions, Python 3.12 and Node 24):
 4. Run `bash script/ci_compose_smoke.sh`. It performs quiet real Compose config
    validation, actual evaluator/application image builds, DB health, migration,
    explicit two-account plus separate new-admin bootstrap, all service health checks, authenticated worker
-   readiness, the complete existing real Chromium suite through the nginx origin,
+   readiness, the complete existing real Chromium suite through the Caddy origin,
    including the opt-in Settings management suite (`TRADEGRAD_REQUIRE_SETTINGS_E2E=1`
    with generated/masked `E2E_ADMIN_EMAIL`/`E2E_ADMIN_PASSWORD`, no admin data fixtures),
    then cold restart and exact artifact metadata **and downloaded byte-hash**
@@ -285,7 +285,7 @@ TRADEGRAD_REQUIRE_BROWSER=1 python -m script.browser_acceptance
 Both `E2E_BASE_URL` and `E2E_API_URL` must be explicit `http://127.0.0.1:PORT`
 origins. For the ordinary process stack, start/own Vite before this command;
 setting `E2E_BASE_URL` intentionally disables Playwright's automatic web server.
-Compose already supplies the built nginx frontend. This is a fixture full-suite
+Compose already supplies the built Caddy frontend. This is a fixture full-suite
 gate, not the separately authorized live-provider or operator-model harness.
 `TRADEGRAD_REQUIRE_SETTINGS_E2E` and generated admin login variables are on the
 allowlist; database/signing/model credentials, proxy variables, Node hooks and
@@ -362,3 +362,33 @@ report contains no log contents or environment. Local preparation passed 67
 Compose/helper tests, Ruff, shell syntax and whitespace checks. Actual Compose
 read-back subsequently passed in the hosted PC job. Rollover stress testing was
 not performed; the report explicitly identifies configuration evidence only.
+
+### Frontend Caddy migration
+
+The bundled frontend now uses `infra/Caddyfile`; there is no parallel nginx
+implementation. Replace any old `TRADEGRAD_NGINX_IMAGE` override with
+`TRADEGRAD_CADDY_IMAGE` (an official Caddy image reference, preferably its immutable
+repository digest). CI resolves the existing reviewed `caddy:2.11.7-alpine` tag to
+a digest before the full Compose build; the subpath gate reuses its exact pulled
+Caddy digest for both internal frontend and outer proxy.
+
+The image build removes and checks the unused privileged-port file capability,
+then runs `caddy validate`. Runtime stays UID/GID 65532, port 8080, read-only with
+all capabilities dropped and no-new-privileges. Only bounded `/tmp` is writable.
+Caddy admin, automatic HTTPS and config persistence are disabled. Access logging
+is not enabled. The 11 MiB request-body limit, deferred no-store/nosniff headers (including API
+errors, overriding upstream header values), API-first
+routing and authenticated streaming are retained. SSE uses Caddy’s built-in
+`text/event-stream` immediate flushing, without a negative `flush_interval` that
+would suppress backend cancellation after client disconnect. Native reverse proxy handling
+preserves WebSocket upgrades without adding a new application WebSocket endpoint.
+No incoming forwarded header becomes trusted; the explicit runtime SUBPATH and
+outer proxy stripping contract remain unchanged.
+
+Required acceptance remains the full Compose/Chromium gate plus the real outer
+Caddy root-and-subpath gate, including direct rendered index, static assets,
+API-error separation, authenticated SSE, downloads and deep-link reloads. Local
+source/renderer checks do not substitute for these hosted container tests.
+Caddy directive references: [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
+[body limit](https://caddyserver.com/docs/caddyfile/directives/request_body),
+and [file server](https://caddyserver.com/docs/caddyfile/directives/file_server).

@@ -10,7 +10,7 @@
 !frontend/src/**/*.css
 !frontend/src/**/*.svg
 !frontend/public/**/*.svg
-!infra/nginx.conf
+!infra/Caddyfile
 !infra/frontend-entrypoint.sh
 
 !frontend/FASTAPI-TEMPLATE-LICENSE

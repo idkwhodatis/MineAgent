@@ -26,6 +26,19 @@ test("real login, deep-link reload, assets and logout stay under runtime mount",
   page,
   request,
 }) => {
+  // The internal frontend is also Caddy: SPA fallback must never swallow API
+  // errors, and both root and direct index requests use the runtime-rendered HTML.
+  const missingApi = await request.get(href("/api/v1/not-a-real-route"));
+  expect(missingApi.status()).toBe(404);
+  expect(missingApi.headers()["cache-control"]).toBe("no-store");
+  expect(missingApi.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(missingApi.headers()["content-type"]).toContain("application/json");
+  expect(await missingApi.text()).not.toContain("data-mineagent-base");
+  const index = await request.get(href("/index.html"));
+  expect(index.status()).toBe(200);
+  expect(index.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(index.headers()["cache-control"]).toBe("no-store");
+  expect(await index.text()).toContain(`data-mineagent-base href="${prefix}/"`);
   const escaped: string[] = [];
   const failedAssets: string[] = [];
   page.on("request", (request) => {

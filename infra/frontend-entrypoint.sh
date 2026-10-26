@@ -10,7 +10,7 @@ if [ "${#prefix}" -gt 200 ] || ! printf '%s\n' "$prefix" | grep -Eq '^(/[A-Za-z0
     echo 'Invalid SUBPATH' >&2; exit 64
 fi
 case "$prefix/" in */./*|*/../*) echo 'Invalid SUBPATH' >&2; exit 64;; esac
-source=/usr/share/nginx/html/index.html
+source=/srv/index.html
 destination=/tmp/mineagent-index.html
 if [ "$#" -ne 0 ]; then
     [ "$#" -eq 3 ] && [ "$1" = --render-only ] || exit 64
@@ -24,4 +24,4 @@ sed -e "s|data-mineagent-base href=\"/\"|data-mineagent-base href=\"$prefix/\"|"
     "$source" > "$destination"
 chmod 0644 "$destination"
 [ "$#" -eq 0 ] || exit 0
-exec nginx -g 'daemon off;'
+exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile

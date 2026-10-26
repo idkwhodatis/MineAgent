@@ -39,7 +39,7 @@ headers. API bearer authentication is unchanged.
 The same frontend image renders its HTML base and prefix metadata into `/tmp`
 at startup, leaving immutable assets and the read-only root filesystem intact.
 The router, assets, API requests, authenticated SSE and downloads use this runtime
-prefix. Deep links must fall back to the frontend index, as the bundled nginx
+prefix. Deep links must fall back to the frontend index, as the bundled Caddy
 configuration already does. Restart both services together when changing it.
 
 There are no authentication cookies, CSRF callbacks, OAuth redirect callbacks or

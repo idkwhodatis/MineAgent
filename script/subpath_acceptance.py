@@ -262,6 +262,8 @@ def main() -> None:
             "build",
             "--iidfile",
             str(folder / "frontend.iid"),
+            "--build-arg",
+            f"CADDY_IMAGE={caddy_ref}",
             "-f",
             "infra/frontend.Dockerfile",
             ".",

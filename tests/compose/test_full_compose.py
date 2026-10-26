@@ -138,15 +138,70 @@ class ComposeBoundaryTests(unittest.TestCase):
         published = {name for name, service in SERVICES.items() if service.get("ports")}
         self.assertEqual(published, {"frontend"})
         self.assertTrue(SERVICES["frontend"]["ports"][0].startswith("127.0.0.1:"))
-        config = (ROOT / "infra/nginx.conf").read_text()
+        config = (ROOT / "infra/Caddyfile").read_text()
         for contract in (
-            "proxy_buffering off",
-            "proxy_cache off",
-            "proxy_read_timeout 3600s",
-            "access_log off",
-            "try_files $uri $uri/ /index.html",
+            "admin off",
+            "auto_https off",
+            "persist_config off",
+            "read_timeout 3600s",
+            "max_size 11534336",
+            "defer",
+            "Cache-Control no-store",
+            "X-Content-Type-Options nosniff",
+            "try_files {path} /index.html",
+            "@index path / /index.html",
+            "rewrite * /mineagent-index.html",
+            "handle /api/*",
+            "reverse_proxy api:8000",
+            "header_up X-Forwarded-Proto {scheme}",
         ):
             self.assertIn(contract, config)
+        directives = "\n".join(line.split("#", 1)[0] for line in config.splitlines())
+        for forbidden in (
+            "trusted_proxies",
+            "flush_interval",
+            "response_buffers",
+            "request_buffers",
+            "log_credentials",
+            "handle_errors",
+            "header_up Connection",
+        ):
+            self.assertNotIn(forbidden, directives)
+        self.assertNotRegex(directives, r"(?m)^\s*log(?:\s|$)")
+        self.assertFalse((ROOT / "infra/nginx.conf").exists())
+        dockerfile = (ROOT / "infra/frontend.Dockerfile").read_text()
+        self.assertIn(
+            'RUN setcap -r /usr/bin/caddy && test -z "$(getcap /usr/bin/caddy)"',
+            dockerfile,
+        )
+        self.assertIn(
+            "caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile",
+            dockerfile,
+        )
+        self.assertIn("USER 65532:65532", dockerfile)
+        self.assertIn(
+            "ENV HOME=/tmp XDG_CONFIG_HOME=/tmp/caddy/config XDG_DATA_HOME=/tmp/caddy/data",
+            dockerfile,
+        )
+        self.assertLess(
+            dockerfile.index("USER 65532:65532"), dockerfile.index("caddy validate")
+        )
+        self.assertIn("RUN chmod -R a+rX /srv", dockerfile)
+        self.assertEqual(
+            compose_image_evidence.BASES["TRADEGRAD_CADDY_IMAGE"], "caddy:2.11.7-alpine"
+        )
+        self.assertTrue(SERVICES["frontend"]["read_only"])
+        self.assertEqual(SERVICES["frontend"]["cap_drop"], ["ALL"])
+        self.assertEqual(
+            SERVICES["frontend"]["security_opt"], ["no-new-privileges:true"]
+        )
+        self.assertIn("/tmp:rw,nosuid,nodev", SERVICES["frontend"]["tmpfs"][0])
+        entrypoint = (ROOT / "infra/frontend-entrypoint.sh").read_text()
+        self.assertIn("source=/srv/index.html", entrypoint)
+        self.assertIn(
+            "exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile",
+            entrypoint,
+        )
 
     def test_model_registry_only_reaches_api_and_research_without_keys(self):
         owners = set()

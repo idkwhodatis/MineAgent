@@ -18,7 +18,7 @@ BASES = {
     "DOCKER_CLI_IMAGE": "docker:27-cli",
     "TRADEGRAD_PYTHON_IMAGE": "python:3.12.14-slim-bookworm",
     "TRADEGRAD_NODE_IMAGE": "node:24-bookworm-slim",
-    "TRADEGRAD_NGINX_IMAGE": "nginx:stable-alpine",
+    "TRADEGRAD_CADDY_IMAGE": "caddy:2.11.7-alpine",
 }
 
 

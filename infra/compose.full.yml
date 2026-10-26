@@ -189,7 +189,7 @@ services:
       dockerfile: infra/frontend.Dockerfile
       args:
         NODE_IMAGE: ${TRADEGRAD_NODE_IMAGE:-node:24-bookworm-slim}
-        NGINX_IMAGE: ${TRADEGRAD_NGINX_IMAGE:-nginx:stable-alpine}
+        CADDY_IMAGE: ${TRADEGRAD_CADDY_IMAGE:-caddy:2.11.7-alpine}
     environment:
       SUBPATH: ${SUBPATH:-}
     user: "65532:65532"
