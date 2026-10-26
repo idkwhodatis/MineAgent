@@ -86,7 +86,10 @@ jobs:
     name: M1–M6 real application (${{ (inputs.provider_mode == 'live' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[live-data]'))) && 'live' || 'fixture' }})
     needs: baseline
     runs-on: ubuntu-22.04
-    timeout-minutes: 75
+    # Setup and sequential integration gates took 61 minutes before the full
+    # browser/benchmark owner (independently bounded at 60 minutes) could start.
+    # Reserve that existing boundary plus teardown; do not extend unit deadlines.
+    timeout-minutes: 135
     env:
       # Credentials are generated and masked on this disposable runner only.
       POSTGRES_USER: tradegrad_ci
