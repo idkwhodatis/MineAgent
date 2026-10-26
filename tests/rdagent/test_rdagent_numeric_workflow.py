@@ -25,5 +25,11 @@ def test_numeric_workflow_pulls_exact_inspected_base_before_builds():
             if line.startswith("FROM ")
         ]
         assert bases and all(base == BASE_IMAGE for base in bases)
-    assert "test_rdagent_numeric_workflow.py -q" in workflow
-    assert "assert len(cases) == 343" in workflow
+    assert "test_numeric_failure_cleanup.py -q" in workflow
+    assert "assert len(cases) == 381" in workflow
+
+
+def test_numeric_contract_gate_includes_exact_observer_and_failure_paths():
+    workflow = Path(".github/workflows/mineagent-numeric-runtime.yml").read_text()
+    assert "tests/research_runtime/test_numeric_daemon_identity.py" in workflow
+    assert "tests/research_runtime/test_numeric_failure_cleanup.py" in workflow

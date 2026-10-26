@@ -134,5 +134,6 @@ def test_native_sql_commitment_matches_bounded_unicode_integer_python_codec(
 def test_native_sql_commitment_refuses_float_codec_ambiguity(migrated_engine):
     with migrated_engine.connect() as connection, pytest.raises(DBAPIError):
         connection.execute(
-            text("SELECT mineagent_native_metadata('{\"x\":1.25}'::jsonb)")
+            text("SELECT mineagent_native_metadata(CAST(:value AS jsonb))"),
+            {"value": '{"x":1.25}'},
         )

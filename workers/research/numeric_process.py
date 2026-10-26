@@ -103,9 +103,22 @@ def _execute_claimed_numeric_unit(
     finally:
         # Even a lost lease may record positive whole-unit stop, but this
         # path never imports extraction or gives result/publication authority.
-        with factory() as session:
-            record_numeric_containment(session, admission_id, storage_root=storage_root)
-            session.commit()
+        import sys
+
+        original_error = sys.exception()
+        try:
+            with factory() as session:
+                record_numeric_containment(
+                    session, admission_id, storage_root=storage_root
+                )
+                session.commit()
+        except Exception as containment_error:
+            if original_error is None:
+                raise
+            original_error.add_note(
+                "Numeric containment persistence unconfirmed: "
+                + type(containment_error).__name__
+            )
 
 
 def recover_numeric_unit(factory, storage_root, admission_id):

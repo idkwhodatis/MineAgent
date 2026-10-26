@@ -502,18 +502,31 @@ class NumericSupervisor:
                 )
             return extraction
         finally:
-            if reader is not None:
-                reader.close()
-            if launch is not None:
-                try:
-                    self.stop_and_verify(
-                        root, admission, original_deadline=authority.deadline + 1
-                    )
-                except ProcessError:
-                    # Deliberately separate overdue containment from timely
-                    # result eligibility; no fresh budget can rescue a result.
-                    self.stop_and_verify(root, admission)
-                    raise ProcessError("numeric_process_original_deadline") from None
+            import sys
+
+            original_error = sys.exception()
+            try:
+                if reader is not None:
+                    reader.close()
+                if launch is not None:
+                    try:
+                        self.stop_and_verify(
+                            root, admission, original_deadline=authority.deadline + 1
+                        )
+                    except ProcessError:
+                        # Deliberately separate overdue containment from timely
+                        # result eligibility; no fresh budget can rescue a result.
+                        self.stop_and_verify(root, admission)
+                        raise ProcessError(
+                            "numeric_process_original_deadline"
+                        ) from None
+            except Exception as containment_error:
+                if original_error is None:
+                    raise
+                original_error.add_note(
+                    "Numeric physical containment unconfirmed: "
+                    + type(containment_error).__name__
+                )
 
     def _create_args(self, launch, inputs):
         seccomp = (
@@ -578,7 +591,11 @@ class NumericSupervisor:
         if state["State"]["Running"] is not True:
             raise ProcessError("numeric_process_identity_unobserved")
         pid = state["State"]["Pid"]
-        ticks, namespace, boot = _observe(pid)
+        from runtimes.research_supervisor.numeric_daemon_identity import observe_leader
+
+        ticks, namespace, boot = observe_leader(
+            self.client, state["Id"], self.image_id, pid
+        )
         return NumericIdentity(
             schema_version="mineagent.numeric-process-identity.v2",
             admission_sha256=digest(launch.intent.admission.model_dump(mode="json")),
@@ -673,7 +690,16 @@ class NumericSupervisor:
                     if state["Id"] != identity.container_id:
                         raise ProcessError("numeric_process_runtime_identity")
                     if state["State"]["Running"] is True:
-                        ticks, namespace, boot = _observe(state["State"]["Pid"])
+                        from runtimes.research_supervisor.numeric_daemon_identity import (
+                            observe_leader,
+                        )
+
+                        ticks, namespace, boot = observe_leader(
+                            self.client,
+                            state["Id"],
+                            self.image_id,
+                            state["State"]["Pid"],
+                        )
                         if (state["State"]["Pid"], ticks, namespace, boot) != (
                             identity.init_pid,
                             identity.init_start_ticks,

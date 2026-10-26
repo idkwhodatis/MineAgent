@@ -49,11 +49,11 @@ jobs:
           python -m pip download --require-hashes --only-binary=:all: --no-deps -r runtimes/factor_normalizer/requirements.lock -d .wheelhouse-factor-numeric
       - name: Validate separate disabled numeric contracts
         run: |
-          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_adverse.py tests/rdagent/test_rdagent_numeric_containment.py tests/rdagent/test_rdagent_numeric_workflow.py -q --junitxml=var/numeric-proof/contracts.xml
+          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_adverse.py tests/rdagent/test_rdagent_numeric_containment.py tests/rdagent/test_rdagent_numeric_workflow.py tests/research_runtime/test_numeric_daemon_identity.py tests/research_runtime/test_numeric_failure_cleanup.py -q --junitxml=var/numeric-proof/contracts.xml
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('var/numeric-proof/contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 343
+          assert len(cases) == 381
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PY
       - name: Materialize exact pinned base in local Docker daemon

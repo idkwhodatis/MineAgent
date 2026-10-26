@@ -125,3 +125,82 @@ def test_unverified_container_is_not_deleted(monkeypatch, tmp_path):
     with pytest.raises(ProcessError, match="runtime_identity"):
         supervisor.stop_and_verify(tmp_path, admission)
     assert commands == []
+
+
+def test_launch_failure_is_not_hidden_by_missing_identity_cleanup(
+    monkeypatch, tmp_path
+):
+    from runtimes.research_supervisor.numeric_supervisor import _mint_numeric_authority
+    from tests.research_runtime.test_numeric_issuer import bound
+
+    intent, inputs = bound()
+    authority = _mint_numeric_authority(intent, inputs, {})
+    supervisor = NumericSupervisor(intent.admission.image_id)
+    original = ProcessError("numeric_process_kernel_identity")
+    attempts = []
+
+    def create_failure(*_a, **_k):
+        raise original
+
+    def stop_failure(*_a, **kwargs):
+        attempts.append(kwargs)
+        raise ProcessError("numeric_process_identity_unobserved")
+
+    monkeypatch.setattr(supervisor.client, "_command", create_failure)
+    monkeypatch.setattr(supervisor, "stop_and_verify", stop_failure)
+    with pytest.raises(ProcessError) as raised:
+        supervisor.execute(
+            tmp_path, authority, on_identity=lambda _: pytest.fail("no identity")
+        )
+    assert raised.value is original
+    assert len(attempts) == 2
+    assert original.__notes__ == [
+        "Numeric physical containment unconfirmed: ProcessError"
+    ]
+    assert list(tmp_path.rglob("identity.json")) == []
+    assert list(tmp_path.rglob("stop.json")) == []
+
+
+@pytest.mark.parametrize("failed_execution", [False, True])
+def test_containment_persistence_failure_never_creates_success_or_masks_cause(
+    monkeypatch, tmp_path, failed_execution
+):
+    from contextlib import contextmanager
+
+    from tests.research_runtime.test_numeric_issuer import bound
+    from workers.research import numeric_process as worker
+
+    intent, inputs = bound()
+    original = ProcessError("numeric_process_kernel_identity")
+    commits = []
+
+    @contextmanager
+    def transaction(*_a, **_kw):
+        yield SimpleNamespace(commit=lambda: commits.append(True))
+
+    def execute(*_a, **_kw):
+        if failed_execution:
+            raise original
+
+    def missing(*_a, **_kw):
+        raise FileNotFoundError("identity.json")
+
+    monkeypatch.setattr(worker, "neutral_transaction", transaction)
+    monkeypatch.setattr(worker, "check_numeric_claim", lambda *_a: None)
+    monkeypatch.setattr(
+        worker, "NumericSupervisor", lambda _image: SimpleNamespace(execute=execute)
+    )
+    monkeypatch.setattr(worker, "record_numeric_stopped", lambda *_a, **_kw: None)
+    monkeypatch.setattr(worker, "record_numeric_containment", missing)
+    with pytest.raises(
+        ProcessError if failed_execution else FileNotFoundError
+    ) as raised:
+        worker._execute_claimed_numeric_unit(
+            transaction, object(), tmp_path, intent, input_bytes=inputs, inventory={}
+        )
+    assert commits == []
+    if failed_execution:
+        assert raised.value is original
+        assert original.__notes__ == [
+            "Numeric containment persistence unconfirmed: FileNotFoundError"
+        ]

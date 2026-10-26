@@ -85,7 +85,9 @@ def test_actual_files_fenced_publisher_and_host_parser_witness(source_setup):
         )
         == SOURCE
     )
-    with neutral_transaction(factory, saved.fence, resource_scope="objects") as session:
+    with neutral_transaction(
+        factory, saved.fence, resource_scope="factor_objects"
+    ) as session:
         header, parts = derive_source_read_witness(
             session, saved.fence, source_id=saved.source.id, settings=settings
         )
@@ -138,7 +140,9 @@ def test_actual_continuation_sources_are_reparsed_in_order(source_setup):
     saved = persist(source_setup, source)
     assert len(saved.member_ids) == len(saved.outcome_ids) == 2
     factory, _, _, settings = source_setup
-    with neutral_transaction(factory, saved.fence, resource_scope="objects") as session:
+    with neutral_transaction(
+        factory, saved.fence, resource_scope="factor_objects"
+    ) as session:
         header, parts = derive_source_read_witness(
             session, saved.fence, source_id=saved.source.id, settings=settings
         )
@@ -245,14 +249,15 @@ def test_tampered_real_response_bytes_cannot_revalidate_witness(source_setup):
     try:
         path.write_bytes(b"{}")
         with (
-            pytest.raises(DomainError),
+            pytest.raises(DomainError) as corrupt,
             neutral_transaction(
-                factory, saved.fence, resource_scope="objects"
+                factory, saved.fence, resource_scope="factor_objects"
             ) as session,
         ):
             derive_source_read_witness(
                 session, saved.fence, source_id=saved.source.id, settings=settings
             )
+        assert corrupt.value.code == "neutral_object_uncertain"
     finally:
         path.write_bytes(original)
 
