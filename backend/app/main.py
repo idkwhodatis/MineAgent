@@ -688,4 +688,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     app.add_middleware(
         FactorImportIngressMiddleware, max_bytes=settings.max_upload_bytes
     )
+    from backend.app.api.subpath import SubpathMiddleware
+
+    app.add_middleware(SubpathMiddleware, subpath=settings.subpath)
     return app

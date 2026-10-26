@@ -310,6 +310,6 @@ describe("visible capture controls", () => {
     );
     expect(html).toContain('<fieldset disabled=""');
     expect(html).toContain('role="alert"');
-    expect(html).toContain('href="#research_capture.max_decisions"');
+    expect(html).toContain('href="/#research_capture.max_decisions"');
   });
 });

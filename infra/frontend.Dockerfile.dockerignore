@@ -11,6 +11,7 @@
 !frontend/src/**/*.svg
 !frontend/public/**/*.svg
 !infra/nginx.conf
+!infra/frontend-entrypoint.sh
 
 !frontend/FASTAPI-TEMPLATE-LICENSE
 !frontend/LIGHTWEIGHT-CHARTS-NOTICE

@@ -1,6 +1,9 @@
+import { APP_SUBPATH } from "./deployment";
 // Session-scoped persistence survives reloads without retaining credentials indefinitely.
-const SESSION_KEY = "tradegrad.session.v1";
-const SESSION_EVENT = "tradegrad:session";
+const SESSION_KEY =
+  "tradegrad.session.v1" + (APP_SUBPATH ? `:${APP_SUBPATH}` : "");
+const SESSION_EVENT =
+  "tradegrad:session" + (APP_SUBPATH ? `:${APP_SUBPATH}` : "");
 export type Session = { accessToken: string; expiresAt: number };
 
 export function readSession(): Session | null {

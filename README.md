@@ -69,3 +69,9 @@ Unit and contract tests supplement real PostgreSQL, isolated-runner, Playwright,
 restart and cold-restore checks. Deterministic model/data fixtures are explicitly
 separate from online provider and paid-model acceptance. There is no live trading,
 broker connection, profitability claim or production performance promise.
+
+## Reverse-proxy subpaths
+
+The same frontend and API images support runtime `SUBPATH` configuration while
+preserving root deployment. See the [strip-prefix proxy contract](docs/REVERSE_PROXY_SUBPATH.md)
+and [real Caddy acceptance gate](docs/SUBPATH_ACCEPTANCE.md).

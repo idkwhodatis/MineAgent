@@ -1,3 +1,4 @@
+import { fragmentHref } from "@/lib/deployment";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -52,7 +53,10 @@ export function AppLayout() {
   }
   return (
     <div className="app-shell">
-      <a className="sr-only focus:not-sr-only" href="#main-content">
+      <a
+        className="sr-only focus:not-sr-only"
+        href={fragmentHref("#main-content")}
+      >
         Skip to content
       </a>
       <aside className="sidebar">

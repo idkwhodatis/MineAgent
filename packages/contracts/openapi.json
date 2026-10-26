@@ -22623,7 +22623,7 @@
         "flows": {
           "password": {
             "scopes": {},
-            "tokenUrl": "/api/v1/login/access-token"
+            "tokenUrl": "api/v1/login/access-token"
           }
         },
         "type": "oauth2"

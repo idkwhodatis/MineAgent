@@ -1,3 +1,4 @@
+import { fragmentHref } from "@/lib/deployment";
 import { useEffect, useState } from "react";
 import {
   captureBudgetFields,
@@ -215,7 +216,9 @@ export function ResearchCaptureControls({
           {errors.map((error, index) => (
             <li key={index}>
               <a
-                href={`#${prefix}.${error.path[0] === "stage_ids" || error.path[0] === "instrument_ids" ? error.path[0] : error.path.join(".")}`}
+                href={fragmentHref(
+                  `#${prefix}.${error.path[0] === "stage_ids" || error.path[0] === "instrument_ids" ? error.path[0] : error.path.join(".")}`,
+                )}
               >
                 {error.path.join(".")}: {error.message}
               </a>

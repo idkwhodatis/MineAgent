@@ -9,7 +9,8 @@ RUN npm run build
 
 FROM ${NGINX_IMAGE}
 COPY infra/nginx.conf /etc/nginx/nginx.conf
+COPY --chmod=0555 infra/frontend-entrypoint.sh /usr/local/bin/mineagent-frontend
 COPY --from=build /build/dist /usr/share/nginx/html
 COPY frontend/FASTAPI-TEMPLATE-LICENSE frontend/LIGHTWEIGHT-CHARTS-NOTICE frontend/THIRD_PARTY_NOTICES.md /usr/share/nginx/html/notices/
 USER 65532:65532
-ENTRYPOINT ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/usr/local/bin/mineagent-frontend"]

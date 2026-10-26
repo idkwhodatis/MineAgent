@@ -12,7 +12,7 @@ from backend.app.models import User
 from backend.app.services import DomainError
 
 reusable_oauth2 = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/login/access-token", auto_error=False
+    tokenUrl="api/v1/login/access-token", auto_error=False
 )
 
 

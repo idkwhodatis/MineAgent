@@ -1,3 +1,4 @@
+import { deploymentUrl } from "./deployment";
 import { queryOptions } from "@tanstack/react-query";
 import { clearSession, readSession } from "./session";
 
@@ -143,7 +144,7 @@ export async function factorRequest<T>(
   const binary = options.body instanceof Blob;
   if (options.body !== undefined)
     headers["Content-Type"] = binary ? "application/zip" : "application/json";
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(deploymentUrl(`/api/v1${path}`), {
     method: options.method || "GET",
     headers,
     body:

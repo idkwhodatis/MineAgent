@@ -3,6 +3,7 @@ import * as sdk from "@/client/sdk.gen";
 import { client } from "@/client/client.gen";
 import type { RunCreate } from "@/client/types.gen";
 import { clearSession, readSession } from "./session";
+import { apiBaseUrl } from "./deployment";
 import { terminalStatuses } from "./format";
 
 export function describeError(error: unknown): {
@@ -66,7 +67,7 @@ const transport: typeof fetch = async (input, init) => {
   return response;
 };
 client.setConfig({
-  baseUrl: window.location.origin,
+  baseUrl: apiBaseUrl(),
   auth: () => readSession()?.accessToken,
   fetch: transport,
 });

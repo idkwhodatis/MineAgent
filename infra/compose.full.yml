@@ -37,6 +37,7 @@ x-app: &app
     TRADEGRAD_UID: ${TRADEGRAD_UID:?}
     TRADEGRAD_GID: ${TRADEGRAD_GID:?}
     DATA_PROVIDER_MODE: ${DATA_PROVIDER_MODE:-fixture}
+    SUBPATH: ${SUBPATH:-}
     HEARTBEAT_SECONDS: "5"
     LEASE_SECONDS: "60"
 x-api-build: &api-build
@@ -189,6 +190,8 @@ services:
       args:
         NODE_IMAGE: ${TRADEGRAD_NODE_IMAGE:-node:24-bookworm-slim}
         NGINX_IMAGE: ${TRADEGRAD_NGINX_IMAGE:-nginx:stable-alpine}
+    environment:
+      SUBPATH: ${SUBPATH:-}
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]

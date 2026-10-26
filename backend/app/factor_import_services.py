@@ -8,6 +8,7 @@ import time
 from uuid import uuid4
 
 from sqlalchemy import select
+from starlette._utils import get_route_path
 
 from backend.app.factor_import_models import FactorImportAdmission, FactorImportEnvelope
 from backend.app.factor_models import FactorObject
@@ -70,7 +71,7 @@ class FactorImportIngressMiddleware:
         if (
             scope["type"] != "http"
             or scope.get("method") != "POST"
-            or scope.get("path") != "/api/v1/factor-packages/import"
+            or get_route_path(scope) != "/api/v1/factor-packages/import"
         ):
             return await self.app(scope, receive, send)
         headers = {k.lower(): v for k, v in scope.get("headers", [])}

@@ -1,3 +1,4 @@
+import { deploymentHref } from "@/lib/deployment";
 import type {
   ResearchNoteContent,
   ResearchNoteRevision,
@@ -62,7 +63,7 @@ export function NoteEvidenceList({
               </p>
             )}
             {href ? (
-              <a className="text-link" href={href}>
+              <a className="text-link" href={deploymentHref(href)}>
                 Open exact {ref.kind} evidence
               </a>
             ) : (
@@ -87,14 +88,14 @@ export function NoteEvidenceList({
                       <>
                         <a
                           className="text-link"
-                          href={
+                          href={deploymentHref(
                             noteHistoricalHref(
                               strategyId,
                               note,
                               index,
                               arm.ordinal,
-                            ) ?? undefined
-                          }
+                            ),
+                          )}
                         >
                           Inspect saved arm {arm.ordinal + 1} from note revision{" "}
                           {note.revision}
@@ -163,7 +164,7 @@ export function NoteReadOnly({
         visible rather than pointing to a newer run.
       </p>
       {restore ? (
-        <a className="text-link" href={restore}>
+        <a className="text-link" href={deploymentHref(restore)}>
           Restore full saved research selection
         </a>
       ) : (
@@ -286,7 +287,7 @@ export function HistoricalControlArm({
         }}
       />
       {href ? (
-        <a className="text-link" href={href}>
+        <a className="text-link" href={deploymentHref(href)}>
           Open this saved arm’s exact successful result
         </a>
       ) : (

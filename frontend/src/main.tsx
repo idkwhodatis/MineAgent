@@ -22,6 +22,7 @@ import {
   watchSession,
 } from "@/lib/session";
 import "./styles.css";
+import { APP_SUBPATH } from "@/lib/deployment";
 import { comparisonSearch } from "@/lib/navigation";
 import {
   factorLibrarySearch,
@@ -371,6 +372,7 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 const router = createRouter({
+  basepath: APP_SUBPATH || "/",
   routeTree,
   defaultPreload: "intent",
   scrollRestoration: true,

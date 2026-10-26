@@ -1,5 +1,6 @@
 """Fail-closed service configuration, separate from the quant runtime."""
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -21,6 +22,23 @@ class Settings(BaseSettings):
     database_url: str = Field(repr=False)
     secret_key: str = Field(min_length=32, repr=False)
     storage_root: Path = Path("/var/lib/tradegrad")
+    subpath: str = ""
+
+    @field_validator("subpath")
+    @classmethod
+    def canonical_subpath(cls, value: str) -> str:
+        if value == "/":
+            return ""
+        if (
+            len(value) > 200
+            or re.fullmatch(r"(?:/[A-Za-z0-9._-]+)*", value) is None
+            or any(part in {".", ".."} for part in value.split("/"))
+        ):
+            raise ValueError(
+                "SUBPATH must be an empty root or canonical ASCII path prefix"
+            )
+        return value
+
     access_token_minutes: int = Field(default=30, ge=1, le=1440)
     lease_seconds: int = Field(default=60, ge=10, le=3600)
     heartbeat_seconds: int = Field(default=10, ge=1, le=60)

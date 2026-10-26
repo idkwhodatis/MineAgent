@@ -1,3 +1,4 @@
+import { deploymentUrl, fragmentHref } from "@/lib/deployment";
 import { BenchmarkSelector } from "@/components/benchmark-selector";
 import { ResearchCaptureControls } from "@/components/research-capture-controls";
 import { captureSummary } from "@/lib/research-capture";
@@ -536,7 +537,7 @@ function ExperimentWizard({
         <p>The run was accepted. Open its persisted record below.</p>
         <a
           className="text-link"
-          href={`/research-runs/${encodeURIComponent(accepted)}`}
+          href={deploymentUrl(`/research-runs/${encodeURIComponent(accepted)}`)}
         >
           Open research run
         </a>
@@ -1173,7 +1174,9 @@ function ExperimentWizard({
                   <ul>
                     {issues.map((issue, index) => (
                       <li key={`${issue.path}-${index}`}>
-                        <a href={`#${issue.path}`}>{issue.message}</a>
+                        <a href={fragmentHref(`#${issue.path}`)}>
+                          {issue.message}
+                        </a>
                       </li>
                     ))}
                   </ul>
