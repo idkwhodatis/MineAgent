@@ -6,6 +6,7 @@ separate requirement; these tests do not silently count immutability as that pro
 """
 
 import hashlib
+import stat
 from dataclasses import replace
 from datetime import date
 from uuid import uuid4
@@ -246,7 +247,11 @@ def test_tampered_real_response_bytes_cannot_revalidate_witness(source_setup):
         obj = session.get(ResearchObject, saved.response_object_ids[0])
         path = settings.storage_root / obj.storage_key
     original = path.read_bytes()
+    original_mode = stat.S_IMODE(path.stat().st_mode)
+    assert original_mode & 0o222 == 0
     try:
+        # Simulate privileged disk corruption without changing production modes.
+        path.chmod(original_mode | stat.S_IWUSR)
         path.write_bytes(b"{}")
         with (
             pytest.raises(DomainError) as corrupt,
@@ -259,7 +264,10 @@ def test_tampered_real_response_bytes_cannot_revalidate_witness(source_setup):
             )
         assert corrupt.value.code == "neutral_object_uncertain"
     finally:
-        path.write_bytes(original)
+        try:
+            path.write_bytes(original)
+        finally:
+            path.chmod(original_mode)
 
 
 def test_direct_sql_new_member_serializes_against_source_finalization(source_setup):

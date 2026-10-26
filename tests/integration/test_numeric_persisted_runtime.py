@@ -355,10 +355,12 @@ def _assert_second_native_consumer_rejected(
         payload.update(
             id=str(uuid4()),
             admission=admission,
-            issued_at=now,
-            not_after=now + timedelta(seconds=8),
+            issued_at=now.isoformat(),
+            not_after=(now + timedelta(seconds=8)).isoformat(),
         )
-        persist_numeric_intent(session, fence, NumericIntent.model_validate(payload))
+        # The retained receipt is JSON, not a strict Python model dictionary.
+        intent = NumericIntent.model_validate_json(json.dumps(payload, allow_nan=False))
+        persist_numeric_intent(session, fence, intent)
         claim_native_normalizer(session, fence, publication_id, attempted_id, settings)
     assert (
         rejected.value.orig.diag.constraint_name
