@@ -1,0 +1,3 @@
+# Separate CPython 3.12 Linux x86_64 numeric profile; no RD/Qlib/provider dependencies.
+h5py==3.16.0 --hash=sha256:dfc21898ff025f1e8e67e194965a95a8d4754f452f83454538f98f8a3fcb207e
+numpy==2.5.4 --hash=sha256:fbde6962867ee75b48b0ee29b2b9372ec5d617799dbaf38e82dc0596f2f7738a

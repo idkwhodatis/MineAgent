@@ -1,0 +1,88 @@
+name: MineAgent disabled maintained numeric runtime
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "runtimes/factor_execution/**"
+      - "runtimes/factor_normalizer/**"
+      - "runtimes/hostile_deadline/**"
+      - "packages/rdagent_adapter/**"
+      - "tests/rdagent/**"
+      - ".github/workflows/mineagent-numeric-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  maintained-numeric-fixture:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install unchanged host test closure
+        run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Fetch only exact existing numeric wheels
+        run: |
+          mkdir -p .wheelhouse-factor-numeric var/numeric-proof
+          python -m runtimes.factor_execution.verify_inventory > var/numeric-proof/source-inventory.json
+          python -m pip download --require-hashes --only-binary=:all: --no-deps -r runtimes/factor_normalizer/requirements.lock -d .wheelhouse-factor-numeric
+      - name: Validate separate disabled numeric contracts
+        run: |
+          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py -q --junitxml=var/numeric-proof/contracts.xml
+          python - <<'PY'
+          from xml.etree import ElementTree as ET
+          cases = list(ET.parse('var/numeric-proof/contracts.xml').getroot().iter('testcase'))
+          assert len(cases) == 247
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PY
+      - name: Build separate fixed candidate and native normalizer images
+        run: |
+          docker build --iidfile var/numeric-proof/candidate.iid -f runtimes/factor_execution/Dockerfile .
+          docker build --iidfile var/numeric-proof/normalizer.iid -f runtimes/factor_normalizer/Dockerfile .
+      - name: Verify installed numeric native dependency closures without candidate execution
+        run: |
+          for role in candidate normalizer; do
+            docker run --rm --network none --ipc none --read-only --cap-drop ALL \
+              --security-opt no-new-privileges --user 65533:65533 --pids-limit 32 \
+              --memory 256m --memory-swap 256m --cpus 1 \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=4m,uid=65533,gid=65533,mode=0700 \
+              --entrypoint python "$(cat var/numeric-proof/$role.iid)" \
+              -I -m runtimes.factor_execution.probe_dependencies "$role" \
+              > "var/numeric-proof/$role-dependencies.json"
+          done
+      - name: Require actual maintained fixture through two protected units
+        run: |
+          python -m runtimes.factor_execution.acceptance --run-maintained-docker-fixture \
+            --candidate-image "$(cat var/numeric-proof/candidate.iid)" \
+            --normalizer-image "$(cat var/numeric-proof/normalizer.iid)" \
+            --output var/numeric-proof/acceptance.json
+          python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path('var/numeric-proof')
+          proof=json.loads((root/'acceptance.json').read_text())
+          assert proof['scope']=='disabled_maintained_numeric_fixture_only'
+          assert proof['arbitrary_candidate_admission'] is False
+          assert proof['hand_checked_rows']==3
+          cases={case['role']:case for case in proof['cases']}
+          assert set(cases)=={'candidate','normalizer'}
+          for role,case in cases.items():
+              assert case['image']==(root/f'{role}.iid').read_text().strip()
+              assert all(case[k] is True for k in ('positive_stop_verified','original_deadline_verified','complete_output_stream_verified','frame_received_while_unit_alive','launch_owner_killed','all_observed_descendants_stopped','protected_quiescence_frame_verified'))
+              assert case['exit_code']==124 and 0<case['elapsed_seconds']<=9
+              assert len(case['input_inventory'])==(4 if role=='candidate' else 3)
+          assert cases['normalizer']['output_sha256']==proof['expected_parquet_sha256']
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mineagent-numeric-${{ github.sha }}
+          path: var/numeric-proof/
+          if-no-files-found: error
