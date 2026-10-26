@@ -15,6 +15,8 @@ FILES = (
     "runtimes/factor_execution/Dockerfile.dockerignore",
     "runtimes/factor_execution/requirements.lock",
     "runtimes/factor_execution/abi_fixture.py",
+    "runtimes/factor_execution/adverse_fixture.py",
+    "runtimes/factor_execution/adverse_acceptance.py",
     "runtimes/factor_execution/numeric_deadline.py",
     "runtimes/factor_execution/probe_dependencies.py",
     "runtimes/factor_execution/candidate_deadline.py",

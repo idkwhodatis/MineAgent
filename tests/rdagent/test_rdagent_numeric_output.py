@@ -131,7 +131,7 @@ def test_frame_inputs_are_typed_and_bounded(kind, payload):
 def test_export_receipt_requires_exact_canonical_metadata(mutator):
     content = b"x"
     metadata = {
-        "schema": "mineagent.numeric-quiescence.v1",
+        "schema": "mineagent.numeric-quiescence.v2",
         "basename": "result.h5",
         "child_exit_code": 0,
         "descendants_reaped": True,
@@ -207,7 +207,7 @@ def test_missing_native_output_emits_only_fixed_failure(output_dir, monkeypatch)
         out, "write_frame", lambda kind, value: written.append((kind, value))
     )
     out.export_output("values.parquet", 0)
-    assert written == [(3, b"")]
+    assert written == [(3, out.rejection_metadata("values.parquet", 0))]
 
 
 def test_numeric_inode_mutation_is_rejected(output_dir, monkeypatch):

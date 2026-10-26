@@ -26,4 +26,4 @@ def test_numeric_workflow_pulls_exact_inspected_base_before_builds():
         ]
         assert bases and all(base == BASE_IMAGE for base in bases)
     assert "test_rdagent_numeric_workflow.py -q" in workflow
-    assert "assert len(cases) == 248" in workflow
+    assert "assert len(cases) == 301" in workflow

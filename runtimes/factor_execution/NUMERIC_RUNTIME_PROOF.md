@@ -19,7 +19,7 @@ no result.bin fallback is reachable. The exporter runs only after actual ECHILD,
 with no capabilities, and reads only the fixed role's nonempty readable regular
 nlink1 output. The root-owned0733 output directory cannot be chmod'ed by the child;
 the maintained fixture and normalizer explicitly set files0644. Numeric framing
-uses MANU1 and schema mineagent.numeric-quiescence.v1, max16MiB; its separate
+uses MANU2 and schema mineagent.numeric-quiescence.v2, max16MiB; its separate
 Docker attach parser retains64KiB frames and fixed17MiB aggregate. The original
 proof's4MiB/result.bin ABI and5MiB attach cap are unchanged.
 
@@ -62,3 +62,29 @@ actual Python/distribution/module/native-library identities, HDF5 version and
 `pip check`; missing shared libraries fail, with no compiler/apt fallback. The
 numeric fixture supplies actual candidate/normalizer image and lock hashes. Other
 RD/Qlib fixture pins are not exercised and are not accepted by this proof.
+
+## Separate adverse successor (not yet hosted-accepted)
+
+The successor uses explicit MANU2 framing and quiescence schema v2, rejecting old
+MANU1 frames. Rejection kind3 now carries only protected canonical fixed metadata:
+basename, real observed child exit code, descendants-reaped and rejection schema.
+An empty v1 rejection cannot prove whether a normalizer rejected or crashed. The
+adverse driver requires exact normalizer exit2; SIGSEGV, startup failure, wrong
+role and unexpected output cannot pass. No exception text/native data is exposed.
+
+Sixteen closed maintained sources run in the candidate unit. Eleven produce
+malformed signature, external/soft links, VDS, external storage, gzip/shuffle
+filters, variable-length/reference/compound dtype or alias HDFs. Host only hashes
+and transfers opaque bytes into a fresh normalizer unit, which must reject each.
+Five candidate output cases exercise FIFO, symlink, unreadable inode, hardlink and
+an attempted file beyond the numeric RLIMIT_FSIZE. The last requires exact fixture
+exit42 only after observing EFBIG, rather than treating an arbitrary crash as
+success. Every one of the 27 units must satisfy the unchanged eight-second
+original deadline, complete stream consumption, stopped124 and observed PID
+absence. The same images first pass the existing positive two-unit fixture.
+
+These are maintained-fixture negative cases, not arbitrary candidate admission.
+Ptrace/signal/protected-FD probes, detached grandchildren, numeric no-reader and
+collector-loss remain open; the stdlib proof does not substitute for these numeric
+cases. Neither pure tests nor local whitelisted HDF constructor checks establish
+actual Docker execution. The ordinary registry remains closed.

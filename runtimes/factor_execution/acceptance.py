@@ -30,6 +30,7 @@ from runtimes.factor_execution.protected_output import (
     MAX_FRAME,
     parse_frame,
     validate_export,
+    validate_rejection,
 )
 from runtimes.factor_execution.runtime_contract import (
     BASE_IMAGE,
@@ -91,8 +92,12 @@ def require_complete_numeric_stream(reader, deadline):
         raise AssertionError("duplicate or trailing numeric output bytes")
 
 
-def frozen_inputs(candidate_image, normalizer_image):
-    source = Path(__file__).with_name("abi_fixture.py").read_bytes()
+def frozen_inputs(candidate_image, normalizer_image, *, source_bytes=None):
+    source = (
+        Path(__file__).with_name("abi_fixture.py").read_bytes()
+        if source_bytes is None
+        else source_bytes
+    )
     sha = hashlib.sha256(source).hexdigest()
     raw = research_dict()
     raw["runtime"]["candidate_image"] = candidate_image
@@ -155,7 +160,7 @@ def frozen_inputs(candidate_image, normalizer_image):
     return prefix, dict(inputs), ns
 
 
-def exercise(image, folder, *, role, inventory, input_bytes):
+def exercise(image, folder, *, role, inventory, input_bytes, rejected_exit_code=None):
     folder.mkdir(mode=0o755)
     inputs, hashes = {}, {}
     for destination, data in sorted(input_bytes.items()):
@@ -276,10 +281,21 @@ def exercise(image, folder, *, role, inventory, input_bytes):
             time.monotonic(),
             original,
         )
-        if kind != 2:
-            raise AssertionError("maintained numeric fixture failed")
         basename = "result.h5" if role == "candidate" else "values.parquet"
-        content = validate_export(payload, expected_basename=basename)
+        if rejected_exit_code is None:
+            if kind != 2:
+                raise AssertionError("maintained numeric fixture failed")
+            content = validate_export(payload, expected_basename=basename)
+            observed_child_exit_code = 0
+        else:
+            if kind != 3:
+                raise AssertionError("adverse numeric case exported output")
+            observed_child_exit_code = validate_rejection(
+                payload,
+                expected_basename=basename,
+                expected_exit_code=rejected_exit_code,
+            )
+            content = b""
         rows = command(
             "docker",
             "top",
@@ -318,6 +334,8 @@ def exercise(image, folder, *, role, inventory, input_bytes):
             } == hashes[destination]
         return content, {
             "role": role,
+            "expected_rejection_exit_code": rejected_exit_code,
+            "observed_child_exit_code": observed_child_exit_code,
             "image": image,
             "input_inventory": hashes,
             "input_inventory_sha256": commitment,

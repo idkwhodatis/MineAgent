@@ -4,7 +4,7 @@ COPY .wheelhouse-factor-numeric /wheelhouse
 COPY runtimes/factor_execution/requirements.lock /requirements.lock
 RUN python -m pip install --no-index --find-links=/wheelhouse --require-hashes --only-binary=:all: --no-deps --prefix=/opt/numeric -r /requirements.lock
 FROM python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
-LABEL io.mineagent.managed="mineagent-disabled-factor-numeric-candidate-v1"
+LABEL io.mineagent.managed="mineagent-disabled-factor-numeric-candidate-v2"
 COPY --from=dependencies /opt/numeric/ /usr/local/
 COPY runtimes/factor_execution/requirements.lock /opt/mineagent/requirements.lock
 COPY runtimes/hostile_deadline/contract.py runtimes/hostile_deadline/deadline.py /usr/local/lib/python3.12/site-packages/runtimes/hostile_deadline/

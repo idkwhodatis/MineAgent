@@ -11,7 +11,7 @@ import os
 import stat
 import struct
 
-MAGIC = b"MANU1\x00"
+MAGIC = b"MANU2\x00"
 MAX_OUTPUT = 16 * 1024 * 1024
 OUTPUTS = ("result.h5", "values.parquet")
 MAX_FRAME = MAX_OUTPUT + 1024
@@ -113,11 +113,11 @@ def export_output(name: str, child_exit_code: int) -> None:
     try:
         content = read_regular(name, MAX_OUTPUT)
     except (OSError, ValueError):
-        write_frame(3, b"")
+        write_frame(3, rejection_metadata(name, child_exit_code))
         return
     metadata = json.dumps(
         {
-            "schema": "mineagent.numeric-quiescence.v1",
+            "schema": "mineagent.numeric-quiescence.v2",
             "basename": name,
             "child_exit_code": child_exit_code,
             "descendants_reaped": True,
@@ -147,7 +147,7 @@ def validate_export(payload: bytes, *, expected_basename: str) -> bytes:
         raise ValueError("noncanonical metadata")
     content = payload[4 + size :]
     if not 0 < len(content) <= MAX_OUTPUT or metadata != {
-        "schema": "mineagent.numeric-quiescence.v1",
+        "schema": "mineagent.numeric-quiescence.v2",
         "basename": expected_basename,
         "child_exit_code": 0,
         "descendants_reaped": True,
@@ -162,3 +162,30 @@ def validate_export(payload: bytes, *, expected_basename: str) -> bytes:
     ):
         raise ValueError("noncanonical export metadata types")
     return content
+
+
+def rejection_metadata(name: str, child_exit_code: int) -> bytes:
+    if (
+        name not in OUTPUTS
+        or type(child_exit_code) is not int
+        or not -64 <= child_exit_code <= 255
+    ):
+        raise ValueError("invalid protected rejection identity")
+    return json.dumps(
+        {
+            "schema": "mineagent.numeric-rejection.v1",
+            "basename": name,
+            "child_exit_code": child_exit_code,
+            "descendants_reaped": True,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+
+
+def validate_rejection(
+    payload: bytes, *, expected_basename: str, expected_exit_code: int
+) -> int:
+    if payload != rejection_metadata(expected_basename, expected_exit_code):
+        raise ValueError("protected rejection did not match exact child exit")
+    return expected_exit_code

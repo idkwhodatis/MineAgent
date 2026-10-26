@@ -36,11 +36,11 @@ jobs:
           python -m pip download --require-hashes --only-binary=:all: --no-deps -r runtimes/factor_normalizer/requirements.lock -d .wheelhouse-factor-numeric
       - name: Validate separate disabled numeric contracts
         run: |
-          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_workflow.py -q --junitxml=var/numeric-proof/contracts.xml
+          python -m pytest tests/rdagent/test_rdagent_numeric_deadline.py tests/rdagent/test_rdagent_numeric_output.py tests/rdagent/test_rdagent_numeric_attach.py tests/rdagent/test_rdagent_numeric_runtime_contract.py tests/rdagent/test_rdagent_numeric_acceptance.py tests/rdagent/test_rdagent_numeric_adverse.py tests/rdagent/test_rdagent_numeric_workflow.py -q --junitxml=var/numeric-proof/contracts.xml
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('var/numeric-proof/contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 248
+          assert len(cases) == 301
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PY
       - name: Materialize exact pinned base in local Docker daemon
@@ -82,6 +82,12 @@ jobs:
               assert len(case['input_inventory'])==(4 if role=='candidate' else 3)
           assert cases['normalizer']['output_sha256']==proof['expected_parquet_sha256']
           PY
+      - name: Require isolated native rejection and inode adverse cases
+        run: |
+          python -m runtimes.factor_execution.adverse_acceptance --run-maintained-adverse-docker-fixtures \
+            --candidate-image "$(cat var/numeric-proof/candidate.iid)" \
+            --normalizer-image "$(cat var/numeric-proof/normalizer.iid)" \
+            --output var/numeric-proof/adverse-acceptance.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
