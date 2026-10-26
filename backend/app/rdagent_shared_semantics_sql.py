@@ -39,7 +39,7 @@ BEGIN
  THEN RAISE EXCEPTION 'RD request membership differs from exact protocol'; END IF;
  IF EXISTS(SELECT 1 FROM research_budget_reservations br JOIN research_runs rr ON rr.id=br.run_id
    WHERE br.owner_id=owner_uuid AND br.purpose='engine_mutation' AND
-    (rr.engine<>'rdagent' OR br.amounts<>'{"calls":0,"tokens":0,"wall_milliseconds":0,"storage_bytes":0,"mutation_slots":1,"evaluator_executions":0,"process_slots":0}'::jsonb
+    (rr.engine<>'rdagent' OR br.amounts<>'{"calls":0,"tokens":0,"cost_microunits":0,"wall_milliseconds":0,"storage_bytes":0,"mutation_slots":1,"evaluator_executions":0,"process_slots":0}'::jsonb
      OR NOT EXISTS(SELECT 1 FROM factor_generation_starts st WHERE st.mutation_reservation_id=br.id
        AND (st.owner_id,st.run_id,st.attempt_id,st.generation)=(br.owner_id,br.run_id,br.attempt_id,br.generation))))
  THEN RAISE EXCEPTION 'RD mutation slot requires exact start consumer'; END IF;

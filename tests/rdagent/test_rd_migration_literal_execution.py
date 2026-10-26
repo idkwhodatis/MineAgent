@@ -6,11 +6,15 @@ operators must reach cursor.execute(statement) with NO parameter argument.
 
 import ast
 import importlib.util
+import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine, event, text
+
+from packages.research_runtime.budget_contracts import BudgetVector
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -31,10 +35,28 @@ def test_frozen_ddl_reaches_no_parameter_driver_without_reinterpretation(
     workflow = (ROOT / ".github/workflows/mineagent-adapter-contracts.yml").read_text()
     assert "tests/rdagent/test_rd_migration_literal_execution.py" in workflow
     assert "assert len(cases) == 129" in workflow
-    assert "pytest tests/integration --maxfail=1 -q" in (
-        ROOT / ".github/workflows/v1-validation.yml"
-    ).read_text()
+    assert (
+        "pytest tests/integration --maxfail=1 -q"
+        in (ROOT / ".github/workflows/v1-validation.yml").read_text()
+    )
     module = migration()
+    # Exact full vector: dropping even a zero-valued dimension rejects genuine
+    # reservations. Keep the same engine, purpose and scoped start-consumer guard.
+    source = (ROOT / "backend/app/rdagent_shared_semantics_sql.py").read_text()
+    for sql in (source, module.UPGRADE_SQL):
+        amounts = re.findall(r"br.amounts<>'([^']+)'::jsonb", sql)
+        assert len(amounts) == 1
+        assert json.loads(amounts[0]) == BudgetVector(mutation_slots=1).model_dump()
+        assert "br.purpose='engine_mutation'" in sql
+        assert "rr.engine<>'rdagent'" in sql
+        assert (
+            "NOT EXISTS(SELECT 1 FROM factor_generation_starts st WHERE st.mutation_reservation_id=br.id"
+            in sql
+        )
+        assert (
+            "(st.owner_id,st.run_id,st.attempt_id,st.generation)=(br.owner_id,br.run_id,br.attempt_id,br.generation)"
+            in sql
+        )
     # PL/pgSQL's IF delimiter reader must not consume a CASE's inner THEN.
     cases = (
         "CASE WHEN kind='integer' THEN 'number' ELSE kind END",

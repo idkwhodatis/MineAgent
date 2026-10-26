@@ -35,6 +35,15 @@ def revision(engine):
         return connection.scalar(text("SELECT version_num FROM alembic_version"))
 
 
+def enter_factor_migration_stage(engine, stage):
+    # Lock/isolation probes must reach the historical migration under test,
+    # not an unrelated successor's maintenance guard while walking from head.
+    source = {"library": "012_factor_library", "import": "013_factor_import"}[stage]
+    with engine.begin() as connection:
+        migration(connection, source)
+    assert revision(engine) == source
+
+
 def object_row(owner_id):
     checksum = sha256(b"retained migration evidence").hexdigest()
     return FactorObject(
@@ -308,9 +317,7 @@ def test_factor_migration_refuses_shared_maintenance_admission(migrated_engine, 
     from backend.app.core.maintenance import _lock
 
     target = "011_note_pin_trigger" if stage == "library" else "012_factor_library"
-    if stage == "library":
-        with migrated_engine.begin() as connection:
-            migration(connection, "012_factor_library")
+    enter_factor_migration_stage(migrated_engine, stage)
     before = revision(migrated_engine)
     with migrated_engine.begin() as reader:
         _lock(reader)  # The same shared admission used by every managed session.
@@ -445,6 +452,7 @@ def test_factor_import_migration_refuses_provenance_only_dependency(
 def test_factor_import_migration_refuses_concurrent_raw_admission_insert(
     migrated_engine, owner
 ):
+    enter_factor_migration_stage(migrated_engine, "import")
     with Session(migrated_engine) as session:
         obj = object_row(owner.user.id)
         session.add(obj)
@@ -484,9 +492,7 @@ def test_factor_migration_rejects_stale_repeatable_read_snapshot(
 ):
     target = "011_note_pin_trigger" if stage == "library" else "012_factor_library"
     table = "factors" if stage == "library" else "factor_import_admissions"
-    if stage == "library":
-        with migrated_engine.begin() as connection:
-            migration(connection, "012_factor_library")
+    enter_factor_migration_stage(migrated_engine, stage)
     before = revision(migrated_engine)
     inserted_id = uuid4()
     with (
@@ -557,9 +563,7 @@ def test_factor_migration_rejects_stale_repeatable_read_snapshot(
 )
 def test_factor_migration_refuses_locked_fk_parent(migrated_engine, stage, parent):
     target = "011_note_pin_trigger" if stage == "library" else "012_factor_library"
-    if stage == "library":
-        with migrated_engine.begin() as connection:
-            migration(connection, "012_factor_library")
+    enter_factor_migration_stage(migrated_engine, stage)
     before = revision(migrated_engine)
     tables = set(inspect(migrated_engine).get_table_names())
     # Even an otherwise-empty feature schema has FK triggers on these external
