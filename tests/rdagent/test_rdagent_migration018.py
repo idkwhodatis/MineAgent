@@ -205,6 +205,8 @@ def test_static_migration_has_no_runtime_renderer_or_model_import():
         node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     ]
     assert modules == ["alembic"]
-    assert 'UPGRADE_SQL.replace("@SCHEMA@",schema)' in PATH.read_text()
-    assert 'DOWNGRADE_SQL.replace("@SCHEMA@", schema)' in PATH.read_text()
+    calls = {ast.dump(node) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    for literal in ("UPGRADE_SQL", "DOWNGRADE_SQL"):
+        expected = ast.parse(f'{literal}.replace("@SCHEMA@", schema)', mode="eval")
+        assert ast.dump(expected.body) in calls
     assert "pg_try_advisory_xact_lock(1413960260, 1129270340)" in PATH.read_text()

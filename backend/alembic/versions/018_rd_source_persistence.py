@@ -39,11 +39,19 @@ def upgrade():
     _maintenance()
     schema = _schema()
     op.execute("SET LOCAL search_path = " + schema + ", pg_catalog")
-    op.execute(UPGRADE_SQL.replace("@SCHEMA@",schema))
+    # Frozen DDL contains JSON :0/:1 and literal percent operators. Bypass
+    # SQLAlchemy bind parsing AND DBAPI parameter interpolation, unchanged bytes.
+    op.get_bind().exec_driver_sql(
+        UPGRADE_SQL.replace("@SCHEMA@", schema),
+        execution_options={"no_parameters": True},
+    )
 
 
 def downgrade():
     _maintenance()
     schema = _schema()
     op.execute("SET LOCAL search_path = " + schema + ", pg_catalog")
-    op.execute(DOWNGRADE_SQL.replace("@SCHEMA@", schema))
+    op.get_bind().exec_driver_sql(
+        DOWNGRADE_SQL.replace("@SCHEMA@", schema),
+        execution_options={"no_parameters": True},
+    )
