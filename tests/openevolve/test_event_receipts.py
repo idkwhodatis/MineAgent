@@ -29,7 +29,7 @@ from packages.openevolve_adapter.host_contracts import EvidenceRef
 from packages.research_runtime.broker_contracts import digest
 
 
-def test_receipt_schema_has_one_explicit_pending_epoch_unique():
+def test_receipt_schema_has_complete_nondeferrable_target_keys():
     table = SearchControllerEventReceipt.__table__
     assert "FOREIGN KEY" in str(CreateTable(table).compile(dialect=dialect()))
     missing = []
@@ -39,16 +39,17 @@ def test_receipt_schema_has_one_explicit_pending_epoch_unique():
         keys = [tuple(c.name for c in target.primary_key.columns)] + [
             tuple(c.name for c in constraint.columns)
             for constraint in target.constraints
-            if isinstance(constraint, UniqueConstraint)
+            if isinstance(constraint, UniqueConstraint) and not constraint.deferrable
         ]
         if columns not in keys:
             missing.append((target.name, columns))
-    assert missing == [
-        (
-            "strategy_search_epochs",
-            ("owner_id", "run_id", "attempt_id", "generation", "id", "admission_id"),
-        )
-    ]
+    assert missing == []
+    assert any(
+        fk.elements[0].column.table.name == "strategy_search_epochs"
+        and tuple(e.column.name for e in fk.elements)
+        == ("owner_id", "run_id", "attempt_id", "generation", "id", "admission_id")
+        for fk in table.foreign_key_constraints
+    )
 
 
 def fixture(native):

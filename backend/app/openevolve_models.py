@@ -121,6 +121,7 @@ class StrategySearchEpoch(AttemptEvidence, Base):
     # Checkpoint selection is added only with complete native checkpoint closure.
     __table_args__ = scope_constraints() + (
         UniqueConstraint("admission_id"),
+        UniqueConstraint(*SCOPE, "id", "admission_id"),
         fk([*SCOPE, "admission_id"], "research_process_admissions", [*SCOPE, "id"]),
         CheckConstraint(
             "bootstrap_sha256 ~ '^[0-9a-f]{64}$' AND runtime_profile_sha256 ~ '^[0-9a-f]{64}$'"

@@ -25,7 +25,7 @@ PINS = {
     (
         "024_openevolve_initial.py",
         "UPGRADE_SQL",
-    ): "79c7982075563501c1a15728b9dee6011e12f8e665d3d03a12e97be4700b2a3e",
+    ): "29e903e8df935bc133c3c1c5bde822102d7676608fef84887f9f8aa86b8bedcf",
 }
 
 

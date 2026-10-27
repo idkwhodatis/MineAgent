@@ -2326,6 +2326,7 @@ UNIQUE_KEYS = {
     "strategy_search_epochs": (
         ("admission_id",),
         ("owner_id", "run_id", "attempt_id", "generation", "id"),
+        ("owner_id", "run_id", "attempt_id", "generation", "id", "admission_id"),
         ("run_id", "ordinal"),
     ),
     "strategy_search_specs": (
