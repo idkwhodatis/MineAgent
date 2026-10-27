@@ -22,8 +22,8 @@ BEGIN
  IF EXISTS (
  SELECT 1 FROM @SCHEMA@.factor_cutoff_executions c
  JOIN @SCHEMA@.factor_analysis_plans p ON (p.owner_id,p.run_id)=(c.owner_id,c.run_id)
- LEFT JOIN @SCHEMA@.factor_configured_input_witnesses w ON w.execution_id=c.id
- WHERE w.id IS NULL
+ LEFT JOIN @SCHEMA@.factor_configured_input_witnesses cutoff_witness ON cutoff_witness.execution_id=c.id
+ WHERE cutoff_witness.id IS NULL
  ) THEN RAISE EXCEPTION 'configured cutoff missing input witness'; END IF;
  FOR w IN SELECT * FROM @SCHEMA@.factor_configured_input_witnesses LOOP
   IF NOT EXISTS (

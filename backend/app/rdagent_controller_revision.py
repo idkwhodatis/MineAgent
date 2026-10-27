@@ -122,9 +122,9 @@ BEGIN
    THEN RAISE EXCEPTION 'All actual model calls must close before adoption'; END IF;
   END LOOP;
  END LOOP;
- IF EXISTS(SELECT 1 FROM factor_generation_boundaries b JOIN factor_generation_observations o ON o.id=b.observation_id
+ IF EXISTS(SELECT 1 FROM factor_generation_boundaries b JOIN factor_generation_observations boundary_observation ON boundary_observation.id=b.observation_id
  WHERE b.owner_id=owner_uuid AND (b.boundary<>'returned' OR b.next_logical_step IS NOT NULL
-  OR (b.start_id,b.controller_launch_id,b.logical_step) IS DISTINCT FROM (o.start_id,o.controller_launch_id,o.logical_step)))
+  OR (b.start_id,b.controller_launch_id,b.logical_step) IS DISTINCT FROM (boundary_observation.start_id,boundary_observation.controller_launch_id,boundary_observation.logical_step)))
  THEN RAISE EXCEPTION 'Exact returned first generation boundary required'; END IF;
  RETURN NULL;
 END $$;

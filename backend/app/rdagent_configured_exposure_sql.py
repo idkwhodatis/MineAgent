@@ -27,8 +27,8 @@ BEGIN
  owner_uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.owner_id ELSE NEW.owner_id END;
  IF EXISTS(SELECT 1 FROM data_usage_exposures e WHERE e.owner_id=owner_uuid
  AND e.purpose='factor_research_configured_source' AND NOT EXISTS(
- SELECT 1 FROM factor_analysis_plans p WHERE p.owner_id=e.owner_id AND p.run_id=e.run_id
- AND e.source_key='rd-configured-source:'||p.id::text))
+ SELECT 1 FROM factor_analysis_plans exposure_plan WHERE exposure_plan.owner_id=e.owner_id AND exposure_plan.run_id=e.run_id
+ AND e.source_key='rd-configured-source:'||exposure_plan.id::text))
  THEN RAISE EXCEPTION 'Configured exposure cannot outlive or invent its plan'; END IF;
  FOR p IN SELECT * FROM factor_analysis_plans WHERE owner_id=owner_uuid LOOP
   IF NOT EXISTS(

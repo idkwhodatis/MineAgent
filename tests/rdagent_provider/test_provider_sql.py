@@ -59,7 +59,7 @@ def test_sdk_references_require_publication_and_full_charge_not_physical_claim()
     assert "ARRAY['intent','started','stopped']" in sql
     assert "JOIN research_object_outcomes done" in sql
     assert "JOIN research_object_publications pub" in sql
-    assert "settled.charge=held.amounts" in sql
+    assert "settled.charge=object_hold.amounts" in sql
     assert "w.size_bytes BETWEEN 1 AND 16384" in sql
     assert "pg_read" not in sql and "/proc/" not in sql
     assert "IF TG_OP<>'INSERT'" in sql

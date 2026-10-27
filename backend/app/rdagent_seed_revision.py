@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 
 FROZEN_020_UPGRADE_SHA256 = (
-    "0d4ba455c5c9ba52159942099f7f6f8ea4cb68fe637b989c5a8521ead92f13db"
+    "1557ba0d6c69adbb461b0d152c8fac938b51d9d97a2a70936860a6f63f447b34"
 )
 BOOTSTRAP_CHECK = "ec_6ffe30774943edd35e0aa6bb"
 

@@ -80,9 +80,9 @@ DECLARE owner_uuid uuid; a record; rr record; br record; bs record; ps record;
  intent_hash text; identity_hash text; child_hash text; launch_hash text;
 BEGIN
  owner_uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.owner_id ELSE NEW.owner_id END;
- IF EXISTS(SELECT 1 FROM research_process_receipts p JOIN research_process_admissions a ON a.id=p.admission_id
- WHERE p.owner_id=owner_uuid AND p.kind='controller_child' AND
-  (a.profile<>'mineagent.rdagent-orchestrator.v2' OR a.role<>'rd_orchestrator'))
+ IF EXISTS(SELECT 1 FROM research_process_receipts child_receipt JOIN research_process_admissions child_admission ON child_admission.id=child_receipt.admission_id
+ WHERE child_receipt.owner_id=owner_uuid AND child_receipt.kind='controller_child' AND
+  (child_admission.profile<>'mineagent.rdagent-orchestrator.v2' OR child_admission.role<>'rd_orchestrator'))
  THEN RAISE EXCEPTION 'RD child cannot extend historical process grammar'; END IF;
  FOR a IN SELECT * FROM research_process_admissions WHERE owner_id=owner_uuid AND profile='mineagent.rdagent-orchestrator.v2' LOOP
   IF (a.schema_version,a.role,a.ipc_policy) IS DISTINCT FROM
@@ -268,11 +268,11 @@ def shared_consistency_sql():
 def controller_consistency_sql():
     return _once(
         _safe_expressions(PRIOR_RD_CONTROLLER),
-        "(a.profile<>'mineagent.rdagent-orchestrator.v2' OR a.role<>'rd_orchestrator'))",
-        """NOT ((a.profile='mineagent.rdagent-orchestrator.v2' AND a.role='rd_orchestrator')
-       OR (a.profile='mineagent.openevolve-orchestrator.v1' AND a.role='openevolve_orchestrator'
-           AND a.schema_version='mineagent.process-admission.v2' AND a.ipc_policy='host_ticket'
-           AND a.ticket_sha256 ~ '^[a-f0-9]{64}$')))""",
+        "(child_admission.profile<>'mineagent.rdagent-orchestrator.v2' OR child_admission.role<>'rd_orchestrator'))",
+        """NOT ((child_admission.profile='mineagent.rdagent-orchestrator.v2' AND child_admission.role='rd_orchestrator')
+       OR (child_admission.profile='mineagent.openevolve-orchestrator.v1' AND child_admission.role='openevolve_orchestrator'
+           AND child_admission.schema_version='mineagent.process-admission.v2' AND child_admission.ipc_policy='host_ticket'
+           AND child_admission.ticket_sha256 ~ '^[a-f0-9]{64}$')))""",
     )
 
 

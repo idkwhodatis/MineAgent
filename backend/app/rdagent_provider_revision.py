@@ -17,7 +17,7 @@ PINS = {
     (
         "020_rd_controller.py",
         "UPGRADE_SQL",
-    ): "0d4ba455c5c9ba52159942099f7f6f8ea4cb68fe637b989c5a8521ead92f13db",
+    ): "1557ba0d6c69adbb461b0d152c8fac938b51d9d97a2a70936860a6f63f447b34",
     (
         "023_rd_submissions.py",
         "UPGRADE_SQL",
@@ -25,7 +25,7 @@ PINS = {
     (
         "024_openevolve_initial.py",
         "UPGRADE_SQL",
-    ): "29e903e8df935bc133c3c1c5bde822102d7676608fef84887f9f8aa86b8bedcf",
+    ): "0a8c78d30fa196887f53cbe62eb0c953752852d6d24988ee97334dddc4a9dcc5",
 }
 
 
@@ -66,6 +66,16 @@ def changed(sql, old, new):
     if sql.count(old) != 1:
         raise ValueError("Exact reviewed historical clause required: " + old)
     return sql.replace(old, new)
+
+
+def schema_boolean_sql():
+    """026 adds strict JSON booleans; every other018 parser byte is preserved."""
+    original = function(literal("018_rd_source_persistence.py"), "mineagent_rd_schema")
+    return changed(
+        original,
+        " WHEN 'null' THEN NULL;",
+        " WHEN 'boolean' THEN NULL; -- Exact jsonb_typeof check above remains mandatory.\n WHEN 'null' THEN NULL;",
+    )
 
 
 def request_config_sql():
@@ -243,7 +253,7 @@ ALTER TABLE @SCHEMA@.factor_research_submissions DROP CONSTRAINT factor_research
 
 
 def render_upgrade_sql():
-    return f"{request_config_sql()}\n{neutral_model_sql()}\n{source_sql()}\n{boundary_sql()}\n{submission_sql()}\n{kind_request_checks()}"
+    return f"{schema_boolean_sql()}\n{request_config_sql()}\n{neutral_model_sql()}\n{source_sql()}\n{boundary_sql()}\n{submission_sql()}\n{kind_request_checks()}"
 
 
 def render_downgrade_sql():
@@ -265,6 +275,7 @@ DO $$ BEGIN
  THEN RAISE EXCEPTION 'Configured provider or steer declarations prevent downgrade'; END IF;
 END $$;
 """,
+            function(literal("018_rd_source_persistence.py"), "mineagent_rd_schema"),
             function(
                 literal("018_rd_source_persistence.py"), "mineagent_rd_source_config"
             ),

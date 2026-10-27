@@ -59,10 +59,10 @@ def test_controller_only_narrow_global_child_exclusion_changes():
     split = " FOR a IN SELECT * FROM research_process_admissions"
     assert after.split(split)[1] == before.split(split)[1]
     assert (
-        "a.profile='mineagent.openevolve-orchestrator.v1' AND a.role='openevolve_orchestrator'"
+        "child_admission.profile='mineagent.openevolve-orchestrator.v1' AND child_admission.role='openevolve_orchestrator'"
         in after
     )
-    assert "a.ipc_policy='host_ticket'" in after
+    assert "child_admission.ipc_policy='host_ticket'" in after
     assert "mineagent_rd_controller_kernel" in after
 
 

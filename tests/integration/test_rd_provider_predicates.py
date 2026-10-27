@@ -76,6 +76,28 @@ def test_provider_request_and_conservative_amount_match_python(
         """),
             {"request": json.dumps(value), "binding": json.dumps(config)},
         ).one()
+    # Actual SQL interpreter: booleans are accepted only as JSON booleans.
+    # This directly checks the structural rule, independent of binding hashes.
+    with migrated_engine.connect() as connection:
+        for candidate, expected in (
+            (True, True),
+            (False, True),
+            (0, False),
+            (1, False),
+            ("true", False),
+            ("false", False),
+            (None, False),
+            ([], False),
+            ({}, False),
+        ):
+            actual = connection.scalar(
+                text(
+                    "SELECT mineagent_rd_schema(CAST(:value AS jsonb), "
+                    "'{\"type\":\"boolean\"}'::jsonb, '{}'::jsonb, 0)"
+                ),
+                {"value": json.dumps(candidate)},
+            )
+            assert actual is expected
     assert accepted is (mutation in (None, "unknown_price"))
     if mutation is None:
         assert amount == request_reservation(request, binding).model_dump()

@@ -60,7 +60,16 @@ test("repeated submit creates one run; durable events, result and artifact survi
     headers: authorization(auth),
   });
   const beforeCount = (await before.json()).count as number;
+  // The empty recent-runs panel also has a valid seed entry. Exercise the
+  // persistent page-header action rather than an ambiguous global locator.
   await page
+    .locator("header.page-header")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "Research overview",
+        exact: true,
+      }),
+    })
     .getByRole("link", { name: "New seed evaluation", exact: true })
     .click();
   await expect(

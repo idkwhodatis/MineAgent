@@ -24,7 +24,7 @@ def test_structured_raw_float_commitment_actual_pg(migrated_engine, value):
         assert (
             connection.scalar(
                 text(
-                    "SELECT mineagent_structured_raw_commitment(:raw,CAST(:raw AS jsonb),:sha,16777216)"
+                    "SELECT mineagent_structured_raw_commitment(CAST(:raw AS text),CAST(:raw AS jsonb),CAST(:sha AS text),16777216)"
                 ),
                 {"raw": raw, "sha": hashlib.sha256(raw.encode()).hexdigest()},
             )
@@ -71,7 +71,7 @@ def test_structured_raw_large_original_bytes_not_old_one_mib_codec(migrated_engi
         assert (
             connection.scalar(
                 text(
-                    "SELECT mineagent_structured_raw_commitment(:raw,CAST(:raw AS jsonb),:sha,16777216)"
+                    "SELECT mineagent_structured_raw_commitment(CAST(:raw AS text),CAST(:raw AS jsonb),CAST(:sha AS text),16777216)"
                 ),
                 {"raw": raw, "sha": hashlib.sha256(raw.encode()).hexdigest()},
             )
@@ -80,7 +80,7 @@ def test_structured_raw_large_original_bytes_not_old_one_mib_codec(migrated_engi
         assert (
             connection.scalar(
                 text(
-                    "SELECT mineagent_analysis_raw_commitment(:raw,CAST(:raw AS jsonb),:sha,1048576)"
+                    "SELECT mineagent_analysis_raw_commitment(CAST(:raw AS text),CAST(:raw AS jsonb),CAST(:sha AS text),1048576)"
                 ),
                 {"raw": raw, "sha": hashlib.sha256(raw.encode()).hexdigest()},
             )

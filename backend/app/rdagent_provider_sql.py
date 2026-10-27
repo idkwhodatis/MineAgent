@@ -251,23 +251,23 @@ BEGIN
   END LOOP;
  END LOOP;
  FOR w IN SELECT * FROM rd_provider_transport_receipts WHERE run_id=rid LOOP
-  IF NOT EXISTS(SELECT 1 FROM research_model_transports t JOIN research_model_operations op ON op.id=t.operation_id
+  IF NOT EXISTS(SELECT 1 FROM research_model_transports sdk_transport JOIN research_model_operations sdk_operation ON sdk_operation.id=sdk_transport.operation_id
    JOIN research_objects obj ON obj.id=w.receipt_object_id
    JOIN research_object_outcomes done ON done.object_id=obj.id AND done.owner_id=obj.owner_id AND done.object_kind=obj.object_kind AND done.sha256=obj.sha256
    JOIN research_object_publications pub ON pub.id=done.publication_id
-   JOIN research_budget_reservations held ON held.id=pub.budget_reservation_id
-   JOIN research_budget_settlements settled ON settled.reservation_id=held.id
-   WHERE t.id=w.transport_id AND op.protocol IN ('mineagent.rdagent-provider-chat.v1','mineagent.rdagent-provider-embedding.v1')
-   AND (t.owner_id,t.run_id,t.attempt_id,t.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
-   AND (op.owner_id,op.run_id,op.attempt_id,op.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
+   JOIN research_budget_reservations object_hold ON object_hold.id=pub.budget_reservation_id
+   JOIN research_budget_settlements settled ON settled.reservation_id=object_hold.id
+   WHERE sdk_transport.id=w.transport_id AND sdk_operation.protocol IN ('mineagent.rdagent-provider-chat.v1','mineagent.rdagent-provider-embedding.v1')
+   AND (sdk_transport.owner_id,sdk_transport.run_id,sdk_transport.attempt_id,sdk_transport.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
+   AND (sdk_operation.owner_id,sdk_operation.run_id,sdk_operation.attempt_id,sdk_operation.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
    AND (pub.owner_id,pub.run_id,pub.attempt_id,pub.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
-   AND (held.owner_id,held.run_id,held.attempt_id,held.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
+   AND (object_hold.owner_id,object_hold.run_id,object_hold.attempt_id,object_hold.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
    AND (settled.owner_id,settled.run_id,settled.attempt_id,settled.generation)=(w.owner_id,w.run_id,w.attempt_id,w.generation)
    AND w.receipt_object_kind='rd_provider_process_receipt' AND obj.object_kind=w.receipt_object_kind AND obj.owner_id=w.owner_id
    AND obj.sha256=w.receipt_sha256 AND obj.size_bytes=w.size_bytes AND w.size_bytes BETWEEN 1 AND 16384
    AND pub.object_kind=obj.object_kind AND pub.sha256=obj.sha256 AND pub.size_bytes=obj.size_bytes
-   AND held.purpose='object_storage' AND held.state='settled' AND settled.outcome='conservative_unknown' AND settled.charge=held.amounts
-   AND (held.amounts->>'storage_bytes')::numeric>=pub.peak_bytes)
+   AND object_hold.purpose='object_storage' AND object_hold.state='settled' AND settled.outcome='conservative_unknown' AND settled.charge=object_hold.amounts
+   AND (object_hold.amounts->>'storage_bytes')::numeric>=pub.peak_bytes)
   THEN RAISE EXCEPTION 'Provider SDK membership needs exact charged published object'; END IF;
  END LOOP;
 END $$;

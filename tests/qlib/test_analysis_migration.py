@@ -1,6 +1,7 @@
 """Frozen022 offline inventory checks, not execution of SQL or runtime gates."""
 
 import ast
+import re
 from pathlib import Path
 
 from sqlalchemy import PrimaryKeyConstraint, UniqueConstraint
@@ -39,6 +40,50 @@ def test_frozen_analysis_sql_matches_reviewed_fragments():
     values = literals()
     assert values["revision"] == "022_factor_analysis"
     assert values["down_revision"] == "021_execution_snapshots"
+    from backend.app.rdagent_configured_exposure_sql import (
+        render_upgrade_sql as exposure_sql,
+    )
+    from backend.app.rdagent_configured_input_sql import render_upgrade_sql as input_sql
+
+    assert values["EXPOSURE_UP"] == exposure_sql()
+    assert values["INPUT_UP"] == input_sql()
+
+    # Scan every string fragment, not only a chosen UPGRADE_SQL assignment:
+    # 022 installs these two fragments independently of its other literals.
+    def collisions(sql):
+        found = []
+        for match in re.finditer(
+            r"CREATE(?: OR REPLACE)? FUNCTION ([^\s(]+).*?\$\$(.*?)\$\$;",
+            sql,
+            re.DOTALL | re.IGNORECASE,
+        ):
+            body = match.group(2)
+            declaration = re.search(r"\bDECLARE\b(.*?)\bBEGIN\b", body, re.DOTALL)
+            if declaration is None:
+                continue
+            variables = set(re.findall(r"(?:^|;)\s*(\w+)\s", declaration.group(1)))
+            aliases = set(
+                re.findall(
+                    r"\b(?:FROM|JOIN)\s+[\w.@]+\s+(?:AS\s+)?(\w+)",
+                    body,
+                    re.IGNORECASE,
+                )
+            )
+            if variables & aliases:
+                found.append((match.group(1), variables & aliases))
+        return found
+
+    for migration in sorted((ROOT / "backend/alembic/versions").glob("*.py")):
+        if migration.name[:3].isdigit() and int(migration.name[:3]) <= 26:
+            for node in ast.walk(ast.parse(migration.read_text())):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    assert not collisions(node.value), migration.name
+    for key, new, old in (
+        ("EXPOSURE_UP", "exposure_plan", "p"),
+        ("INPUT_UP", "cutoff_witness", "w"),
+    ):
+        damaged = re.sub(r"\b" + new + r"\b", old, values[key])
+        assert damaged != values[key] and collisions(damaged)
     assert values["RAW_SQL"] == RAW_SQL
     assert values["PLAN_SQL"] == PLAN_SQL
     assert values["ANALYSIS_SQL"] == ANALYSIS_SQL + CONSISTENCY_SQL
