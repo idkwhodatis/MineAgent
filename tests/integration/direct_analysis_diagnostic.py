@@ -101,6 +101,8 @@ WHERE a.id=CAST(:analysis_id AS uuid) LIMIT 2
         "DIRECT_ANALYSIS_PREDICATES:" + (",".join(failed) if failed else "all_pass"),
         flush=True,
     )
+    if "stopped_result" in failed:
+        observe_stopped_detail(session, analysis_id, schema)
 
 
 @contextmanager
@@ -129,3 +131,89 @@ def diagnose_direct_outcomes():
         factor_analysis_results, "persist_direct_analysis_outcome", checked
     ):
         yield
+
+
+STOP_LABELS = (
+    "admission",
+    "reservation",
+    "state",
+    "receipt_scope_grammar_hash",
+    "duplicate_intent",
+    "duplicate_identity",
+    "duplicate_stop",
+    "duplicate_extraction",
+    "receipt_kind",
+    "receipt_inventory",
+    "intent_binding_or_time_text",
+    "deadline_interval",
+    "identity_chain",
+    "observed_window",
+    "extraction_binding",
+)
+STOP_EXCEPTIONS = ("exception_data", "exception_schema", "exception_other")
+
+
+def stopped_diagnostic_body(schema, installed):
+    from backend.app.analysis_process_ddl import SQL
+
+    assert type(schema) is str and re.fullmatch(r"[a-z][a-z0-9_]{0,62}", schema)
+    source = SQL.split("CREATE FUNCTION @S@.mineagent_analysis_stopped(", 1)[1]
+    # Alembic quotes the validated schema identifier when installing literals.
+    expected = (
+        source.split("AS $$", 1)[1]
+        .split("$$;", 1)[0]
+        .replace("@S@", '"' + schema + '"')
+    )
+    # Exact installed bytes, including every original condition; never a loose
+    # version/name match. Unknown installed predecessor is diagnostic unavailable.
+    assert installed == expected
+    tail = "EXCEPTION WHEN OTHERS THEN RETURN false;"
+    assert installed.count(tail) == 1
+    body = installed.replace(
+        tail,
+        """EXCEPTION WHEN OTHERS THEN
+ RETURN CASE WHEN left(SQLSTATE,2)='22' THEN 'exception_data'
+ WHEN left(SQLSTATE,2) IN ('42','55') THEN 'exception_schema'
+ ELSE 'exception_other' END;""",
+    )
+    assert body.count("RETURN false;") == len(STOP_LABELS)
+    for label in STOP_LABELS:
+        body = body.replace("RETURN false;", f"RETURN '{label}';", 1)
+    assert body.count("RETURN true;") == 1
+    return body.replace("RETURN true;", "RETURN 'all_pass';")
+
+
+def observe_stopped_detail(connection, analysis_id, schema):
+    # The nested savepoint is ALWAYS rolled back, even on successful diagnosis:
+    # no temp function survives and no outer publication commit is introduced.
+    nested = connection.begin_nested()
+    try:
+        installed = connection.scalar(
+            text("""
+SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+WHERE n.nspname=:schema AND p.proname='mineagent_analysis_stopped'
+AND p.proargtypes='2950 16'::oidvector
+"""),
+            {"schema": schema},
+        )
+        body = stopped_diagnostic_body(schema, installed)
+        connection.exec_driver_sql(
+            "CREATE FUNCTION pg_temp.mineagent_test_analysis_stopped(aid uuid, require_result boolean) "
+            'RETURNS text LANGUAGE plpgsql STABLE SET search_path="'
+            + schema
+            + '",pg_catalog AS $diagnostic$'
+            + body
+            + "$diagnostic$;",
+            execution_options={"no_parameters": True},
+        )
+        label = connection.scalar(
+            text("""
+SELECT pg_temp.mineagent_test_analysis_stopped(o.admission_id,true)
+FROM factor_direct_analysis_outcomes o WHERE o.analysis_id=CAST(:analysis_id AS uuid)
+"""),
+            {"analysis_id": analysis_id},
+        )
+        assert label in (*STOP_LABELS, *STOP_EXCEPTIONS, "all_pass")
+    finally:
+        nested.rollback()
+    print("DIRECT_ANALYSIS_STOPPED:" + label, flush=True)

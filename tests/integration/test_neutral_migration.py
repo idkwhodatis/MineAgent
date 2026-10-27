@@ -19,11 +19,30 @@ pytestmark = pytest.mark.postgres
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def downgrade(connection):
+def downgrade(connection, target="014_run_identity"):
     config = Config(str(ROOT / "backend/alembic.ini"))
     config.set_main_option("script_location", str(ROOT / "backend/alembic"))
     config.attributes["connection"] = connection
-    command.downgrade(config, "014_run_identity")
+    command.downgrade(config, target)
+
+
+def enter_neutral_stage(engine):
+    # Test015 itself, not an unrelated successor's FK locks/isolation guard.
+    # Complete this empty-schema transition before taking the reader/snapshot.
+    with engine.begin() as connection:
+        downgrade(connection, "015_neutral_primitives")
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(text("SELECT version_num FROM alembic_version"))
+            == "015_neutral_primitives"
+        )
+
+
+@pytest.fixture(autouse=True)
+def neutral_revision_before_domain_fixtures(migrated_engine):
+    # Autouse dependencies run before ordinary owner/run/attempt fixtures.
+    # Do not spend an already-claimed ten-second lease downgrading successors.
+    enter_neutral_stage(migrated_engine)
 
 
 def test_neutral_zero_argument_immutability_trigger_rejects_changed_values(

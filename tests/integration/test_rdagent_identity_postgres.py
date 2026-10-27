@@ -52,7 +52,9 @@ CORPUS = _load_corpus()
 def identity_db(migrated_engine):
     with migrated_engine.begin() as connection:
         schema = connection.execute(text("SELECT current_schema()")).scalar_one()
-        connection.exec_driver_sql(render_sql(schema))
+        connection.exec_driver_sql(
+            render_sql(schema), execution_options={"no_parameters": True}
+        )
         count = connection.execute(
             text("""
             SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace

@@ -1,6 +1,8 @@
 """Offline renderer checks; actual SQL equivalence belongs to the PG test file."""
 
+import ast
 import json
+from pathlib import Path
 
 import pytest
 
@@ -42,6 +44,81 @@ def test_renderer_only_adds_one_schemaqualified_strict_function():
     assert "CREATE TRIGGER" not in sql
     assert "mineagent_neutral_" not in sql
     assert "current_setting('server_encoding')" in sql
+
+    # Exercise each real fixture's exact DDL call through SQLAlchemy's DBAPI
+    # dispatch, then psycopg's actual parser; no server/DDL execution is claimed.
+    from psycopg import ProgrammingError
+    from psycopg._queries import PostgresQuery
+    from psycopg.adapt import Transformer
+    from sqlalchemy import create_engine, event
+
+    from backend.app.openevolve_identity_sql import identity_sql
+    from backend.app.rdagent_identity_sql import render_sql as identity_render
+
+    root = Path(__file__).resolve().parents[2]
+    cases = (
+        ("rdagent_canonical", "render_sql", render_sql),
+        ("rdagent_identity", "render_sql", identity_render),
+        ("openevolve_identity", "identity_sql", identity_sql),
+    )
+    # The pre-repair default passed an empty parameter collection, causing
+    # psycopg to parse literal %1024 as a placeholder even with no bind values.
+    query = PostgresQuery(Transformer())
+    with pytest.raises(ProgrammingError, match="only.*allowed"):
+        query.convert(render_sql("rd_canon"), ())
+    engine = create_engine("sqlite://")
+    try:
+        with engine.connect() as connection:
+            received = []
+
+            def original_dispatch(cursor, statement, parameters, context):
+                assert context.no_parameters is False and parameters == ()
+                PostgresQuery(Transformer()).convert(statement, parameters)
+                pytest.fail("Original literal modulo unexpectedly parsed")
+
+            event.listen(engine, "do_execute", original_dispatch)
+            try:
+                with pytest.raises(ProgrammingError, match="only.*allowed"):
+                    connection.exec_driver_sql(render_sql("rd_canon"))
+            finally:
+                event.remove(engine, "do_execute", original_dispatch)
+
+            @event.listens_for(engine, "do_execute_no_params")
+            def capture(cursor, statement, context):
+                assert context.compiled is None and context.no_parameters is True
+                parsed = PostgresQuery(Transformer())
+                parsed.convert(statement, None)
+                assert parsed.query == statement.encode("utf-8")
+                received.append(statement)
+                return True
+
+            @event.listens_for(engine, "do_execute")
+            def reject_parameters(*args):
+                pytest.fail("Fixture literal DDL entered parameterized execution")
+
+            for name, renderer_name, renderer in cases:
+                path = root / f"tests/integration/test_{name}_postgres.py"
+                calls = [
+                    node
+                    for node in ast.walk(ast.parse(path.read_text()))
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "exec_driver_sql"
+                ]
+                assert len(calls) == 1
+                expression = ast.Expression(calls[0])
+                eval(
+                    compile(expression, str(path), "eval"),
+                    {
+                        "connection": connection,
+                        "schema": "rd_canon",
+                        renderer_name: renderer,
+                    },
+                )
+                assert received[-1] == renderer("rd_canon")
+            assert len(received) == len(cases)
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize("schema", ["", "a.b", "Mixed", "x;drop", "a" * 64])

@@ -245,7 +245,7 @@ def test_create_diagnostics_exports_only_closed_states(tmp_path):
     from script.factor_browser_acceptance import response_diagnostics
 
     failure.text = (
-        "private-token FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=database_unavailable "
+        "private-token FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=fixture;status=503;code=database_unavailable "
         "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=import;status=503;code=factor_storage_unavailable "
         "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=private-token "
         "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=factor_busy_private "
@@ -260,7 +260,7 @@ def test_create_diagnostics_exports_only_closed_states(tmp_path):
     assert response_diagnostics(path) == [
         {
             "case_index": 0,
-            "operation": "create",
+            "operation": "fixture",
             "http_status": 503,
             "code": "database_unavailable",
         },

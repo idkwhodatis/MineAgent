@@ -260,3 +260,60 @@ def finalize_checkpoint(factory, fence, peer, *, event, settings):
             "state_sha256": intent.state_sha256,
         }
     return receipt_id, answer
+
+
+def final_checkpoint_committed(factory, fence, peer, *, event, receipt_id, frontier):
+    """Fresh committed final-save identity, not a process stop/success grant."""
+    if type(frontier) is not int or not 1 <= frontier <= 2:
+        raise ValueError("Closed initial frontier required")
+    with neutral_transaction(factory, fence, resource_scope="objects") as session:
+        epoch, intent, inventory = _resolve(
+            session, fence, peer, event, UUID(event.payload["token"])
+        )
+        publication = _owned_row(
+            session, m.SearchCheckpointPublication, receipt_id, fence
+        )
+        if (
+            publication.epoch_id != epoch.id
+            or publication.intent_id != intent.id
+            or (publication.frontier, publication.state_sha256)
+            != (intent.frontier, intent.state_sha256)
+            or (publication.inventory_object_id, publication.inventory_sha256)
+            != (inventory.id, inventory.sha256)
+        ):
+            raise ValueError("Final ACK publication identity drift")
+        # Seed save + one save per terminal + a distinct final save. The last
+        # terminal and final save deliberately share frontier/state, not ordinal.
+        if intent.save_ordinal != frontier + 2:
+            return False
+        if intent.frontier != frontier:
+            raise ValueError("Final ACK frontier drift")
+        pairs = session.execute(
+            select(m.SearchCheckpointIntent, m.SearchCheckpointPublication)
+            .join(
+                m.SearchCheckpointPublication,
+                m.SearchCheckpointPublication.intent_id == m.SearchCheckpointIntent.id,
+            )
+            .where(m.SearchCheckpointIntent.epoch_id == epoch.id)
+            .order_by(m.SearchCheckpointIntent.save_ordinal)
+            .limit(5)
+        ).all()
+        if len(pairs) != frontier + 2:
+            raise ValueError("Final ACK requires every actual published save")
+        for ordinal, (saved, published) in enumerate(pairs, 1):
+            expected_frontier = min(ordinal - 1, frontier)
+            if (
+                any(
+                    getattr(row, key) != value
+                    for row in (saved, published)
+                    for key, value in _scope(fence).items()
+                )
+                or saved.save_ordinal != ordinal
+                or saved.frontier != expected_frontier
+                or published.epoch_id != epoch.id
+                or published.intent_id != saved.id
+                or (published.frontier, published.state_sha256)
+                != (saved.frontier, saved.state_sha256)
+            ):
+                raise ValueError("Final ACK checkpoint prefix drift")
+        return True

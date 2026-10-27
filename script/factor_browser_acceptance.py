@@ -278,7 +278,7 @@ def response_diagnostics(path: Path) -> list[dict]:
         "maintenance_busy|factor_storage_unavailable|database_unavailable|none|other"
     )
     pattern = re.compile(
-        r"FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=(create|import);"
+        r"FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=(create|import|fixture);"
         r"status=(none|[1-5][0-9]{2});code=(" + codes + r")(?![A-Za-z0-9_-])"
     )
     result = []

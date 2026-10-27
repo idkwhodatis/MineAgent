@@ -19,7 +19,9 @@ pytestmark = pytest.mark.postgres
 def oe_identity_db(migrated_engine):
     with migrated_engine.begin() as connection:
         schema = connection.execute(text("SELECT current_schema()")).scalar_one()
-        connection.exec_driver_sql(identity_sql(schema))
+        connection.exec_driver_sql(
+            identity_sql(schema), execution_options={"no_parameters": True}
+        )
     return migrated_engine
 
 

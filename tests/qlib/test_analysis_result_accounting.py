@@ -173,6 +173,78 @@ def test_exact_full_settlement_allows_cached_reread(monkeypatch, capsys):
         event.remove(real_session, "before_commit", forbid_commit)
         real_session.rollback()
     engine.dispose()
+    # Exact installed-body transformation changes only finite return labels.
+    from backend.app.analysis_process_ddl import render_sql
+    from tests.integration.direct_analysis_diagnostic import (
+        STOP_LABELS,
+        observe_stopped_detail,
+        stopped_diagnostic_body,
+    )
+
+    installed = (
+        render_sql("test_schema")
+        .split("CREATE FUNCTION test_schema.mineagent_analysis_stopped(", 1)[1]
+        .split("AS $$", 1)[1]
+        .split("$$;", 1)[0]
+    )
+    installed = installed.replace("test_schema.", '"test_schema".')
+    body = stopped_diagnostic_body("test_schema", installed)
+    assert len(STOP_LABELS) == 15 and "RETURN false;" not in body
+    assert "RETURN 'all_pass';" in body
+    assert "SQLERRM" not in body and "RAISE" not in body
+    with pytest.raises(AssertionError):
+        stopped_diagnostic_body("test_schema", installed + "\n")
+    for returned in ("all_pass", "observed_window", "exception_data", "private"):
+        actions = []
+        values = iter((installed, returned))
+        fake = SimpleNamespace(
+            begin_nested=lambda actions=actions: SimpleNamespace(
+                rollback=lambda: actions.append("rollback")
+            ),
+            scalar=lambda *args, values=values: next(values),
+        )
+
+        def ddl(statement, actions=actions, **kwargs):
+            assert statement.startswith("CREATE FUNCTION pg_temp.")
+            assert kwargs == {"execution_options": {"no_parameters": True}}
+            assert body in statement
+            actions.append("create")
+
+        fake.exec_driver_sql = ddl
+        if returned == "private":
+            with pytest.raises(AssertionError):
+                observe_stopped_detail(fake, "private-id", "test_schema")
+            assert capsys.readouterr().out == ""
+        else:
+            observe_stopped_detail(fake, "private-id", "test_schema")
+            assert (
+                capsys.readouterr().out == "DIRECT_ANALYSIS_STOPPED:" + returned + "\n"
+            )
+        assert actions == ["create", "rollback"]
+    # Actual savepoint rollback removes diagnostic-only DDL and leaves outer txn.
+    engine = create_engine("sqlite://")
+    with engine.connect() as connection:
+        connection.exec_driver_sql("BEGIN")
+        transaction = connection.begin_nested()
+        try:
+            connection.exec_driver_sql("CREATE TEMP TABLE diagnostic_only (id integer)")
+            from sqlalchemy.exc import OperationalError
+
+            with pytest.raises(OperationalError):
+                connection.exec_driver_sql("SELECT missing FROM diagnostic_only")
+        finally:
+            transaction.rollback()
+        assert (
+            connection.scalar(
+                text(
+                    "SELECT count(*) FROM sqlite_temp_master WHERE name='diagnostic_only'"
+                )
+            )
+            == 0
+        )
+        assert connection.in_transaction() and connection.scalar(text("SELECT 1")) == 1
+        connection.rollback()
+    engine.dispose()
     failure = ValueError("original publisher failure")
 
     def rejected(*args):

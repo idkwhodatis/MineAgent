@@ -69,7 +69,7 @@ def _maintenance(schema):
               "factor_versions", "factor_objects", "factors", "research_model_operations",
               "research_model_transports", "research_model_outcomes", "research_budget_reservations",
               "research_budget_settlements", "research_objects", "research_object_publications",
-              "factor_generation_model_operations", "factor_source_read_witnesses")
+              "factor_generation_model_operations", "factor_source_read_witnesses", "users")
     op.execute("LOCK TABLE " + ",".join(schema + "." + name for name in tables) + " IN ACCESS EXCLUSIVE MODE NOWAIT")
     op.execute("SET LOCAL search_path = " + schema + ",pg_catalog")
 

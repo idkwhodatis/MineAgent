@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { test as base, expect, type APIRequestContext } from "@playwright/test";
 import { api, authorization, signIn, token } from "./helpers";
 import { retryFactorBusy, factorResponseCode } from "./factor-import-retry";
 import type { Token } from "../../src/client/types.gen";
@@ -8,6 +8,22 @@ import type {
   FactorValues,
   FactorVersion,
 } from "../../src/lib/factor-api";
+
+import { trackFactorReads } from "./factor-read-lifecycle";
+
+const test = base.extend<{ factorReadLifecycle: void }>({
+  factorReadLifecycle: [
+    async ({ page }, use) => {
+      const finishReads = trackFactorReads(page);
+      try {
+        await use();
+      } finally {
+        await finishReads();
+      }
+    },
+    { auto: true },
+  ],
+});
 
 type Fixture = {
   factor: { id: string };
@@ -34,7 +50,7 @@ async function fixture(
   });
   expect(
     response.status(),
-    "Requires the real persisted fixed-factor fixture admission, not intercepted routes",
+    `FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=fixture;status=${response.status()};code=${factorResponseCode(await response.json().catch(() => null))}`,
   ).toBe(201);
   return response.json() as Promise<Fixture>;
 }
@@ -322,7 +338,16 @@ test("exact export and bundle use real API; foreign resources fail and import ca
   });
   const enabled = (await capability.json()).package_import_enabled;
   expect(enabled).toBe(process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1");
+  const listResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/v1/factors" &&
+      response.request().method() === "GET",
+  );
   await page.goto("/factors");
+  const listed = await listResponse;
+  expect(listed.status()).toBe(200);
+  await listed.body(); // Server commits exposure recording before this response.
+
   if (!enabled) {
     const closed = await request.post(api("/factor-packages/import"), {
       headers: {

@@ -138,5 +138,8 @@ def prepare_actual_generation(engine, settings, owner_id):
 
 def run_actual_generation(engine, settings, owner_id):
     factory, fence = prepare_actual_generation(engine, settings, owner_id)
-    assert execute_maintained_controller(factory, fence, settings) == fence.run_id
+    from rd_rpc_diagnostic import diagnose_rd_rpc
+
+    with diagnose_rd_rpc():
+        assert execute_maintained_controller(factory, fence, settings) == fence.run_id
     return factory, fence

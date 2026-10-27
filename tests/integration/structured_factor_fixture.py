@@ -211,8 +211,9 @@ def prepare_structured_pair(engine, settings, owner_id):
             factory, dataset, source, args["policy"], settings, owner_id, lookback
         )
         from direct_analysis_diagnostic import diagnose_direct_outcomes
+        from rd_rpc_diagnostic import diagnose_rd_rpc
 
-        with diagnose_direct_outcomes():
+        with diagnose_rd_rpc(), diagnose_direct_outcomes():
             assert (
                 execute_configured_controller(factory, fence, settings) == fence.run_id
             )

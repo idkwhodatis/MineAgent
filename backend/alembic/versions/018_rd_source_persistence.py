@@ -32,7 +32,7 @@ def _maintenance():
       IF NOT pg_try_advisory_xact_lock(1413960260, 1129270340)
       THEN RAISE EXCEPTION 'RD source persistence requires quiescent maintenance'; END IF;
     END $$;""")
-    op.execute("LOCK TABLE research_runs,research_model_operations,research_operation_contexts,research_budget_reservations,research_objects,research_object_publications,research_process_admissions,factor_versions,factor_objects IN ACCESS EXCLUSIVE MODE NOWAIT")
+    op.execute("LOCK TABLE research_runs,research_model_operations,research_operation_contexts,research_budget_reservations,research_objects,research_object_publications,research_process_admissions,factor_versions,factor_objects,execution_attempts,feature_snapshots,research_model_outcomes IN ACCESS EXCLUSIVE MODE NOWAIT")
 
 
 def upgrade():

@@ -37,6 +37,8 @@ SHARED = (
     "factor_execution_snapshot_outcomes",
     "data_usage_exposures",
 )
+# Lock-only FK parents; do not broaden the structured graph trigger inventory.
+FK_PARENTS = ("factor_versions", "users")
 CHECKS = (
     (
         "research_runs",

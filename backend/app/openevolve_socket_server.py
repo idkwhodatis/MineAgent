@@ -15,6 +15,7 @@ import threading
 import time
 
 from backend.app.openevolve_broker_rpc import FixtureSchedule, dispatch_broker
+from backend.app.openevolve_checkpoint_publication import final_checkpoint_committed
 from backend.app.openevolve_operational_router import dispatch_event
 from backend.app.openevolve_socket_peer import authenticate_socket
 from runtimes.openevolve_operational.transport import read_exact, unique
@@ -76,6 +77,8 @@ class InitialEpochServer:
         self._connections = set()
         self._used = False
         self._requests = 0
+        self._acknowledgements = 0
+        self._last_event = "none"
 
     def _handle(self, channel, kind):
         with self._lock:
@@ -107,6 +110,8 @@ class InitialEpochServer:
                 process_ticket=ticket,
                 ticket_key=self.key,
             )
+            with self._lock:
+                self._last_event = event.kind if event is not None else "broker"
             if event is not None:
                 if event.epoch_id != self.epoch_id:
                     raise ValueError("Event epoch differs from host-owned unit")
@@ -118,13 +123,24 @@ class InitialEpochServer:
                     ticket_key=self.key,
                     settings=self.settings,
                 )
-                write_reply(channel, event, receipt, result, self.running.deadline)
-                if (
+                final = (
                     event.kind == "checkpoint_publish"
                     and result.get("published") is True
                     and type(result.get("frontier")) is int
                     and result["frontier"] == self.frontier
-                ):
+                    and final_checkpoint_committed(
+                        self.factory,
+                        self.fence,
+                        peer,
+                        event=event,
+                        receipt_id=receipt,
+                        frontier=self.frontier,
+                    )
+                )
+                write_reply(channel, event, receipt, result, self.running.deadline)
+                with self._lock:
+                    self._acknowledgements += 1
+                if final:
                     self._final.set()
             else:
                 response = dispatch_broker(
@@ -143,10 +159,22 @@ class InitialEpochServer:
                     raise ValueError("Late or oversized committed model reply")
                 channel.settimeout(min(65, self.running.deadline - time.monotonic()))
                 channel.sendall(struct.pack("!I", len(response)) + response)
+                with self._lock:
+                    self._acknowledgements += 1
         finally:
             with self._lock:
                 self._connections.discard(channel)
             channel.close()
+
+    def progress(self):
+        """Finite transport observations only, never completion/stop authority."""
+        with self._lock:
+            return {
+                "requests": min(self._requests, MAX_REQUESTS),
+                "acknowledgements": min(self._acknowledgements, MAX_REQUESTS),
+                "last_event": self._last_event,
+                "active_handlers": min(len(self._connections), MAX_CONNECTIONS),
+            }
 
     def disconnect(self):
         """Only closes readers; never fabricates process stop, settlement or ACK."""
@@ -192,7 +220,8 @@ class InitialEpochServer:
                     return {"final_frontier": self.frontier, "requests": self._requests}
                 if time.monotonic() >= self.running.deadline:
                     raise ValueError(
-                        "Original controller deadline reached before final ACK"
+                        "Original controller deadline reached before final ACK; "
+                        + json.dumps(self.progress(), sort_keys=True)
                     )
                 for key, _ in selector.select(
                     min(0.05, self.running.deadline - time.monotonic())

@@ -53,6 +53,9 @@ def maintenance(schema):
         "engine_object_reservation_consumers",
         "research_budget_reservations",
         "research_budget_settlements",
+        "factor_cutoff_executions",
+        "factor_generation_sources",
+        "factor_objects",
     )
     op.execute(
         "LOCK TABLE "
