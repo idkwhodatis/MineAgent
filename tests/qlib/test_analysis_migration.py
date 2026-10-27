@@ -85,6 +85,39 @@ def test_frozen_analysis_sql_matches_reviewed_fragments():
     ):
         damaged = re.sub(r"\b" + new + r"\b", old, values[key])
         assert damaged != values[key] and collisions(damaged)
+    from backend.app.analysis_process_ddl import render_migration_sql, render_sql
+
+    process_sql = values["ANALYSIS_PROCESS_SQL"]
+    assert process_sql == render_migration_sql()
+    assert process_sql.count("SET search_path=@SCHEMA@,pg_catalog") == 2
+    assert render_sql("private_fixture") == process_sql.replace(
+        "@SCHEMA@", "private_fixture"
+    )
+    # Scan headers, not merely bodies: an unqualified table lookup follows the
+    # function's proconfig, not the caller's private installation schema.
+    for migration in sorted((ROOT / "backend/alembic/versions").glob("*.py")):
+        if migration.name[:3].isdigit() and int(migration.name[:3]) <= 26:
+            for node in ast.walk(ast.parse(migration.read_text())):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    headers = re.findall(
+                        r"CREATE(?: OR REPLACE)? FUNCTION\s+.*?AS \$\$",
+                        node.value,
+                        re.DOTALL,
+                    )
+                    for header in headers:
+                        assert not re.search(r"search_path\s*=\s*public\b", header), (
+                            migration.name
+                        )
+    # This exact broken conversion preserved qualified body references while
+    # accidentally retaining public in both function-local path declarations.
+    broken = render_sql().replace("public.", "@SCHEMA@.")
+    assert broken.count("SET search_path=public,pg_catalog") == 2
+    assert (
+        broken.replace(
+            "SET search_path=public,pg_catalog", "SET search_path=@SCHEMA@,pg_catalog"
+        )
+        == process_sql
+    )
     assert values["RAW_SQL"] == RAW_SQL
     assert values["PLAN_SQL"] == PLAN_SQL
     assert values["ANALYSIS_SQL"] == ANALYSIS_SQL + CONSISTENCY_SQL

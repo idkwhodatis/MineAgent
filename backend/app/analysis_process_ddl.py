@@ -37,6 +37,12 @@ def render_sql(schema="public"):
     return SQL.replace("@S@", schema).replace("@RULES@", "\n".join(rules))
 
 
+def render_migration_sql():
+    """Freeze all schema positions, including function-local search_path."""
+    sentinel = "mineagent_analysis_schema_placeholder"
+    return render_sql(sentinel).replace(sentinel, "@SCHEMA@")
+
+
 def _require_serialized_keys(node):
     # Pydantic defaults are always emitted by our canonical journal writer.
     # SQL must not accept omitted defaults as an alternate serialized grammar.

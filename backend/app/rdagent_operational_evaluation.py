@@ -94,6 +94,23 @@ def _authorize_launch(factory, fence, peer):
         require_rd_controller(session, fence, peer)
 
 
+def _read_frame(session, fence, peer, evaluation_id, settings):
+    snapshot, _, objective = read_evaluation_snapshot(
+        session, fence, peer, evaluation_id, settings
+    )
+    rows = [row.model_dump(mode="json") for row in snapshot.rows]
+    return {
+        "schema_version": "mineagent.rdagent-evaluation-frame.v1",
+        "source_id": str(snapshot.source_id),
+        "evaluation_id": str(snapshot.evaluation_id),
+        "snapshot_id": str(snapshot.snapshot_id),
+        "factor_version_id": str(snapshot.factor_version_id),
+        "rows": rows,
+        "rows_sha256": digest(rows),
+        "feedback": f"Actual complete declared-window execution snapshot {snapshot.snapshot_id}; {len(rows)} retained rows; maintained momentum objective passed={objective}. Input provided is not proven computation exposure.",
+    }
+
+
 def execute_or_reuse_snapshot(
     factory, fence, peer, *, source_id, evaluation_id, settings
 ):
@@ -120,6 +137,10 @@ def execute_or_reuse_snapshot(
             existing is not None
             and session.get(ExecutionSnapshotOutcome, existing.id) is None
         )
+        if existing is not None and not pending_publication:
+            # Reuse means a fresh physical read under this same locked scope,
+            # never a cached DTO or peer capability. No publication work remains.
+            return _read_frame(session, fence, peer, evaluation_id, settings)
         if existing is None:
             if (
                 session.scalar(
@@ -178,17 +199,4 @@ def execute_or_reuse_snapshot(
         _authorize_launch(factory, fence, peer)
         publish_execution_snapshot(factory, fence, evaluation_id, settings)
     with snapshot_transaction(factory, fence, settings) as session:
-        snapshot, _, objective = read_evaluation_snapshot(
-            session, fence, peer, evaluation_id, settings
-        )
-        rows = [row.model_dump(mode="json") for row in snapshot.rows]
-        return {
-            "schema_version": "mineagent.rdagent-evaluation-frame.v1",
-            "source_id": str(snapshot.source_id),
-            "evaluation_id": str(snapshot.evaluation_id),
-            "snapshot_id": str(snapshot.snapshot_id),
-            "factor_version_id": str(snapshot.factor_version_id),
-            "rows": rows,
-            "rows_sha256": digest(rows),
-            "feedback": f"Actual complete declared-window execution snapshot {snapshot.snapshot_id}; {len(rows)} retained rows; maintained momentum objective passed={objective}. Input provided is not proven computation exposure.",
-        }
+        return _read_frame(session, fence, peer, evaluation_id, settings)

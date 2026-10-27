@@ -107,6 +107,7 @@ def scenario(monkeypatch):
 
     def read(*args):
         assert args == (session, fence, peer, evaluation_id, settings)
+        authorize(session, fence, peer)
         state.events.append("read")
         assert state.outcome is not None
         return snapshot, fixed.manifest.input, True
@@ -165,7 +166,7 @@ def test_completed_replay_reads_retained_snapshot_without_writes_or_units(scenar
         row.model_dump(mode="json") for row in scenario.snapshot.rows
     ]
     assert reply["rows_sha256"] == digest(reply["rows"])
-    assert scenario.state.events == ["transaction", "authorize", "transaction", "read"]
+    assert scenario.state.events == ["transaction", "authorize", "authorize", "read"]
     assert execute(scenario) == reply
     assert "publish" not in scenario.state.events
 
@@ -183,6 +184,7 @@ def test_pending_publication_repairs_only_existing_publication_then_fresh_read(
         "authorize",
         "publish",
         "transaction",
+        "authorize",
         "read",
     ]
     assert execute(scenario) == reply
@@ -229,3 +231,24 @@ def test_lost_peer_cannot_repair_pending_publication(scenario):
     assert (
         "publish" not in scenario.state.events and "read" not in scenario.state.events
     )
+
+
+def test_five_completed_reads_keep_each_fresh_reader_and_no_new_unit(scenario):
+    for _ in range(5):
+        execute(scenario)
+    assert scenario.state.tx_count == 5
+    assert scenario.state.events.count("read") == 5
+    assert scenario.state.events.count("authorize") == 10
+
+
+@pytest.mark.parametrize("reason", ["revoked", "owner_changed", "epoch_changed"])
+def test_completed_reuse_propagates_current_reader_rejection(
+    scenario, monkeypatch, reason
+):
+    def changed(*args):
+        raise RPCError(reason)
+
+    monkeypatch.setattr(service, "read_evaluation_snapshot", changed)
+    with pytest.raises(RPCError, match=reason):
+        execute(scenario)
+    assert scenario.state.tx_count == 1

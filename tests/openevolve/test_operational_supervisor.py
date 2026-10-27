@@ -158,6 +158,123 @@ def test_exact_controller_container_contract(contract):
         document, launch, operation, inventory, container_id="d" * 64
     )
 
+    # Independent literal expectation: do not let the inspect fixture merely
+    # copy a changed production constant and silently accept broader mounts.
+    import ast
+    import inspect
+    import textwrap
+
+    from runtimes.openevolve_operational import profile
+
+    expected_tmpfs = {
+        "/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=65533,gid=65533,mode=0700",
+        "/work": "rw,noexec,nosuid,nodev,size=64m,uid=65533,gid=65533,mode=0700",
+        "/dev/shm": "rw,noexec,nosuid,nodev,size=65536,uid=65533,gid=65533,mode=0700",
+    }
+    assert module.TMPFS == expected_tmpfs
+    assert profile.SHM_BYTES == 65536
+    assert profile.MAX_WALL_MS == 600000
+    assert profile.STORAGE_FLOOR == (
+        16 * 1024**2 + 64 * 1024**2 + 65536 + 2 * (262144 + 32768) + 1024**2
+    )
+    # Evaluate the actual start() argv literal, not a duplicate argument builder.
+    # This is construction coverage only, not Docker launch acceptance.
+    tree = ast.parse(
+        textwrap.dedent(inspect.getsource(module.ControllerSupervisor.start))
+    )
+    assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "args"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    seccomp = Path("/fixed/seccomp.json")
+    argv = eval(
+        compile(
+            ast.Expression(assignments[0].value), "<actual-controller-argv>", "eval"
+        ),
+        {"launch": launch, "seccomp": seccomp, "TMPFS": module.TMPFS},
+    )
+    assert argv == [
+        "create",
+        "--pull=never",
+        "--name",
+        launch.runtime_name,
+        "--log-driver",
+        "none",
+        "--network",
+        "none",
+        "--ipc",
+        "none",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--cap-add",
+        "KILL",
+        "--cap-add",
+        "SETUID",
+        "--cap-add",
+        "SETGID",
+        "--security-opt",
+        "no-new-privileges",
+        "--security-opt",
+        f"seccomp={seccomp}",
+        "--memory",
+        "2g",
+        "--memory-swap",
+        "2g",
+        "--pids-limit",
+        "64",
+        "--cpus",
+        "1",
+        "--shm-size",
+        "64k",
+        "--ulimit",
+        "nofile=256:256",
+        "--ulimit",
+        "fsize=8388608:8388608",
+        "--user",
+        "0:0",
+        "--tmpfs",
+        "/tmp:" + expected_tmpfs["/tmp"],
+        "--tmpfs",
+        "/work:" + expected_tmpfs["/work"],
+        "--tmpfs",
+        "/dev/shm:" + expected_tmpfs["/dev/shm"],
+    ]
+    bad_tmpfs = [
+        {key: value for key, value in expected_tmpfs.items() if key != "/dev/shm"}
+    ]
+    for old, new in (
+        ("size=65536", "size=65537"),
+        ("size=65536", "size=64m"),
+        ("uid=65533", "uid=0"),
+        ("gid=65533", "gid=0"),
+        ("mode=0700", "mode=0777"),
+        ("noexec", "exec"),
+        ("nosuid", "suid"),
+        ("nodev", "dev"),
+    ):
+        bad_tmpfs.append(
+            {**expected_tmpfs, "/dev/shm": expected_tmpfs["/dev/shm"].replace(old, new)}
+        )
+    bad_tmpfs.append({**expected_tmpfs, "/extra": expected_tmpfs["/dev/shm"]})
+    for bad in bad_tmpfs:
+        document["HostConfig"]["Tmpfs"] = bad
+        with pytest.raises(ValueError, match="implicit mount/process/limit drift"):
+            module.verify_container(document, launch, operation, inventory)
+    document["HostConfig"]["Tmpfs"] = expected_tmpfs.copy()
+    for mode in ("private", "shareable", "host", "container:other"):
+        document["HostConfig"]["IpcMode"] = mode
+        with pytest.raises(ValueError, match="namespace/resource drift"):
+            module.verify_container(document, launch, operation, inventory)
+    document["HostConfig"]["IpcMode"] = "none"
+    module.verify_container(document, launch, operation, inventory)
+
     # Docker CLI UlimitOpt.GetList sorts names, regardless of CLI argument order.
     limits = document["HostConfig"]["Ulimits"]
     document["HostConfig"]["Ulimits"] = list(reversed(limits))

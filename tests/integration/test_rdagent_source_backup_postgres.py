@@ -14,6 +14,7 @@ from test_rd_source_persistence import persist, source_setup  # noqa: F401
 
 from backend.app import factor_backup, rdagent_backup, research_backup
 from backend.app.storage import read_verified
+from tests.integration.rd_source_related_rows import read_admitted_source_rows
 
 pytestmark = pytest.mark.postgres
 REVISION = "018_rd_source_persistence"
@@ -24,7 +25,15 @@ def snapshots(setup):
     saved = persist(setup)
     with factory.kw["bind"].connect() as connection:
         rd = rdagent_backup.read_closure(connection, 10000, revision=REVISION)
-        research = research_backup.read_closure(connection, 10000, revision=REVISION)
+        with pytest.raises(
+            ValueError, match="Active runs cannot enter neutral cold closure"
+        ):
+            research_backup.read_closure(connection, 10000, revision=REVISION)
+        research = read_admitted_source_rows(connection, saved.fence)
+        with pytest.raises(
+            ValueError, match="Active runs cannot enter neutral cold closure"
+        ):
+            research_backup._indexes(research, 10000)
         factors = factor_backup.read_closure(connection, 10000, revision=REVISION)
 
     def read_bytes(key, sha, maximum):
@@ -69,6 +78,10 @@ def test_real_rd_snapshot_row_and_byte_caps(source_setup):
     factory, _, _, _ = source_setup
     persist(source_setup)
     with factory.kw["bind"].connect() as connection:
+        with pytest.raises(
+            ValueError, match="Active runs cannot enter neutral cold closure"
+        ):
+            research_backup.read_closure(connection, 10000, revision=REVISION)
         with pytest.raises(ValueError):
             rdagent_backup.read_closure(connection, 1, revision=REVISION)
         with pytest.raises(ValueError):

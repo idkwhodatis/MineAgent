@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import {
+  installFactorUploadObservation,
+  takeFactorUploadObservation,
+} from "./factor-upload-observation";
 import { test as base, expect, type APIRequestContext } from "@playwright/test";
 import { api, authorization, signIn, token } from "./helpers";
 import { retryFactorBusy, factorResponseCode } from "./factor-import-retry";
@@ -497,6 +502,15 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
       "idempotency-key"
     ];
     expect(Boolean(originalKey)).toBe(true);
+    await page.evaluate(installFactorUploadObservation, {
+      url: admissionResponse.url(),
+      key: originalKey,
+      maximum: 10_000_000,
+    });
+    const archiveSha = createHash("sha256")
+      .update(archive.buffer)
+      .digest("hex");
+    expect(admission.archive_sha256 === archiveSha).toBe(true);
     const repeatedResult = await retryFactorBusy(
       async (remainingMs) => {
         const [response] = await Promise.all([
@@ -514,9 +528,17 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
         expect(
           response.request().headers()["idempotency-key"] === originalKey,
         ).toBe(true);
-        expect(
-          response.request().postDataBuffer()?.equals(archive.buffer),
-        ).toBe(true);
+        const observed = await page.evaluate(takeFactorUploadObservation);
+        expect(observed.keyMatches).toBe(true);
+        expect(observed.size).toBe(archive.buffer.length);
+        expect(Buffer.from(observed.bytes).equals(archive.buffer)).toBe(true);
+        const cdpBody = response.request().postDataBuffer();
+        const observationDiagnostic = `FACTOR_UPLOAD_OBSERVATION_V1:cdp=${cdpBody === null ? "unavailable" : "available"};sample=exact`;
+        console.info(observationDiagnostic);
+        if (cdpBody !== null)
+          expect(cdpBody.equals(archive.buffer), observationDiagnostic).toBe(
+            true,
+          );
         const body: unknown = await response.json().catch(() => null);
         const code =
           body !== null && typeof body === "object"
@@ -557,6 +579,9 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     // identifiers, messages, paths or arbitrary server-supplied error codes.
     const retryDiagnostic = `FACTOR_IMPORT_RETRY_DIAGNOSTIC_V1:status=${repeatedResponse.status()};code=${retryCode};identity=${retryIdentity}`;
     expect(repeatedResponse.status(), retryDiagnostic).toBe(202);
+    expect(retryRecord?.archive_sha256 === archiveSha, retryDiagnostic).toBe(
+      true,
+    );
     expect(retryRecord?.id, retryDiagnostic).toBe(admission.id);
     const other = await token(request, true);
     const denied = await request.get(api(`/factor-imports/${admission.id}`), {

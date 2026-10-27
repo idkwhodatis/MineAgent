@@ -163,6 +163,46 @@ def test_domain_exact32_and_all_deferred_fk_no_weak_projection():
     assert "FOR UPDATE NOWAIT" in sql
     assert "DROP CONSTRAINT" not in sql and "DROP TRIGGER" not in sql
 
+    # The real PG differential fixture must consume the installed migration,
+    # never execute the standalone CREATE fragment over an existing HEAD.
+    from contextlib import contextmanager
+
+    from tests.integration.test_openevolve_identity_postgres import oe_identity_db
+
+    class InstalledConnection:
+        def __init__(self):
+            self.installed = True
+            self.statements = []
+
+        def execute(self, statement):
+            self.statements.append(str(statement))
+            return self
+
+        def scalar_one(self):
+            return self.installed
+
+    class InstalledEngine:
+        connection = InstalledConnection()
+
+        @contextmanager
+        def connect(self):
+            yield self.connection
+
+    engine = InstalledEngine()
+    assert oe_identity_db.__wrapped__(engine) is engine
+    statement = engine.connection.statements[0]
+    assert statement.startswith("SELECT ") and "current_schema()" in statement
+    for signature in (
+        "mineagent_oe_shape(jsonb,jsonb,integer)",
+        "mineagent_oe_source_config(jsonb)",
+        "mineagent_oe_context(jsonb)",
+        "mineagent_oe_request(jsonb,text)",
+    ):
+        assert signature in statement
+    engine.connection.installed = False
+    with pytest.raises(AssertionError, match="Migration-owned"):
+        oe_identity_db.__wrapped__(engine)
+
 
 @pytest.mark.parametrize(
     "name", ["public;DROP SCHEMA public", "../foo", 'x"', "", None]

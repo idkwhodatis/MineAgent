@@ -52,14 +52,27 @@ def test_renderer_only_adds_one_schemaqualified_strict_function():
     from psycopg.adapt import Transformer
     from sqlalchemy import create_engine, event
 
-    from backend.app.openevolve_identity_sql import identity_sql
     from backend.app.rdagent_identity_sql import render_sql as identity_render
 
     root = Path(__file__).resolve().parents[2]
     cases = (
         ("rdagent_canonical", "render_sql", render_sql),
         ("rdagent_identity", "render_sql", identity_render),
-        ("openevolve_identity", "identity_sql", identity_sql),
+    )
+    # OE identity now consumes migration-installed functions; it must never be
+    # included in standalone DDL replay or overwrite the installed predicates.
+    oe_fixture = ast.parse(
+        (root / "tests/integration/test_openevolve_identity_postgres.py").read_text()
+    )
+    assert not any(
+        isinstance(node, ast.Call)
+        and (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "exec_driver_sql"
+            or isinstance(node.func, ast.Name)
+            and node.func.id == "identity_sql"
+        )
+        for node in ast.walk(oe_fixture)
     )
     # The pre-repair default passed an empty parameter collection, causing
     # psycopg to parse literal %1024 as a placeholder even with no bind values.

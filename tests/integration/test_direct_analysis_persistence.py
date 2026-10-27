@@ -104,6 +104,24 @@ def test_022_installs_frozen_semantic_and_immutable_triggers(migrated_engine):
     from packages.factors.contracts import canonical_bytes, digest
 
     with migrated_engine.connect() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+        assert schema.startswith("tradegrad_test_") and schema != "public"
+        installed = connection.execute(
+            text(r"""
+SELECT p.proname,p.provolatile,p.prosecdef,
+ regexp_split_to_array(replace(o.option_value,'"',''), '\s*,\s*') AS paths
+FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+CROSS JOIN LATERAL pg_options_to_table(p.proconfig) o
+WHERE n.nspname=current_schema()
+ AND p.proname IN ('mineagent_analysis_payload','mineagent_analysis_stopped')
+ AND o.option_name='search_path'
+ORDER BY p.proname
+""")
+        ).all()
+        assert installed == [
+            ("mineagent_analysis_payload", "i", False, [schema, "pg_catalog"]),
+            ("mineagent_analysis_stopped", "s", False, [schema, "pg_catalog"]),
+        ]
         for function, kind, payload, expected in predicate_cases():
             if function == "mineagent_rd_controller_payload":
                 continue

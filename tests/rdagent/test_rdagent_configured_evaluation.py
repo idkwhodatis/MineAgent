@@ -11,6 +11,7 @@ from backend.app.execution_snapshot_models import (
     ExecutionSnapshotOutcome,
     ExecutionSnapshotPublication,
 )
+from backend.app.factor_analysis_models import FactorDirectAnalysisIntent
 from backend.app.rdagent_models import (
     FactorCutoffExecution,
     FactorGenerationSource,
@@ -47,8 +48,13 @@ def case(monkeypatch):
         analysis_admission=None,
         events=[],
         status="not_evaluated",
+        transactions=0,
+        reads=0,
+        prepares=0,
+        peer_lost=False,
     )
     aid = uuid4()
+    state.analysis_intent = SimpleNamespace(id=aid)
 
     class Session:
         def scalar(self, query):
@@ -56,6 +62,7 @@ def case(monkeypatch):
                 ExecutionSnapshotPublication: state.publication,
                 FactorCutoffExecution: state.cutoff,
                 ResearchProcessAdmission: state.analysis_admission,
+                FactorDirectAnalysisIntent: state.analysis_intent,
             }[query.column_descriptions[0]["entity"]]
 
         def get(self, model, identity):
@@ -69,12 +76,17 @@ def case(monkeypatch):
 
     @contextmanager
     def transaction(*args):
+        state.transactions += 1
         yield session
 
     monkeypatch.setattr(service, "snapshot_transaction", transaction)
-    monkeypatch.setattr(
-        service, "require_rd_controller", lambda *args: state.events.append("authorize")
-    )
+
+    def authorize(*args):
+        state.events.append("authorize")
+        if state.peer_lost:
+            raise RPCError("synthetic_peer_lost")
+
+    monkeypatch.setattr(service, "require_rd_controller", authorize)
     monkeypatch.setattr(
         service,
         "_scope_row",
@@ -82,11 +94,15 @@ def case(monkeypatch):
             source if model is FactorGenerationSource else evaluation
         ),
     )
-    monkeypatch.setattr(service, "prepare_direct_analysis_intent", lambda *args: aid)
-    monkeypatch.setattr(
-        service,
-        "read_configured_evaluation",
-        lambda *args: (
+
+    def prepare(*args):
+        state.prepares += 1
+        return aid
+
+    def read(*args):
+        authorize(*args)
+        state.reads += 1
+        return (
             snapshot,
             None,
             SimpleNamespace(
@@ -95,8 +111,10 @@ def case(monkeypatch):
                     status=state.status, reason="no_defined_days"
                 ),
             ),
-        ),
-    )
+        )
+
+    monkeypatch.setattr(service, "prepare_direct_analysis_intent", prepare)
+    monkeypatch.setattr(service, "read_configured_evaluation", read)
 
     def publish(*args):
         state.events.append("publish")
@@ -163,3 +181,30 @@ def test_exact_evaluation_scope(case, field):
     setattr(case.evaluation, field, 2 if field == "expected_cutoffs" else uuid4())
     with pytest.raises(RPCError, match="complete_single_cutoff"):
         execute(case)
+
+
+def test_five_completed_reads_remain_fresh_without_repreparation(case):
+    for _ in range(5):
+        execute(case)
+    assert case.state.reads == case.state.transactions == 5
+    assert case.state.prepares == 0
+    assert case.state.events.count("authorize") == 10
+    case.state.status = "failed"
+    assert "status=failed" in execute(case)["feedback"]
+
+
+@pytest.mark.parametrize("reason", ["revoked", "owner_changed", "epoch_changed"])
+def test_completed_reuse_propagates_fresh_reader_rejection(case, monkeypatch, reason):
+    def changed(*args):
+        raise RPCError(reason)
+
+    monkeypatch.setattr(service, "read_configured_evaluation", changed)
+    with pytest.raises(RPCError, match=reason):
+        execute(case)
+    assert case.state.transactions == 1 and case.state.prepares == 0
+
+
+def test_missing_analysis_intent_keeps_original_prepare_path(case):
+    case.state.analysis_intent = None
+    execute(case)
+    assert case.state.prepares == 1 and case.state.transactions == 3

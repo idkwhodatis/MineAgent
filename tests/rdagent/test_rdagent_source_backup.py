@@ -547,6 +547,69 @@ def test_row_and_byte_bounds(retained):
     with pytest.raises(ValueError):
         backup._indexes(retained.closure, 1000, 100)
 
+    # The source-only SQL fixture must preserve active precursor facts rather
+    # than pretending the independently rejected shared cold closure passed.
+    import re
+
+    from tests.integration.rd_source_related_rows import read_admitted_source_rows
+
+    owner, run, attempt = (UUID(int=n) for n in (901, 902, 903))
+    actual = {
+        "research_runs": [
+            {"id": str(run), "owner_id": str(owner), "status": "running"}
+        ],
+        "execution_attempts": [
+            {
+                "id": str(attempt),
+                "run_id": str(run),
+                "owner_id": str(owner),
+                "status": "running",
+                "sandbox_stopped": False,
+                "finished_at": None,
+            }
+        ],
+        "research_process_states": [
+            {"admission_id": str(UUID(int=904)), "status": "admitted"}
+        ],
+    }
+    streams = []
+
+    class Rows:
+        def __init__(self, values):
+            self.values = values
+            self.closed = False
+            streams.append(self)
+
+        def __iter__(self):
+            return iter(self.values)
+
+        def close(self):
+            self.closed = True
+
+    def execute(statement, parameters):
+        query = str(statement)
+        assert "LIMIT :limit" in query and "owner" in query and ":run" in query
+        assert parameters["owner"] == owner and parameters["run"] == run
+        assert "status=" not in query and "UPDATE" not in query
+        table = re.search(r"FROM (research_\w+|execution_attempts)\b", query).group(1)
+        stream = Rows(actual.get(table, []))
+        return SimpleNamespace(scalars=lambda: stream)
+
+    connection = SimpleNamespace(execute=execute)
+    fence = SimpleNamespace(owner_id=owner, run_id=run)
+    related = read_admitted_source_rows(connection, fence)
+    assert related["external_bindings"]["runs"] == actual["research_runs"]
+    assert related["external_bindings"]["attempts"] == actual["execution_attempts"]
+    assert (
+        related["tables"]["research_process_states"]
+        == actual["research_process_states"]
+    )
+    assert all(stream.closed for stream in streams)
+    for bounds in ({"maximum_rows": 1}, {"maximum_bytes": 1}):
+        with pytest.raises(ValueError, match="exceed bounds"):
+            read_admitted_source_rows(connection, fence, **bounds)
+        assert all(stream.closed for stream in streams)
+
 
 def test_unregistered_outcome_table_cannot_be_dropped_from_shape(retained):
     bad = copy.deepcopy(retained.closure)

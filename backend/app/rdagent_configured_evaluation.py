@@ -84,6 +84,23 @@ def measured_configured_start(factory, fence, peer, start_id, settings):
         return snapshot, measured.measurement.status == "passed"
 
 
+def _read_frame(session, fence, peer, evaluation_id, settings):
+    snapshot, _, measured = read_configured_evaluation(
+        session, fence, peer, evaluation_id, settings
+    )
+    rows = [row.model_dump(mode="json") for row in snapshot.rows]
+    return {
+        "schema_version": "mineagent.rdagent-evaluation-frame.v1",
+        "source_id": str(snapshot.source_id),
+        "evaluation_id": str(snapshot.evaluation_id),
+        "snapshot_id": str(snapshot.snapshot_id),
+        "factor_version_id": str(snapshot.factor_version_id),
+        "rows": rows,
+        "rows_sha256": digest(rows),
+        "feedback": f"Complete retained execution snapshot {snapshot.snapshot_id}; actual stopped direct Qlib analysis {measured.analysis_id}; objective status={measured.measurement.status}, reason={measured.measurement.reason}. Declared availability is not independently verified PIT; input provision does not prove computation exposure.",
+    }
+
+
 def execute_configured_evaluation(
     factory, fence, peer, *, source_id, evaluation_id, settings
 ):
@@ -124,6 +141,20 @@ def execute_configured_evaluation(
             existing is not None
             and session.get(ExecutionSnapshotOutcome, existing.id) is None
         )
+        if existing is not None and not pending:
+            completed_analysis = session.scalar(
+                select(FactorDirectAnalysisIntent).filter_by(
+                    **_scope(fence), snapshot_id=existing.id
+                )
+            )
+            if (
+                completed_analysis is not None
+                and session.get(FactorDirectAnalysisOutcome, completed_analysis.id)
+                is not None
+            ):
+                # Existing result still passes the complete fresh physical reader.
+                # Avoid preparing the already committed intent in another txn.
+                return _read_frame(session, fence, peer, evaluation_id, settings)
     if existing is None:
         from backend.app.factor_native_services import publish_completed_candidate
         from workers.research.rdagent_numeric import (
@@ -189,17 +220,4 @@ def execute_configured_evaluation(
                 session, fence, analysis_id, analysis_admission_id, settings
             )
     with snapshot_transaction(factory, fence, settings) as session:
-        snapshot, _, measured = read_configured_evaluation(
-            session, fence, peer, evaluation_id, settings
-        )
-        rows = [row.model_dump(mode="json") for row in snapshot.rows]
-        return {
-            "schema_version": "mineagent.rdagent-evaluation-frame.v1",
-            "source_id": str(snapshot.source_id),
-            "evaluation_id": str(snapshot.evaluation_id),
-            "snapshot_id": str(snapshot.snapshot_id),
-            "factor_version_id": str(snapshot.factor_version_id),
-            "rows": rows,
-            "rows_sha256": digest(rows),
-            "feedback": f"Complete retained execution snapshot {snapshot.snapshot_id}; actual stopped direct Qlib analysis {measured.analysis_id}; objective status={measured.measurement.status}, reason={measured.measurement.reason}. Declared availability is not independently verified PIT; input provision does not prove computation exposure.",
-        }
+        return _read_frame(session, fence, peer, evaluation_id, settings)

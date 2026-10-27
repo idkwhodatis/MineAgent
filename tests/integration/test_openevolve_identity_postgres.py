@@ -1,7 +1,7 @@
 """Real migrated PostgreSQL predicate differential; collection is not acceptance.
 
-Standalone new functions only: no weaker replacement tables, no removed guards.
-Full023 chain tests separately require actual additive migration and real files.
+Uses the functions actually installed by the full migration chain. No fixture
+replacement functions, weaker tables, or removed guards.
 """
 
 import json
@@ -9,7 +9,6 @@ import json
 import pytest
 from sqlalchemy import text
 
-from backend.app.openevolve_identity_sql import identity_sql
 from tests.openevolve.test_operational_identity_sql import CASES, case_value, expected
 
 pytestmark = pytest.mark.postgres
@@ -17,11 +16,21 @@ pytestmark = pytest.mark.postgres
 
 @pytest.fixture
 def oe_identity_db(migrated_engine):
-    with migrated_engine.begin() as connection:
-        schema = connection.execute(text("SELECT current_schema()")).scalar_one()
-        connection.exec_driver_sql(
-            identity_sql(schema), execution_options={"no_parameters": True}
-        )
+    # HEAD already installs these functions. Re-running a source CREATE fragment
+    # both collides with migration-owned functions and would test the wrong body.
+    with migrated_engine.connect() as connection:
+        installed = connection.execute(
+            text(
+                "SELECT bool_and(pg_catalog.to_regprocedure("
+                "pg_catalog.format('%I.%s', current_schema(), signature)) IS NOT NULL) "
+                "FROM (VALUES "
+                "('mineagent_oe_shape(jsonb,jsonb,integer)'), "
+                "('mineagent_oe_source_config(jsonb)'), "
+                "('mineagent_oe_context(jsonb)'), "
+                "('mineagent_oe_request(jsonb,text)')) AS required(signature)"
+            )
+        ).scalar_one()
+        assert installed is True, "Migration-owned OE identity functions are missing"
     return migrated_engine
 
 
