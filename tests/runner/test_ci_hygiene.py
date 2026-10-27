@@ -100,28 +100,46 @@ def test_junit_export_drops_non_numeric_or_excessive_numeric_fields(tmp_path):
 def test_multimegabyte_codec_cases_have_bounded_explicit_report_ids():
     # Pytest otherwise embeds each hostile payload in the case name, expanding
     # passing JUnit to 49 MiB. Keep every input byte; bound only its report ID.
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "tests/research_trace/test_comparison_codec.py"
-    ).read_text()
-    function = next(
-        node
-        for node in ast.parse(source).body
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "test_projected_escape_expansion_is_rejected_before_fetch"
-    )
-    parameters = next(
-        node
-        for node in function.decorator_list
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "parametrize"
-        and isinstance(node.args[0], ast.Constant)
-        and node.args[0].value == "text"
-    )
-    ids = ast.literal_eval(
-        next(keyword.value for keyword in parameters.keywords if keyword.arg == "ids")
-    )
-    assert len(ids) == len(parameters.args[1].elts) == 4
-    assert len(set(ids)) == 4
-    assert all(isinstance(value, str) and 0 < len(value) <= 32 for value in ids)
+    root = Path(__file__).resolve().parents[2]
+    for path, function_name, count in (
+        (
+            "tests/research_trace/test_comparison_codec.py",
+            "test_projected_escape_expansion_is_rejected_before_fetch",
+            4,
+        ),
+        (
+            "tests/rdagent/test_rdagent_numeric_output.py",
+            "test_frame_inputs_are_typed_and_bounded",
+            5,
+        ),
+        (
+            "tests/research_runtime/test_hostile_protected_output.py",
+            "test_frame_inputs_are_typed_and_bounded",
+            5,
+        ),
+        (
+            "tests/research_runtime/test_hostile_protected_output.py",
+            "test_export_entry_requires_bounded_exact_bytes",
+            4,
+        ),
+    ):
+        function = next(
+            node
+            for node in ast.parse((root / path).read_text()).body
+            if isinstance(node, ast.FunctionDef) and node.name == function_name
+        )
+        parameters = next(
+            node
+            for node in function.decorator_list
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "parametrize"
+        )
+        ids = ast.literal_eval(
+            next(
+                keyword.value for keyword in parameters.keywords if keyword.arg == "ids"
+            )
+        )
+        assert len(ids) == len(parameters.args[1].elts) == count
+        assert len(set(ids)) == count
+        assert all(isinstance(value, str) and 0 < len(value) <= 32 for value in ids)

@@ -109,6 +109,7 @@ def test_truncated_oversized_missing_duplicate_frames_reject(raw):
 @pytest.mark.parametrize(
     "kind,payload",
     [(True, b"x"), (0, b"x"), (5, b"x"), (1, "text"), (1, b"x" * (out.MAX_FRAME + 1))],
+    ids=["bool-kind", "zero-kind", "unknown-kind", "text-payload", "oversized-bytes"],
 )
 def test_frame_inputs_are_typed_and_bounded(kind, payload):
     with pytest.raises(ValueError):

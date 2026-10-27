@@ -105,6 +105,7 @@ def test_truncated_oversized_missing_duplicate_frames_reject(raw):
 @pytest.mark.parametrize(
     "kind,payload",
     [(True, b"x"), (0, b"x"), (4, b"x"), (1, "text"), (1, b"x" * (out.MAX_FRAME + 1))],
+    ids=["bool-kind", "zero-kind", "unknown-kind", "text-payload", "oversized-bytes"],
 )
 def test_frame_inputs_are_typed_and_bounded(kind, payload):
     with pytest.raises(ValueError):
@@ -292,7 +293,9 @@ def test_exact_exporter_binding_checks_cgroup_and_live_start(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "payload", ["text", bytearray(b"abcd"), None, b"x" * (out.MAX_FRAME + 1)]
+    "payload",
+    ["text", bytearray(b"abcd"), None, b"x" * (out.MAX_FRAME + 1)],
+    ids=["text", "mutable-bytes", "none", "oversized-bytes"],
 )
 def test_export_entry_requires_bounded_exact_bytes(payload):
     with pytest.raises(ValueError):

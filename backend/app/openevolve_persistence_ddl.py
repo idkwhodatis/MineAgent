@@ -67,7 +67,9 @@ def domain_sql(schema):
     for table in tables().values():
         sql = str(
             CreateTable(table, include_foreign_key_constraints=[]).compile(
-                dialect=dialect()
+                # Frozen DDL is sent with no_parameters=True; DBAPI pyformat
+                # escaping would persist %% as a PostgreSQL operator.
+                dialect=dialect(paramstyle="named")
             )
         ).strip()
         sql = sql.replace(
