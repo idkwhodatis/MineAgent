@@ -258,6 +258,37 @@ def test_module_and_limits_cannot_be_supplied_as_arbitrary_code():
         )
 
 
+def _process_stopped(stat):
+    try:
+        return stat.read_text().split()[2] == "Z"
+    except FileNotFoundError:
+        # Reaping may remove /proc between polling and opening it.
+        return True
+
+
+def test_process_stop_probe_handles_reaped_process_without_exists_check():
+    class ReapedStat:
+        def read_text(self):
+            raise FileNotFoundError("process reaped")
+
+    assert _process_stopped(ReapedStat())
+
+
+def test_process_stop_probe_does_not_hide_access_errors():
+    class InaccessibleStat:
+        def read_text(self):
+            raise PermissionError("not evidence of process exit")
+
+    with pytest.raises(PermissionError):
+        _process_stopped(InaccessibleStat())
+
+
+@pytest.mark.parametrize("state,stopped", [("Z", True), ("S", False), ("R", False)])
+def test_process_stop_probe_requires_terminal_state(state, stopped):
+    stat = SimpleNamespace(read_text=lambda: f"123 (python) {state} 1")
+    assert _process_stopped(stat) is stopped
+
+
 def test_worker_death_before_sdk_initialization_fails_closed(tmp_path):
     import os
     import signal
@@ -290,7 +321,7 @@ def test_worker_death_before_sdk_initialization_fails_closed(tmp_path):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             stat = Path(f"/proc/{child_pid}/stat")
-            if not stat.exists() or stat.read_text().split()[2] == "Z":
+            if _process_stopped(stat):
                 break
             time.sleep(0.02)
         else:

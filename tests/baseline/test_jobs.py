@@ -53,7 +53,12 @@ def test_timeout_reaps_descendant_processes(tmp_path):
     pid=int(pid_file.read_text())
     # A zombie has exited and cannot run; its init parent controls reaping timing in CI.
     stat=Path(f"/proc/{pid}/stat")
-    assert not stat.exists() or stat.read_text().split()[2] == "Z"
+    try:
+        state = stat.read_text().split()[2]
+    except FileNotFoundError:
+        pass  # The exited descendant was reaped before the read.
+    else:
+        assert state == "Z"
 
 
 def test_credentials_are_not_inherited(tmp_path,monkeypatch):
