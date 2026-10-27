@@ -35,7 +35,7 @@ COPY packages/tradegrad_adapter/independent_results.py packages/tradegrad_adapte
 COPY packages/research_trace/contracts.py /usr/local/lib/python3.12/site-packages/packages/research_trace/
 COPY runtimes/__init__.py /usr/local/lib/python3.12/site-packages/runtimes/__init__.py
 COPY runtimes/openevolve_operational/__init__.py runtimes/openevolve_operational/deadline.py runtimes/openevolve_operational/trusted_report.py runtimes/openevolve_operational/entrypoint.py runtimes/openevolve_operational/evaluator.py runtimes/openevolve_operational/bootstrap.py runtimes/openevolve_operational/profile.py runtimes/openevolve_operational/runtime_binding.py runtimes/openevolve_operational/transport.py runtimes/openevolve_operational/fixed_input.py runtimes/openevolve_operational/checkpoint_transfer.py /usr/local/lib/python3.12/site-packages/runtimes/openevolve_operational/
-COPY runtimes/hostile_deadline/deadline.py /usr/local/lib/python3.12/site-packages/runtimes/hostile_deadline/deadline.py
+COPY runtimes/hostile_deadline/contract.py runtimes/hostile_deadline/deadline.py /usr/local/lib/python3.12/site-packages/runtimes/hostile_deadline/
 ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /tmp
 USER 0:0

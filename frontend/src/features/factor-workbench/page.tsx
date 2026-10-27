@@ -89,8 +89,14 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
   const [offset, setOffset] = useState(0);
   const [bookmarked, setBookmarked] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [importActive, setImportActive] = useState(false);
   const user = useQuery(currentUserOptions);
-  const list = useQuery(factorListOptions(search, offset, bookmarked));
+  const list = useQuery({
+    ...factorListOptions(search, offset, bookmarked),
+    enabled: !editing && !importActive,
+    refetchOnWindowFocus: !editing && !importActive,
+    refetchOnReconnect: !editing && !importActive,
+  });
   const navigate = useNavigate();
   return (
     <div className="factor-workbench">
@@ -117,10 +123,19 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
           />{" "}
           Bookmarked only
         </label>
-        <Button onClick={() => setEditing(true)} disabled={!user.data}>
+        <Button
+          onClick={() => setEditing(true)}
+          disabled={!user.data || list.isFetching}
+        >
           New factor definition
         </Button>
       </div>
+      {list.isFetching && (
+        <p role="status">
+          Recording displayed factor exposures. Creation and import wait for
+          this read to finish.
+        </p>
+      )}
       {editing && user.data && (
         <FactorEditor
           owner={user.data.id}
@@ -252,6 +267,7 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
       </Panel>
       <FactorImportPanel
         enabled={importEnabled}
+        onActiveChange={setImportActive}
         owner={user.data?.id}
         admissionId={librarySelection.import_id}
         onAdmission={(import_id) =>
@@ -303,11 +319,16 @@ function FactorWorkbench({
   versionId: string;
   selection: FactorSelection;
 }) {
-  const detail = useQuery(factorDetailOptions(factorId, versionId));
+  const [editing, setEditing] = useState(false);
+  const detail = useQuery({
+    ...factorDetailOptions(factorId, versionId),
+    enabled: !editing,
+    refetchOnWindowFocus: !editing,
+    refetchOnReconnect: !editing,
+  });
   const [versionOffset, setVersionOffset] = useState(0);
   const versions = useQuery(factorVersionsOptions(factorId, versionOffset));
   const user = useQuery(currentUserOptions);
-  const [editing, setEditing] = useState(false);
   const navigate = useNavigate();
   const tab = selection.tab || "overview";
   const changeSelection = (next: FactorSelection) =>
@@ -436,6 +457,12 @@ function FactorWorkbench({
             )
           }
         />
+      )}
+      {detail.isFetching && (
+        <p role="status">
+          Recording displayed factor exposures. Creation and import wait for
+          this read to finish.
+        </p>
       )}
       {editing && user.data && (
         <FactorEditor

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { ErrorState, Panel } from "@/components/common";
 import { Field } from "@/components/data-common";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,10 @@ import {
   type FactorPresentation,
   type FactorVersion,
 } from "@/lib/factor-api";
+import {
+  factorExposureReads,
+  requireFactorReadsIdle,
+} from "@/lib/factor-publication";
 import { forgetFactorSubmission, submissionKey } from "./selection";
 
 const initialDefinition = {
@@ -66,12 +70,14 @@ export function FactorEditor({
   const [error, setError] = useState<unknown>();
   const active = useRef(false);
   const queries = useQueryClient();
+  const readsPending = useIsFetching(factorExposureReads) > 0;
   async function save() {
     if (active.current) return;
     active.current = true;
     setBusy(true);
     setError(undefined);
     try {
+      requireFactorReadsIdle(queries);
       const parsed: unknown = JSON.parse(definition);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
         throw new Error("Definition must be a JSON object.");
@@ -82,6 +88,7 @@ export function FactorEditor({
         parent_version_id: parent?.id || null,
         ...(note ? { change_note: note } : {}),
       };
+      requireFactorReadsIdle(queries);
       const operation = parent ? `version.${parent.factor_id}` : "create";
       const result = await factorRequest<
         FactorVersion | { factor: FactorPresentation; version: FactorVersion }
@@ -174,7 +181,7 @@ export function FactorEditor({
         </Field>
         {error !== undefined && <ErrorState error={error} />}
         <div className="actions">
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || readsPending}>
             {busy ? "Saving…" : "Save exact definition"}
           </Button>
           <Button

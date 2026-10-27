@@ -16,7 +16,7 @@ from test_rd_source_persistence import persist, source_setup  # noqa: F401
 pytestmark = pytest.mark.postgres
 
 
-def test_old_precursor_cannot_receive_protected_child(source_setup):  # noqa: F811
+def test_old_precursor_cannot_receive_protected_child(source_setup, tmp_path):  # noqa: F811
     factory, *_ = source_setup
     saved = persist(source_setup)
     from rd_receipt_predicate_fixture import predicate_cases
@@ -34,17 +34,61 @@ def test_old_precursor_cannot_receive_protected_child(source_setup):  # noqa: F8
                 )
                 is expected
             )
+    # A well-formed forged child must reach the old-profile guard, rather than
+    # failing an unrelated empty-payload/hash check. This is not physical proof:
+    # the retained precursor has no actual protected child or leader identity.
+    import hashlib
+
+    from backend.app.research_process_models import ResearchProcessAdmission
+    from packages.research_runtime.process_contracts import digest
+    from packages.research_runtime.process_persistence_codec import (
+        ROW_FIELDS,
+        commitment_bytes,
+    )
+    from runtimes.rdagent_operational.process_journal import ControllerChild
+    from tests.rdagent.test_rdagent_controller_process import records
+
+    child_fields = records(tmp_path)[2].model_dump(mode="json")
+    with factory() as session:
+        admission = session.get(ResearchProcessAdmission, saved.controller_id)
+        assert admission.profile == "mineagent.rdagent-orchestrator.v1"
+        row = {name: getattr(admission, name) for name in ROW_FIELDS}
+        child_fields["admission_sha256"] = hashlib.sha256(
+            commitment_bytes(row)
+        ).hexdigest()
+    child = ControllerChild.model_validate_json(json.dumps(child_fields))
+    payload = child.model_dump(mode="json")
+    payload_sha256 = digest(payload)
+    with factory() as session:
+        assert (
+            session.scalar(
+                text(
+                    "SELECT mineagent_rd_controller_payload('controller_child',CAST(:payload AS jsonb))"
+                ),
+                {"payload": json.dumps(payload)},
+            )
+            is True
+        )
+        assert (
+            session.scalar(
+                text(
+                    "SELECT encode(sha256(convert_to(mineagent_rd_canonical_json(CAST(:payload AS jsonb),true),'UTF8')),'hex')"
+                ),
+                {"payload": json.dumps(payload)},
+            )
+            == payload_sha256
+        )
     with (
         pytest.raises(
             DBAPIError,
-            match="Child receipt belongs only|RD child cannot extend historical process grammar",
+            match="Child receipt requires exact protected controller",
         ) as rejected,
         factory.begin() as session,
     ):
         session.execute(
             text("""INSERT INTO research_process_receipts
         (id,owner_id,run_id,attempt_id,generation,admission_id,kind,payload,payload_sha256,created_at)
-        VALUES (:id,:owner,:run,:attempt,:generation,:admission,'controller_child','{}'::jsonb,:sha,now())"""),
+        VALUES (:id,:owner,:run,:attempt,:generation,:admission,'controller_child',CAST(:payload AS jsonb),:sha,now())"""),
             {
                 "id": uuid4(),
                 "owner": saved.fence.owner_id,
@@ -52,19 +96,23 @@ def test_old_precursor_cannot_receive_protected_child(source_setup):  # noqa: F8
                 "attempt": saved.fence.attempt_id,
                 "generation": saved.fence.generation,
                 "admission": saved.controller_id,
-                "sha": "0" * 64,
+                "payload": json.dumps(payload),
+                "sha": payload_sha256,
             },
         )
         session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
-    # Either exact historical-child guard can reject first; unrelated DB errors
-    # must not satisfy this negative, and the transaction must retain no child.
+    # Installed024 extends this BEFORE trigger for OE and changes its exact error.
+    # Unrelated errors cannot satisfy this negative; no child may be retained.
     assert rejected.value.orig.sqlstate == "P0001"
     with factory() as session:
-        assert session.scalar(
-            text("""SELECT count(*) FROM research_process_receipts
+        assert (
+            session.scalar(
+                text("""SELECT count(*) FROM research_process_receipts
             WHERE admission_id=:admission AND kind='controller_child'"""),
-            {"admission": saved.controller_id},
-        ) == 0
+                {"admission": saved.controller_id},
+            )
+            == 0
+        )
 
 
 def test_unexecuted_precursor_cannot_record_adoption(source_setup):  # noqa: F811

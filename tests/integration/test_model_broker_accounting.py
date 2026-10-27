@@ -286,7 +286,11 @@ def test_neutral_budget_survives_generation_change_without_reset(broker_fixture)
 @pytest.mark.parametrize("purpose", ["process_unit", "object_storage"])
 def test_neutral_nonmodel_refund_requires_domain_stop_proof(broker_fixture, purpose):
     factory, fence, settings = broker_fixture
-    with neutral_transaction(factory, fence) as session:
+    with neutral_transaction(
+        factory,
+        fence,
+        resource_scope="processes" if purpose == "process_unit" else "objects",
+    ) as session:
         row = reserve_budget(
             session,
             fence,

@@ -294,7 +294,7 @@ def test_foreign_snapshot_and_wrong_factor_parent_are_indistinguishable(
         )
 
 
-def test_concurrent_exact_create_never_duplicates(api, owner_headers):
+def test_concurrent_exact_create_never_duplicates(api, owner_headers, migrated_engine):
     from concurrent.futures import ThreadPoolExecutor
 
     key = uuid4().hex
@@ -312,6 +312,23 @@ def test_concurrent_exact_create_never_duplicates(api, owner_headers):
     assert retry.status_code == 201, retry.text
     successes = [r.json()["version"]["id"] for r in responses if r.status_code == 201]
     assert successes and all(i == retry.json()["version"]["id"] for i in successes)
+
+    # The real library read records exposures under the same owner lock. Its
+    # transaction must finish before a separate publication can be admitted.
+    from backend.app.factor_models import FeatureSnapshot
+    from backend.app.factor_services import expose_snapshot
+
+    observed = fixture(api, owner_headers)
+    after_read_key = uuid4().hex
+    with Session(migrated_engine) as reading:
+        snapshot = reading.get(FeatureSnapshot, UUID(observed["snapshot"]["id"]))
+        expose_snapshot(reading, snapshot.owner_id, snapshot, "list")
+        busy = post(api, owner_headers, "factors", manual(), after_read_key)
+        assert busy.status_code == 503, busy.text
+        assert busy.json()["code"] == "factor_busy"
+        reading.rollback()
+    admitted = post(api, owner_headers, "factors", manual(), after_read_key)
+    assert admitted.status_code == 201, admitted.text
 
 
 def test_imported_known_exposure_enters_owner_classifier_even_without_snapshot_binding(

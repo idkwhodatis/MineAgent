@@ -60,7 +60,7 @@ jobs:
           source=Path('var/numeric-private/contracts.xml')
           summarize(source,Path('var/numeric-proof/contracts-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases) == 3452
+          assert len(cases) == 3465
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYCONTRACTS
       - name: Fetch only exact existing numeric wheels

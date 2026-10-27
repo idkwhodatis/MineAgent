@@ -1,6 +1,10 @@
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import {
+  factorExposureReads,
+  requireFactorReadsIdle,
+} from "@/lib/factor-publication";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorState, Loading, Panel } from "@/components/common";
 import { Field, JsonDetails, Metadata } from "@/components/data-common";
 import { Button } from "@/components/ui/button";
@@ -20,23 +24,29 @@ export function FactorImportPanel({
   owner,
   admissionId,
   onAdmission,
+  onActiveChange,
 }: {
   enabled: boolean;
   owner?: string;
   admissionId?: string;
   onAdmission: (id?: string) => void;
+  onActiveChange?: (active: boolean) => void;
 }) {
   const [file, setFile] = useState<File>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const active = useRef(false);
+  const queries = useQueryClient();
+  const readsPending = useIsFetching(factorExposureReads) > 0;
   async function upload() {
     if (!file || !owner || active.current || !enabled) return;
     active.current = true;
     setBusy(true);
     setError(undefined);
     try {
+      requireFactorReadsIdle(queries);
       const archive = await factorArchiveHash(file);
+      requireFactorReadsIdle(queries);
       const result = await factorRequest<FactorImportAdmission>(
         "/factor-packages/import",
         {
@@ -82,12 +92,13 @@ export function FactorImportPanel({
                 disabled={busy}
                 onChange={(event) => {
                   setFile(event.target.files?.[0]);
+                  onActiveChange?.(Boolean(event.target.files?.[0]));
                   setError(undefined);
                 }}
               />
             </Field>
             <Button
-              disabled={busy || !owner || !file}
+              disabled={busy || readsPending || !owner || !file}
               onClick={() => void upload()}
             >
               {busy ? "Submitting archive…" : "Import exact package"}

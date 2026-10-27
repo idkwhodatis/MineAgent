@@ -134,11 +134,16 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
     reservations = []
     paths = [
         path
-        for root in ("backend/app", "workers/research", "tests")
+        for root in ("backend/app", "workers/research", "workers/openevolve", "tests")
         for path in Path(root).rglob("*.py")
     ]
     for path in paths:
         tree = ast.parse(path.read_text())
+        parents = {
+            child: node
+            for node in ast.walk(tree)
+            for child in ast.iter_child_nodes(node)
+        }
         aliases = {"reserve_budget"}
         for node in ast.walk(tree):
             if (
@@ -179,6 +184,53 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
             if isinstance(purpose, ast.Constant) and purpose.value != "process_unit":
                 continue
             reservations.append((path.name, call.lineno))
+            ancestors = []
+            parent = call
+            while parent in parents:
+                parent = parents[parent]
+                ancestors.append(parent)
+            transactions = [
+                item.context_expr
+                for parent in ancestors
+                if isinstance(parent, ast.With)
+                for item in parent.items
+                if isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == "neutral_transaction"
+            ]
+            if transactions:
+                for transaction in transactions:
+                    scope = next(
+                        (
+                            k.value
+                            for k in transaction.keywords
+                            if k.arg == "resource_scope"
+                        ),
+                        None,
+                    )
+                    assert scope is not None, (path, call.lineno)
+                    if isinstance(scope, ast.IfExp):
+                        # Inspect both branches of the actual parameterized fixture.
+                        assert (
+                            ast.unparse(scope)
+                            == "'processes' if purpose == 'process_unit' else 'objects'"
+                        )
+                    else:
+                        assert isinstance(scope, ast.Constant) and scope.value in {
+                            "processes",
+                            "factor_numeric",
+                        }, (path, call.lineno)
+            else:
+                # Only these existing session-taking producers delegate the
+                # transaction to their reviewed caller; no new silent exemption.
+                function = next(n for n in ancestors if isinstance(n, ast.FunctionDef))
+                assert (str(path), function.name) in {
+                    (
+                        "backend/app/openevolve_epoch_admission.py",
+                        "prepare_initial_epoch",
+                    ),
+                    ("workers/research/rdagent_numeric.py", "_intent"),
+                }, (path, call.lineno)
             assert any(
                 k.arg == "settings"
                 and isinstance(k.value, ast.Name)

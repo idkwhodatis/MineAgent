@@ -10,11 +10,10 @@ import re
 from datetime import date
 from pathlib import Path
 
-from packages.qlib_adapter.objective import DirectObjectiveDeclaration
 from sqlalchemy.orm import sessionmaker
-from workers.research.rdagent_configured import create_configured_run
 
 from packages.factors.contracts import DateWindow
+from packages.qlib_adapter.objective import DirectObjectiveDeclaration
 from packages.rdagent_adapter.contracts import (
     DependencyLock,
     FactorResearchConfig,
@@ -25,6 +24,7 @@ from packages.rdagent_adapter.numeric_profile import (
     NORMALIZER_LOCK_SHA256,
 )
 from packages.research_runtime.budget_contracts import BudgetVector
+from workers.research.rdagent_configured import create_configured_run
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -131,25 +131,25 @@ def prepare_structured_pair(engine, settings, owner_id):
     from uuid import uuid4
 
     import pytest
+    from sqlalchemy import select
+    from structured_market_fixture import encoded_structured_market
+
+    from backend.app.core.atomic_storage import provision_directory
     from backend.app.execution_snapshot_history import (
         read_historical_execution_snapshot,
     )
     from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
-    from packages.rdagent_adapter.configured_source import parse_retained_source
-    from sqlalchemy import select
-    from structured_market_fixture import encoded_structured_market
-    from workers.research.rdagent_configured import execute_configured_controller
-
-    from backend.app.core.atomic_storage import provision_directory
     from backend.app.models import DatasetVersion, ResearchRun
     from backend.app.research_process_models import (
         ResearchProcessAdmission,
         ResearchProcessState,
     )
     from packages.factors.contracts import digest
+    from packages.rdagent_adapter.configured_source import parse_retained_source
     from packages.structured_factor_strategy.contracts import StructuredProgram
     from packages.structured_factor_strategy.run import StructuredRunConfig
     from runtimes.structured_factor_engine.recipe import dependency_lock_sha256
+    from workers.research.rdagent_configured import execute_configured_controller
     from workers.research.structured_factor import create_structured_acceptance_run
 
     pins = tuple(
@@ -210,7 +210,12 @@ def prepare_structured_pair(engine, settings, owner_id):
         fence = _prepare_factor(
             factory, dataset, source, args["policy"], settings, owner_id, lookback
         )
-        assert execute_configured_controller(factory, fence, settings) == fence.run_id
+        from direct_analysis_diagnostic import diagnose_direct_outcomes
+
+        with diagnose_direct_outcomes():
+            assert (
+                execute_configured_controller(factory, fence, settings) == fence.run_id
+            )
         with factory() as session:
             assert session.get(ResearchRun, fence.run_id).status == "succeeded"
             units = session.scalars(
