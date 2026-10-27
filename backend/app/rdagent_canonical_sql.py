@@ -69,6 +69,8 @@ BEGIN
    END IF;
    IF t COLLATE "C" !~ '[^ -~]' AND position(chr(34) in t)=0 AND position(chr(92) in t)=0 THEN
      result:=chr(34)||t||chr(34);
+   ELSIF octet_length(t)=char_length(t) AND position(chr(127) in t)=0 THEN
+     result:=pg_catalog.to_json(t)::text;
    ELSE
    SELECT chr(34)||coalesce(string_agg(
      CASE z.p

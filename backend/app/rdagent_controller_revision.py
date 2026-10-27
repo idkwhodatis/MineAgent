@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 FROZEN_018_SQL_SHA256 = (
-    "4f88ee3010e5672b1e71a4d25b286ce03427b25f2aad152b23195487f711f87e"
+    "7aab728d7e5300e8d8718663276b8cba8c7262f38af56230a0d463297f596bc3"
 )
 
 

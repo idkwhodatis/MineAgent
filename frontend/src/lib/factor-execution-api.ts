@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { factorRequest } from "./factor-api";
+import { completeFactorRead, factorRequest } from "./factor-api";
 
 export type FactorExecutionRecord = {
   kind: "execution_snapshot";
@@ -29,10 +29,11 @@ export const factorExecutionOptions = (
       "execution-records",
       offset,
     ],
-    queryFn: ({ signal }) =>
-      factorRequest<{ data: FactorExecutionRecord[]; count: number }>(
-        `/factors/${factorId}/versions/${versionId}/execution-records?offset=${offset}&limit=20`,
-        { signal },
+    queryFn: () =>
+      completeFactorRead(() =>
+        factorRequest<{ data: FactorExecutionRecord[]; count: number }>(
+          `/factors/${factorId}/versions/${versionId}/execution-records?offset=${offset}&limit=20`,
+        ),
       ),
   });
 
@@ -45,34 +46,36 @@ export const exactFactorExecutionOptions = (
   queryOptions({
     queryKey: ["factor-execution-exact", factorId, versionId, snapshotId],
     enabled: Boolean(snapshotId),
-    queryFn: async ({ signal }) => {
-      for (let offset = 0; offset < 1000; offset += 100) {
-        const page = await factorRequest<{
-          data: FactorExecutionRecord[];
-          count: number;
-        }>(
-          `/factors/${factorId}/versions/${versionId}/execution-records?offset=${offset}&limit=100`,
-          { signal },
-        );
-        if (
-          page.data.some(
-            (row) =>
-              row.kind !== "execution_snapshot" ||
-              row.factor_id !== factorId ||
-              row.factor_version_id !== versionId,
-          )
-        )
-          throw new Error(
-            "Execution metadata does not match the exact factor version.",
+    queryFn: () =>
+      completeFactorRead(async (requireSameSession) => {
+        for (let offset = 0; offset < 1000; offset += 100) {
+          requireSameSession();
+          const page = await factorRequest<{
+            data: FactorExecutionRecord[];
+            count: number;
+          }>(
+            `/factors/${factorId}/versions/${versionId}/execution-records?offset=${offset}&limit=100`,
           );
-        const found = page.data.find(
-          (row) => row.execution_snapshot_id === snapshotId,
+          requireSameSession();
+          if (
+            page.data.some(
+              (row) =>
+                row.kind !== "execution_snapshot" ||
+                row.factor_id !== factorId ||
+                row.factor_version_id !== versionId,
+            )
+          )
+            throw new Error(
+              "Execution metadata does not match the exact factor version.",
+            );
+          const found = page.data.find(
+            (row) => row.execution_snapshot_id === snapshotId,
+          );
+          if (found) return found;
+          if (offset + 100 >= page.count) break;
+        }
+        throw new Error(
+          "Exact execution unavailable within the bounded 1,000-record metadata lookup. No replacement was selected.",
         );
-        if (found) return found;
-        if (offset + 100 >= page.count) break;
-      }
-      throw new Error(
-        "Exact execution unavailable within the bounded 1,000-record metadata lookup. No replacement was selected.",
-      );
-    },
+      }),
   });

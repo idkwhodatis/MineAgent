@@ -143,7 +143,7 @@ function FactorImportStatus({
     return (
       <ErrorState
         error={admission.error}
-        retry={() => void admission.refetch()}
+        retry={() => void admission.refetch({ cancelRefetch: false })}
       />
     );
   if (!admission.data) return null;

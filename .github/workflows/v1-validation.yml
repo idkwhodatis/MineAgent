@@ -208,7 +208,23 @@ jobs:
           TRADEGRAD_INDEPENDENT_POSTGRES_REQUIRED: "1"
           TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"
           TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"
-        run: .venv-data/bin/python -m pytest tests/integration --maxfail=1 -q --ignore=tests/integration/test_openevolve_initial_runtime.py --junitxml=m1-m2-postgres-junit.xml
+        # These exact runtime modules run on this same head in the dedicated
+        # image-building workflows; no PostgreSQL-only module is excluded.
+        run: >-
+          .venv-data/bin/python -m pytest tests/integration --maxfail=1 -q
+          --ignore=tests/integration/test_openevolve_initial_runtime.py
+          --ignore=tests/integration/test_openevolve_native_runtime.py
+          --ignore=tests/integration/test_numeric_persisted_runtime.py
+          --ignore=tests/integration/test_rdagent_actual_controller.py
+          --ignore=tests/integration/test_rdagent_execution_restore.py
+          --ignore=tests/integration/test_rdagent_controller_recovery.py
+          --ignore=tests/integration/test_rdagent_configured_analysis.py
+          --ignore=tests/integration/test_configured_analysis_restore.py
+          --ignore=tests/integration/test_rdagent_user_flow.py
+          --ignore=tests/integration/test_rdagent_provider_user_flow.py
+          --ignore=tests/integration/test_structured_factor_runtime.py
+          --ignore=tests/integration/test_structured_factor_restore.py
+          --junitxml=m1-m2-postgres-junit.xml
       - name: Observe disposable database capacity after real integration tests
         if: always()
         run: python script/ci_postgres_resources.py --phase after-integration

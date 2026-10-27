@@ -122,6 +122,48 @@ def test_render_is_deterministic_separate_and_qualified():
     assert "SET search_path=pg_catalog" in sql
     assert "EXCEPTION WHEN data_exception THEN RETURN false" in sql
 
+    # Only the exact UTF8/ASCII branch changes; preserve all old depth, NULL,
+    # numeric and over-bound counting semantics (this helper does not clamp).
+    import ast
+    import re
+
+    rendered = module.render_sql("public")
+    start = rendered.index("CREATE OR REPLACE FUNCTION public.mineagent_rd_json_bytes(")
+    helper = rendered[start : rendered.index("$$;", start) + 3]
+    branch = (
+        "   IF current_setting('server_encoding')='UTF8' AND octet_length(t)<=1048576 AND octet_length(t)=char_length(t) AND position(chr(127) in t)=0 THEN\n"
+        "     RETURN octet_length(pg_catalog.to_json(t)::text);\n"
+        "   END IF;\n"
+    )
+    assert helper.count(branch) == 1
+    assert (
+        hashlib.sha256(helper.replace(branch, "", 1).encode()).hexdigest()
+        == "08a5f8cc862bf0a07066ce49d4002be7ce20405bef8bd5443198a18fb2c06d79"
+    )
+    definitions = []
+    for path in sorted(
+        (Path(__file__).resolve().parents[2] / "backend/alembic/versions").glob("*.py")
+    ):
+        for node in ast.parse(path.read_text()).body:
+            if not isinstance(node, ast.Assign):
+                continue
+            try:
+                literal = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(literal, str):
+                continue
+            for match in re.finditer(
+                r"CREATE(?: OR REPLACE)? FUNCTION (?:@SCHEMA@\.)?mineagent_rd_json_bytes\(",
+                literal,
+            ):
+                actual = literal[
+                    match.start() : literal.index("$$;", match.start()) + 3
+                ]
+                assert actual == helper.replace("public.", "@SCHEMA@.")
+                definitions.append((path.name, node.targets[0].id))
+    assert definitions == [("018_rd_source_persistence.py", "UPGRADE_SQL")]
+
 
 @pytest.mark.parametrize("value", ["x;DROP TABLE y", "public.x", "X", "", "a" * 64])
 def test_schema_identifier_closed(value):

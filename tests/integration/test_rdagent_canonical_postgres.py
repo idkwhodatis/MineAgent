@@ -35,6 +35,11 @@ def canonical_db(migrated_engine):
         ).scalar_one()
         assert "IF t COLLATE \"C\" !~ '[^ -~]'" in installed
         assert "position(chr(34) in t)=0 AND position(chr(92) in t)=0" in installed
+        assert (
+            "ELSIF octet_length(t)=char_length(t) AND position(chr(127) in t)=0 THEN"
+            in installed
+        )
+        assert "result:=pg_catalog.to_json(t)::text;" in installed
         connection.exec_driver_sql(
             render_sql(schema), execution_options={"no_parameters": True}
         )
@@ -105,6 +110,22 @@ def test_exact_output_byte_boundary(canonical_db):
         encode(canonical_db, value + "x")
     assert exc.value.orig.sqlstate == "22023"
 
+    # C string escaping may expand input; enforce the same final byte bound.
+    for character, maximum in (
+        (chr(1), 174762),
+        ('"', 524287),
+        ("\\", 524287),
+        ("\n", 524287),
+    ):
+        for ascii_only in (True, False):
+            accepted = character * maximum
+            expected = json.dumps(accepted, ensure_ascii=ascii_only)
+            assert encode(canonical_db, accepted, ascii_only) == expected
+            assert len(expected.encode()) <= MAX_BYTES
+            with pytest.raises(DBAPIError) as exc:
+                encode(canonical_db, accepted + character, ascii_only)
+            assert exc.value.orig.sqlstate == "22023"
+
 
 def test_ascii_escape_expansion_counts_output_not_input(canonical_db):
     value = "😀" * (MAX_BYTES // 12 + 1)
@@ -171,7 +192,7 @@ def test_jsonb_lexical_loss_is_explicit_not_raw_validation(canonical_db, tmp_pat
             .encode()
             .hex(),
         }
-        for value in CORPUS.extended_canonical_cases(tmp_path)
+        for value in CORPUS.escaped_canonical_cases(tmp_path)
         for ascii_only in (True, False)
     ]
     with canonical_db.begin() as connection:
@@ -187,7 +208,7 @@ def test_jsonb_lexical_loss_is_explicit_not_raw_validation(canonical_db, tmp_pat
             .scalars()
             .all()
         )
-    assert len(results) == 854 and all(value is True for value in results)
+    assert len(results) == 3278 and all(value is True for value in results)
 
     # JSONB itself rejects invalid Unicode before either serializer can run.
     for raw in ('"\\ud800"', '"\\udfff"', '"\\u0000"', '"\\ud800a"'):

@@ -750,6 +750,9 @@ BEGIN
    RETURN n+greatest(k-1,0);
  WHEN 'string' THEN
    n:=2; t:=v#>>'{}';
+   IF current_setting('server_encoding')='UTF8' AND octet_length(t)<=1048576 AND octet_length(t)=char_length(t) AND position(chr(127) in t)=0 THEN
+     RETURN octet_length(pg_catalog.to_json(t)::text);
+   END IF;
    FOR k IN 1..char_length(t) LOOP
      c:=substr(t,k,1); p:=ascii(c);
      n:=n+CASE WHEN p IN (8,9,10,12,13,34,92) THEN 2

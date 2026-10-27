@@ -52,6 +52,18 @@ CORPUS = _load_corpus()
 def identity_db(migrated_engine):
     with migrated_engine.begin() as connection:
         schema = connection.execute(text("SELECT current_schema()")).scalar_one()
+        installed = connection.execute(
+            text("""
+            SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname=current_schema() AND p.proname='mineagent_rd_json_bytes'
+        """)
+        ).scalar_one()
+        assert (
+            "current_setting('server_encoding')='UTF8' AND octet_length(t)<=1048576 AND octet_length(t)=char_length(t)"
+            in installed
+        )
+        assert "position(chr(127) in t)=0" in installed
+        assert "RETURN octet_length(pg_catalog.to_json(t)::text);" in installed
         connection.exec_driver_sql(
             render_sql(schema), execution_options={"no_parameters": True}
         )
@@ -168,7 +180,9 @@ def test_context_root_and_exact_keys(identity_db, case):
         [],
     ],
 )
-def test_json_byte_bound_is_python_canonical_length(identity_db, ascii_only, value):
+def test_json_byte_bound_is_python_canonical_length(
+    identity_db, ascii_only, value, tmp_path
+):
     expected = len(
         json.dumps(
             value,
@@ -186,6 +200,77 @@ def test_json_byte_bound_is_python_canonical_length(identity_db, ascii_only, val
             {"value": json.dumps(value), "ascii_only": ascii_only},
         ).scalar_one()
     assert actual == expected
+
+    # Reuse the two existing empty-container cases for the complete corpus,
+    # without removing any of the original Unicode/config checks above.
+    if value == []:
+        from tests.rdagent.test_rdagent_canonical_sql import escaped_canonical_cases
+
+        vectors = [
+            {
+                "value": item,
+                "expected": len(
+                    json.dumps(
+                        item,
+                        ensure_ascii=ascii_only,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        allow_nan=False,
+                    ).encode()
+                ),
+            }
+            for item in escaped_canonical_cases(tmp_path)
+        ]
+        with identity_db.begin() as connection:
+            results = (
+                connection.execute(
+                    text("""
+                SELECT mineagent_rd_json_bytes(v->'value',:mode)=(v->>'expected')::bigint
+                FROM jsonb_array_elements(CAST(:vectors AS jsonb)) v
+            """),
+                    {
+                        "vectors": json.dumps(vectors, ensure_ascii=True),
+                        "mode": ascii_only,
+                    },
+                )
+                .scalars()
+                .all()
+            )
+            assert len(results) == 1639 and all(item is True for item in results)
+            # No byte clamp and no new negative-depth/NULL interpretation.
+            actual = connection.execute(
+                text("""
+                SELECT mineagent_rd_json_bytes(NULL::jsonb,:mode,-1),
+                 mineagent_rd_json_bytes('null'::jsonb,:mode,-1),
+                 mineagent_rd_json_bytes('null'::jsonb,:mode,25),
+                 mineagent_rd_json_bytes('1.0'::jsonb,:mode),
+                 mineagent_rd_json_bytes(to_jsonb(chr(127)),NULL::boolean),
+                 mineagent_rd_json_bytes(to_jsonb(repeat('x',1048576)),:mode),
+                 mineagent_rd_json_bytes(to_jsonb(repeat(chr(1),174763)),:mode),
+                 mineagent_rd_json_bytes(to_jsonb(repeat(chr(34),524288)),:mode)
+            """),
+                {"mode": ascii_only},
+            ).one()
+            assert actual == (None, 4, 1048577, 3, 3, 1048578, 1048580, 1048578)
+            # Do not execute the original quadratic loop at >1MiB. Evaluate
+            # the exact rendered branch condition only; pure SHA regression
+            # above proves that a false branch retains the original loop.
+            import re
+
+            branch = re.search(
+                r"IF (current_setting\('server_encoding'\)='UTF8'.*?) THEN",
+                render_sql(),
+            ).group(1)
+            assert (
+                connection.execute(
+                    text(
+                        "SELECT "
+                        + branch
+                        + " FROM (SELECT repeat('x',1048577) AS t) bound"
+                    )
+                ).scalar_one()
+                is False
+            )
 
 
 @pytest.mark.parametrize(

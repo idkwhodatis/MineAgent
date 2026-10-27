@@ -131,11 +131,12 @@ def _authenticate_socket(
             ).all()
             if len(rows) > 2:
                 raise ValueError("Initial worker placement bound exceeded")
-            # One pool worker can serve both serial intents; only the latest
-            # immutable assignment is current, not the first PID match.
+            # Pool submission can pre-register both serial placements. Placement
+            # is not assignment: only the earliest unfinished intent may run.
             candidates = []
             from backend.app.openevolve_models import SearchIterationIntent
             from backend.app.openevolve_worker_models import (
+                SearchWorkerAssignment,
                 SearchWorkerAssignmentClosure,
             )
 
@@ -147,11 +148,20 @@ def _authenticate_socket(
                     select(SearchWorkerAssignmentClosure).filter_by(intent_id=intent.id)
                 )
                 if closed is None:
-                    candidates.append((row, intent))
-            if len(candidates) > 1:
-                raise ValueError("Concurrent assignment for one exact worker")
+                    assigned = session.scalar(
+                        select(SearchWorkerAssignment).filter_by(intent_id=intent.id)
+                    )
+                    candidates.append((row, intent, assigned))
             if candidates:
-                row, intent = candidates[0]
+                candidates.sort(key=lambda value: value[1].native_iteration)
+                if len({value[1].native_iteration for value in candidates}) != len(
+                    candidates
+                ):
+                    raise ValueError("Ambiguous ordered worker placement")
+                row, intent, _assignment = candidates[0]
+                active = [value for value in candidates if value[2] is not None]
+                if len(active) > 1 or (active and active[0][1].id != intent.id):
+                    raise ValueError("Concurrent assignment for one exact worker")
                 ticket = _owned_row(session, SearchWorkerTicket, row.ticket_id, fence)
                 if (ticket.epoch_id, ticket.admission_id, ticket.intent_id) != (
                     epoch_id,

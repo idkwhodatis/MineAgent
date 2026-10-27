@@ -32,7 +32,7 @@ export function FactorExecutions({
       ) : records.error ? (
         <ErrorState
           error={records.error}
-          retry={() => void records.refetch()}
+          retry={() => void records.refetch({ cancelRefetch: false })}
         />
       ) : (
         <>

@@ -85,21 +85,29 @@ describe("factor transport and request identity", () => {
       factorSampleOptions("s", "B", "2026-01-01").queryKey,
     );
   });
-  it("cancels obsolete snapshot requests without replacing the newer cache", async () => {
+  it("discards explicitly cancelled query results without aborting the bounded HTTP body or replacing the newer cache", async () => {
     const cache = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     let oldSignal: AbortSignal | undefined;
+    let finishOld: (() => void) | undefined;
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string, init: RequestInit) => {
         if (url.includes("snapshot-old")) {
           oldSignal = init.signal as AbortSignal;
-          return new Promise<Response>((_resolve, reject) =>
-            oldSignal!.addEventListener("abort", () =>
-              reject(new DOMException("Aborted", "AbortError")),
-            ),
-          );
+          return new Promise<Response>((resolve) => {
+            finishOld = () =>
+              resolve(
+                new Response(
+                  JSON.stringify({
+                    snapshot_id: "snapshot-old",
+                    data: [],
+                    count: 0,
+                  }),
+                ),
+              );
+          });
         }
         return Promise.resolve(
           new Response(
@@ -114,9 +122,11 @@ describe("factor transport and request identity", () => {
     await cache.cancelQueries({
       queryKey: factorValuesOptions("snapshot-old").queryKey,
     });
-    expect(oldSignal?.aborted).toBe(true);
+    expect(oldSignal?.aborted).toBe(false);
     await cache.fetchQuery(factorValuesOptions("snapshot-new"));
+    finishOld!();
     await old;
+    await Promise.resolve();
     expect(
       cache.getQueryData(factorValuesOptions("snapshot-new").queryKey),
     ).toMatchObject({ snapshot_id: "snapshot-new" });

@@ -149,3 +149,105 @@ def test_actual_current_user_socket_not_protected_child(case, monkeypatch):  # n
     finally:
         client.close()
         host.close()
+
+
+@pytest.mark.parametrize(
+    "state, selected, rejects",
+    [
+        ("queued_reverse", 0, False),
+        ("first_active", 0, False),
+        ("second_active", None, True),
+        ("both_active", None, True),
+        ("first_closed", 1, False),
+        ("duplicate_ordinal", None, True),
+        ("foreign_fence", None, True),
+    ],
+)
+def test_preplaced_queue_is_not_concurrent_assignment(
+    case,  # noqa:F811
+    monkeypatch,
+    state,
+    selected,
+    rejects,
+):
+    from backend.app.openevolve_worker_models import (
+        SearchWorkerAssignment,
+        SearchWorkerAssignmentClosure,
+    )
+
+    context, first, calls = setup(case, monkeypatch)
+    intents = [
+        NS(id=first.intent_id, native_iteration=1),
+        NS(id=uuid4(), native_iteration=2),
+    ]
+    if state == "duplicate_ordinal":
+        intents[1].native_iteration = 1
+    rows = [
+        first,
+        NS(**(vars(first) | {"intent_id": intents[1].id, "ticket_id": uuid4()})),
+    ]
+    tickets = [
+        NS(
+            id=row.ticket_id,
+            epoch_id=case.worker_binding.epoch_id,
+            admission_id=case.admission.id,
+            intent_id=row.intent_id,
+            ticket_sha256=hashlib.sha256(
+                resolver._ticket(
+                    b"k" * 32, case.worker_binding.epoch_id, row.intent_id
+                ).encode()
+            ).hexdigest(),
+        )
+        for row in rows
+    ]
+    owned = {value.id: value for value in [*intents, *tickets]}
+
+    class Session:
+        def scalars(self, query):
+            # Database arrival order must never choose a future queued intent.
+            return NS(all=lambda: list(reversed(rows)))
+
+        def scalar(self, query):
+            model = query.column_descriptions[0]["entity"]
+            identity = query.compile().params["intent_id_1"]
+            if model is SearchWorkerAssignmentClosure:
+                return (
+                    object()
+                    if state == "first_closed" and identity == intents[0].id
+                    else None
+                )
+            assert model is SearchWorkerAssignment
+            active = {
+                "first_active": {intents[0].id},
+                "second_active": {intents[1].id},
+                "both_active": {value.id for value in intents},
+                "first_closed": {intents[1].id},
+            }.get(state, set())
+            return NS(intent_id=identity) if identity in active else None
+
+    @contextmanager
+    def transaction(*args, **kwargs):
+        yield Session()
+
+    def own(session, model, identity, fence):
+        if state == "foreign_fence":
+            raise ValueError("Foreign immutable intent fence")
+        return owned[identity]
+
+    monkeypatch.setattr(resolver, "neutral_transaction", transaction)
+    monkeypatch.setattr(resolver, "_owned_row", own)
+    client, original = socket.socketpair()
+    channel = CredentialSocket(fileno=original.detach())
+    try:
+        if rejects:
+            with pytest.raises(ValueError):
+                invoke(case, channel, context)
+            assert "persisted_peer" not in calls
+        else:
+            peer = invoke(case, channel, context)
+            assert peer.binding.intent_id == intents[selected].id
+            assert peer.binding.worker.host_pid == first.host_pid
+            assert calls[-1] == "persisted_peer"
+    finally:
+        client.close()
+        channel.close()

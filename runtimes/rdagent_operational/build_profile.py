@@ -26,6 +26,14 @@ FILES = (
     "packages/rdagent_provider/__init__.py",
     "packages/rdagent_provider/contracts.py",
     "packages/rdagent_provider/codec.py",
+    # Provider codec imports the portable bounded JSON parser through this package.
+    # Preserve its real import closure; no candidate source or engine is bundled.
+    "packages/strategy_sdk/__init__.py",
+    "packages/strategy_sdk/base.py",
+    "packages/strategy_sdk/contracts.py",
+    "packages/strategy_sdk/json.py",
+    "packages/strategy_sdk/state.py",
+    "packages/strategy_sdk/views.py",
     "runtimes/rdagent_operational/provider_client.py",
     "runtimes/rdagent_operational/provider_scenario.py",
     "packages/research_runtime/engine_broker_contracts.py",

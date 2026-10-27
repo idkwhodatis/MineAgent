@@ -130,6 +130,159 @@ def test_missing_mandatory_case_never_unlocks(tmp_path):
         verify_boundary(path, "success", "0", {"test_different"})
 
 
+def _assert_actual_runtime_partition():
+    """Every excluded case remains mandatory in one exact-head actual gate."""
+    import ast
+    import re
+    import textwrap
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    groups = {
+        "mineagent-openevolve-initial.yml": (
+            ("openevolve_initial_runtime",),
+            ("MINEAGENT_OE_INITIAL_REQUIRED", "RUN_BACKUP_RESTORE_DRILL"),
+        ),
+        "mineagent-openevolve-native.yml": (
+            ("openevolve_native_runtime",),
+            ("MINEAGENT_OE_NATIVE_REQUIRED",),
+        ),
+        "mineagent-numeric-runtime.yml": (
+            ("numeric_persisted_runtime",),
+            ("MINEAGENT_PERSISTED_NUMERIC_REQUIRED",),
+        ),
+        "mineagent-rdagent-controller.yml": (
+            (
+                "rdagent_actual_controller",
+                "rdagent_execution_restore",
+                "rdagent_controller_recovery",
+            ),
+            ("MINEAGENT_RD_CONTROLLER_REQUIRED", "RUN_BACKUP_RESTORE_DRILL"),
+        ),
+        "mineagent-configured-analysis.yml": (
+            (
+                "rdagent_configured_analysis",
+                "configured_analysis_restore",
+                "rdagent_user_flow",
+                "rdagent_provider_user_flow",
+            ),
+            (
+                "MINEAGENT_RD_CONTROLLER_REQUIRED",
+                "MINEAGENT_CONFIGURED_ANALYSIS_REQUIRED",
+                "MINEAGENT_RD_USER_FLOW_REQUIRED",
+                "MINEAGENT_RD_PROVIDER_FLOW_REQUIRED",
+                "MINEAGENT_RD_CREATE_BROWSER_REQUIRED",
+                "MINEAGENT_CONFIGURED_BROWSER_REQUIRED",
+                "RUN_BACKUP_RESTORE_DRILL",
+            ),
+        ),
+        "mineagent-structured-factor.yml": (
+            ("structured_factor_runtime", "structured_factor_restore"),
+            (
+                "MINEAGENT_RD_CONTROLLER_REQUIRED",
+                "MINEAGENT_CONFIGURED_ANALYSIS_REQUIRED",
+                "MINEAGENT_STRUCTURED_ENGINE_REQUIRED",
+                "MINEAGENT_STRUCTURED_BROWSER_REQUIRED",
+                "RUN_BACKUP_RESTORE_DRILL",
+            ),
+        ),
+    }
+    result = []
+    for file, (modules, flags) in groups.items():
+        workflow = (root / ".github/workflows" / file).read_text()
+        assert "push:" in workflow and "branches: [master]" in workflow
+        assert "uses: actions/checkout@" in workflow and "ref:" not in workflow
+        assert not re.search(r"^    if:", workflow, re.MULTILINE)
+        for flag in flags:
+            assert re.findall(rf"{flag}: [\"']([^\"']+)[\"']", workflow) == ["1"]
+        blocks = re.split(r"(?=^      - name: )", workflow, flags=re.MULTILINE)
+        paths = [f"tests/integration/test_{name}.py" for name in modules]
+        block = next(b for b in blocks if f"python -m pytest {paths[0]} " in b)
+        command = block.split("python -m pytest ", 1)[1].split("--junitxml", 1)[0]
+        assert all(path in command for path in paths)
+        assert (
+            "--ignore" not in command
+            and " -k " not in command
+            and " -m " not in command
+        )
+        assert 'test "$status" = 0' in block and "|| true" not in block
+        assert "continue-on-error" not in block and "if:" not in block
+        required = set()
+        for path in paths:
+            result.append(path)
+            module = ast.parse((root / path).read_text())
+            required.update(
+                n.name
+                for n in module.body
+                if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+            )
+        if file == "mineagent-openevolve-initial.yml":
+            from script.verify_openevolve_initial import CASES
+
+            assert required == CASES
+            assert "python script/verify_openevolve_initial.py --junit" in block
+            verifier = ast.parse(
+                (root / "script/verify_openevolve_initial.py").read_text()
+            )
+            body = next(
+                n.body
+                for n in verifier.body
+                if isinstance(n, ast.FunctionDef) and n.name == "verify"
+            )
+            checks = [n for n in body if isinstance(n, ast.Assert)][:2]
+            environment = {"CASES": CASES}
+            names = required
+        else:
+            raw = block.split("python - <<'PY", 1)[1].split("\n", 1)[1]
+            raw = raw.rsplit("          PY", 1)[0]
+            body = ast.parse(textwrap.dedent(raw)).body
+            start = next(
+                i
+                for i, n in enumerate(body)
+                if isinstance(n, ast.Assign)
+                and any(isinstance(t, ast.Name) and t.id == "cases" for t in n.targets)
+            )
+            checks = body[start + 1 :]
+            environment = {}
+            names = set(required)
+            if file == "mineagent-configured-analysis.yml":
+                # The same gate also retains sixteen PostgreSQL-only cases.
+                names |= {
+                    "test_http_submission_is_queued_without_synthetic_attempt_and_replays_after_disable",
+                    "test_actual_first_claim_and_duplicate_are_distinct_from_queued_counter",
+                    "test_queued_cancel_is_authenticated_and_cannot_create_attempt",
+                    "test_claimed_cancel_without_any_physical_admission_revokes_real_fence",
+                }
+                names |= {
+                    f"test_direct_sql_cannot_sever_immutable_submission_graph[{i}]"
+                    for i in range(4)
+                }
+                names |= {
+                    f"test_provider_request_and_conservative_amount_match_python[{i}]"
+                    for i in range(8)
+                }
+        code = compile(ast.Module(body=checks, type_ignores=[]), file, "exec")
+
+        def check(cases, code=code, environment=environment):
+            exec(code, dict(environment, cases=cases))  # noqa: S102 -- checked-in fixed gate assertions
+
+        valid = [ET.Element("testcase", name=n) for n in sorted(names)]
+        check(valid)
+        # No excluded case may be omitted, duplicated or marked non-success.
+        for name in required:
+            with pytest.raises(AssertionError):
+                check([c for c in valid if c.get("name") != name])
+        with pytest.raises(AssertionError):
+            check(valid + valid[:1])
+        for tag in ("failure", "error", "skipped"):
+            broken = [ET.Element("testcase", name=n) for n in sorted(names)]
+            ET.SubElement(broken[0], tag)
+            with pytest.raises(AssertionError):
+                check(broken)
+    assert len(result) == len(set(result)) == 12
+    return result
+
+
 def test_research_notes_require_actual_postgres_without_filtered_acceptance():
     import re
     from pathlib import Path
@@ -142,25 +295,23 @@ def test_research_notes_require_actual_postgres_without_filtered_acceptance():
     postgres = next(
         block
         for block in blocks
-        if "run: .venv-data/bin/python -m pytest tests/integration " in block
+        if ".venv-data/bin/python -m pytest tests/integration " in block
     )
     assert 'TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"' in postgres
     assert 'TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"' in postgres
-    # Only the dedicated actual-OE module is partitioned; research/notes and
-    # every other generic PostgreSQL case remain unfiltered.
-    dedicated = "tests/integration/test_openevolve_initial_runtime.py"
-    assert re.findall(r"--ignore(?:-glob)?(?:=|\s+)(\S+)", postgres) == [dedicated]
+    modules = _assert_actual_runtime_partition()
+    assert re.findall(r"--ignore(?:-glob)?(?:=|\s+)(\S+)", postgres) == modules
+    assert postgres.split("run: >-", 1)[1].split() == [
+        ".venv-data/bin/python",
+        "-m",
+        "pytest",
+        "tests/integration",
+        "--maxfail=1",
+        "-q",
+        *(f"--ignore={path}" for path in modules),
+        "--junitxml=m1-m2-postgres-junit.xml",
+    ]
     assert " -k " not in postgres and " -m " not in postgres.replace(" -m pytest", "")
-    oe = (
-        Path(__file__).resolve().parents[2]
-        / ".github/workflows/mineagent-openevolve-initial.yml"
-    ).read_text()
-    assert "push:" in oe and "branches: [master]" in oe
-    assert "MINEAGENT_OE_INITIAL_REQUIRED: '1'" in oe
-    assert "RUN_BACKUP_RESTORE_DRILL: '1'" in oe
-    assert f"python -m pytest {dedicated} -q" in oe
-    assert 'test "$status" = 0' in oe
-    assert "python script/verify_openevolve_initial.py --junit" in oe
     assert "continue-on-error" not in postgres and "|| true" not in postgres
     assert "--junitxml=m1-m2-postgres-junit.xml" in postgres
 

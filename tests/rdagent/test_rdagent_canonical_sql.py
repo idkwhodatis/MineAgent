@@ -100,6 +100,41 @@ def extended_canonical_cases(tmp_path):
     return values
 
 
+def escaped_canonical_cases(tmp_path):
+    """Same 1639-value corpus as the escaped-ASCII rollback PG probe."""
+    import random
+
+    from packages.rdagent_adapter.provider_prompt import first_provider_messages
+    from tests.integration.rd_provider_fixture import SOURCE
+    from tests.rdagent_provider.test_steer_prompt import configuration
+
+    values = extended_canonical_cases(tmp_path)
+    values += [chr(code) for code in range(1, 128)]
+    values += [
+        "prefix" + chr(code) + suffix + "end"
+        for code in range(1, 128)
+        for suffix in ('"', "\\", "\n", "\t", "\r", "\b", "\f", "/")
+    ]
+    values += ["".join(chr(code) for code in range(1, 127)), SOURCE]
+    messages = first_provider_messages(configuration())
+    values += list(messages) + [
+        {
+            "messages": [
+                {"role": "system", "content": messages[0]},
+                {"role": "user", "content": messages[1]},
+            ],
+            "source": SOURCE,
+        }
+    ]
+    rng = random.Random(261027)
+    values += [
+        "".join(chr(rng.randrange(1, 128)) for _ in range(rng.randrange(2048)))
+        for _ in range(64)
+    ]
+    assert len(values) == 1639
+    return values
+
+
 def test_renderer_only_adds_one_schemaqualified_strict_function():
     sql = render_sql("rd_canon")
     assert sql == render_sql("rd_canon")
@@ -224,8 +259,14 @@ def test_bounds_integer_only_and_surrogate_arithmetic_explicit():
         "     result:=chr(34)||t||chr(34);\n"
         "   ELSE\n"
     )
-    assert sql.count(branch) == 1
-    original = sql.replace(branch, "", 1).replace(
+    escaped_branch = (
+        "   ELSIF octet_length(t)=char_length(t) AND position(chr(127) in t)=0 THEN\n"
+        "     result:=pg_catalog.to_json(t)::text;\n"
+    )
+    assert sql.count(escaped_branch) == 1
+    prior = sql.replace(escaped_branch, "", 1)
+    assert prior.count(branch) == 1
+    original = prior.replace(branch, "", 1).replace(
         "WITH ORDINALITY AS chars(c,ord) WHERE chars.c<>'') z;\n   END IF;",
         "WITH ORDINALITY AS chars(c,ord) WHERE chars.c<>'') z;",
         1,
@@ -266,7 +307,7 @@ def test_reference_special_cases_are_not_approximate_escaping(tmp_path):
     )
 
     # Safe subset is a strict optimization, never an alternate escaping policy.
-    for value in extended_canonical_cases(tmp_path):
+    for value in escaped_canonical_cases(tmp_path):
         for ascii_only in (True, False):
             encoded = json.dumps(
                 value,

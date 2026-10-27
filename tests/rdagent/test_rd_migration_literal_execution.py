@@ -40,7 +40,7 @@ def test_frozen_ddl_reaches_no_parameter_driver_without_reinterpretation(
         in (ROOT / ".github/workflows/v1-validation.yml").read_text()
     )
     # Generic PostgreSQL has no protected OE images or explicit required flag.
-    # Partition only this dedicated module; same-head required acceptance keeps
+    # Keep this module in the dedicated runtime partition; same-head required acceptance keeps
     # both real epoch/cold restore and owner-loss nodes with no skip allowance.
     generic = (ROOT / ".github/workflows/v1-validation.yml").read_text()
     dedicated = (

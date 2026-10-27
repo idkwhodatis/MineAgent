@@ -1,3 +1,4 @@
+import { refreshFactorsAfterMutation } from "@/lib/factor-publication";
 import { useRef, useState } from "react";
 import {
   Link,
@@ -70,7 +71,7 @@ export function FactorLibraryPage() {
       ) : capability.error ? (
         <ErrorState
           error={capability.error}
-          retry={() => void capability.refetch()}
+          retry={() => void capability.refetch({ cancelRefetch: false })}
         />
       ) : !capability.data?.enabled ? (
         <p className="notice">
@@ -154,7 +155,10 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
         {list.isPending ? (
           <Loading />
         ) : list.error ? (
-          <ErrorState error={list.error} retry={() => void list.refetch()} />
+          <ErrorState
+            error={list.error}
+            retry={() => void list.refetch({ cancelRefetch: false })}
+          />
         ) : (
           list.data && (
             <>
@@ -340,7 +344,10 @@ function FactorWorkbench({
   if (detail.isPending) return <Loading />;
   if (detail.error)
     return (
-      <ErrorState error={detail.error} retry={() => void detail.refetch()} />
+      <ErrorState
+        error={detail.error}
+        retry={() => void detail.refetch({ cancelRefetch: false })}
+      />
     );
   if (!detail.data) return null;
   const data = detail.data;
@@ -446,7 +453,7 @@ function FactorWorkbench({
       {versions.error && (
         <ErrorState
           error={versions.error}
-          retry={() => void versions.refetch()}
+          retry={() => void versions.refetch({ cancelRefetch: false })}
         />
       )}
       {snapshotProblem && (
@@ -692,7 +699,7 @@ function FactorPresentationEditor({ factorId }: { factorId: string }) {
           ...body,
         },
       });
-      await queries.invalidateQueries({ queryKey: ["factors"] });
+      await refreshFactorsAfterMutation(queries);
     } catch (err) {
       setError(err);
     } finally {
@@ -704,7 +711,7 @@ function FactorPresentationEditor({ factorId }: { factorId: string }) {
     return (
       <ErrorState
         error={presentation.error}
-        retry={() => void presentation.refetch()}
+        retry={() => void presentation.refetch({ cancelRefetch: false })}
       />
     );
   if (!factor) return null;

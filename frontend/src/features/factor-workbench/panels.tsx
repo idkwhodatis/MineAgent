@@ -83,7 +83,10 @@ export function FactorValuesPanel({
       {values.isPending ? (
         <Loading />
       ) : values.error ? (
-        <ErrorState error={values.error} retry={() => void values.refetch()} />
+        <ErrorState
+          error={values.error}
+          retry={() => void values.refetch({ cancelRefetch: false })}
+        />
       ) : values.data && !validBinding ? (
         <ErrorState
           error={
@@ -214,7 +217,10 @@ function FactorSample({
       {sample.isPending ? (
         <Loading />
       ) : sample.error ? (
-        <ErrorState error={sample.error} retry={() => void sample.refetch()} />
+        <ErrorState
+          error={sample.error}
+          retry={() => void sample.refetch({ cancelRefetch: false })}
+        />
       ) : !matched ? (
         <ErrorState
           error={
@@ -350,7 +356,7 @@ export function FactorSnapshotEvidence({
       ) : evidence.error ? (
         <ErrorState
           error={evidence.error}
-          retry={() => void evidence.refetch()}
+          retry={() => void evidence.refetch({ cancelRefetch: false })}
         />
       ) : evidence.data &&
         (evidence.data.id !== snapshot.id ||
@@ -647,7 +653,10 @@ function BilateralValues({ comparison }: { comparison: string }) {
   if (values.isPending) return <Loading />;
   if (values.error)
     return (
-      <ErrorState error={values.error} retry={() => void values.refetch()} />
+      <ErrorState
+        error={values.error}
+        retry={() => void values.refetch({ cancelRefetch: false })}
+      />
     );
   if (!values.data) return null;
   if (values.data.comparison_id !== comparison)

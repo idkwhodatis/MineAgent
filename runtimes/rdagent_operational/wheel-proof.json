@@ -14,6 +14,12 @@
     "packages/rdagent_provider/contracts.py": "053c17c1232b29bdaabde76183984d65275bd551dcbd3254f38cb09e6a4fa9a0",
     "packages/research_runtime/broker_contracts.py": "c818c50dc6bd3ccf6917a404d9d15e1761a1ed577e8892fd95321cb553a44659",
     "packages/research_runtime/engine_broker_contracts.py": "505ca997e63fab715215821ea093079506ad8c306f91e11d642e73d3854886fa",
+    "packages/strategy_sdk/__init__.py": "6cd0df377888b85c411c118205fdcddd37df787427d3ace340841f0a647f1652",
+    "packages/strategy_sdk/base.py": "94ea8f802ac212f3faefbb2323f960911ae1c624466beeec49481aafa7ae9721",
+    "packages/strategy_sdk/contracts.py": "0e08ba40b592650cea1f6992e63defdafe9fb85857286bf6e39ec4e3831b9eb8",
+    "packages/strategy_sdk/json.py": "2870f8b868446b30cdc0292a0bdafa30d9a34569e70fa116102218563c17de5d",
+    "packages/strategy_sdk/state.py": "4206983ddda81548e50cec3c25a043676d6a0e8b5b9965568e2cb52d6c72191e",
+    "packages/strategy_sdk/views.py": "0bd2c60662d530667e5c5ff3233e0ce8c8063c594b5e6cc39e6a993caf20dbc8",
     "runtimes/hostile_deadline/contract.py": "3c2ebef1607918794e046894b1c1d2c1482ed78635e6742c55b793a5c91a16df",
     "runtimes/hostile_deadline/deadline.py": "ef0c45a733fd4094849f7816090dd3ce99e9c505943bd3b110fb72aa92513c04",
     "runtimes/rdagent_operational/adapter.py": "9859d98d5a8dc64957f46904ded0c67b95ad51539b64e354879e2f5ac8c23d47",
@@ -30,7 +36,7 @@
     "filename": "mineagent_rdagent_operational_profile-0.1.0-py3-none-any.whl",
     "files": {
       "mineagent_rdagent_operational_profile-0.1.0.dist-info/METADATA": "0055092cbd3747baa4b2b1d2a802a2821f14040aafee7987f27249ec0ca4ff9d",
-      "mineagent_rdagent_operational_profile-0.1.0.dist-info/RECORD": "6b2ff4ecdb965d6b51232833eb5243f78dc2eeb216404f2a805ab64dcfbe4541",
+      "mineagent_rdagent_operational_profile-0.1.0.dist-info/RECORD": "8ca8fb185a02d75d13f8ba5af233aee55d4ec39c4dacf330a8c48a64e6233e85",
       "mineagent_rdagent_operational_profile-0.1.0.dist-info/WHEEL": "45b761468dfa526077fbe2cd363ba5be540d04801e63a8fced51dbb9a3344961",
       "packages/rdagent_adapter/operational_bootstrap.py": "b35e432b817ff5290af165c0c1a0a1a654141692f87405dbc19d92c766bb724b",
       "packages/rdagent_adapter/provider_bootstrap.py": "d92651490fcfac76aaa9c01b7a51da2136fb5042a8abd15f9cf650a26a7a4f46",
@@ -45,6 +51,12 @@
       "packages/rdagent_provider/contracts.py": "053c17c1232b29bdaabde76183984d65275bd551dcbd3254f38cb09e6a4fa9a0",
       "packages/research_runtime/broker_contracts.py": "c818c50dc6bd3ccf6917a404d9d15e1761a1ed577e8892fd95321cb553a44659",
       "packages/research_runtime/engine_broker_contracts.py": "505ca997e63fab715215821ea093079506ad8c306f91e11d642e73d3854886fa",
+      "packages/strategy_sdk/__init__.py": "6cd0df377888b85c411c118205fdcddd37df787427d3ace340841f0a647f1652",
+      "packages/strategy_sdk/base.py": "94ea8f802ac212f3faefbb2323f960911ae1c624466beeec49481aafa7ae9721",
+      "packages/strategy_sdk/contracts.py": "0e08ba40b592650cea1f6992e63defdafe9fb85857286bf6e39ec4e3831b9eb8",
+      "packages/strategy_sdk/json.py": "2870f8b868446b30cdc0292a0bdafa30d9a34569e70fa116102218563c17de5d",
+      "packages/strategy_sdk/state.py": "4206983ddda81548e50cec3c25a043676d6a0e8b5b9965568e2cb52d6c72191e",
+      "packages/strategy_sdk/views.py": "0bd2c60662d530667e5c5ff3233e0ce8c8063c594b5e6cc39e6a993caf20dbc8",
       "runtimes/hostile_deadline/contract.py": "3c2ebef1607918794e046894b1c1d2c1482ed78635e6742c55b793a5c91a16df",
       "runtimes/hostile_deadline/deadline.py": "ef0c45a733fd4094849f7816090dd3ce99e9c505943bd3b110fb72aa92513c04",
       "runtimes/rdagent_operational/adapter.py": "9859d98d5a8dc64957f46904ded0c67b95ad51539b64e354879e2f5ac8c23d47",
@@ -57,8 +69,8 @@
       "runtimes/rdagent_operational/seeded_scenario.py": "33002aaf7c88ea2d20f9ecf9b7a1d9ee2cd19d522e9d01c7cdd8f87697fa0f39",
       "runtimes/rdagent_operational/trusted_report.py": "342b9919a9801ef624572e75aeb8a53e2be21096733cef3a58131485b16a26e7"
     },
-    "sha256": "e3f28f3691d8fb037bda51929733efbda2e613b1a150729d36d12bd5a75cd331"
+    "sha256": "df1d095e26092a30e3f393a9e8c520103c6cd17dc89c55e5c1153b94ee413774"
   },
-  "recipe_sha256": "3c9d452cadad58f39373d0be12014cec977b0648fdf7e9d66b5def3e9daafc52",
+  "recipe_sha256": "79555d1697b0b93c3a834db84010d5f1ae9dff35f263511a2c691c35263641e6",
   "schema_version": "mineagent.rdagent-operational-wheel.v1"
 }

@@ -4,7 +4,7 @@ import hashlib
 
 from backend.app.openevolve_revision_ddl import _function, historical
 
-PREDECESSOR_SHA256 = "4f88ee3010e5672b1e71a4d25b286ce03427b25f2aad152b23195487f711f87e"
+PREDECESSOR_SHA256 = "7aab728d7e5300e8d8718663276b8cba8c7262f38af56230a0d463297f596bc3"
 
 
 def previous_schema_sql():

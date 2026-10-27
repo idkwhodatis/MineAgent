@@ -160,7 +160,11 @@ export async function factorRequest<T>(
       AbortSignal.timeout(20_000),
     ]),
   });
-  if (response.status === 401) clearSession(true);
+  if (
+    response.status === 401 &&
+    readSession()?.accessToken === session?.accessToken
+  )
+    clearSession(true);
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as {
       message?: string;
@@ -180,10 +184,33 @@ export async function factorRequest<T>(
   }
   return (options.blob ? await response.blob() : await response.json()) as T;
 }
+/** Finish the bounded response body even when a view unsubscribes. Cancelling
+ * a client observer does not prove the server exposure transaction has ended.
+ * Never deliver a completed old-session result into a new session's view.
+ */
+export async function completeFactorRead<T>(
+  read: (requireSameSession: () => void) => Promise<T>,
+): Promise<T> {
+  const token = readSession()?.accessToken;
+  const requireSameSession = () => {
+    if (readSession()?.accessToken !== token)
+      throw Object.assign(
+        new Error(
+          "Factor read session changed; reload under the current account.",
+        ),
+        { code: "factor_read_session_unauthorized" },
+      );
+  };
+  try {
+    return await read(requireSameSession);
+  } finally {
+    requireSameSession();
+  }
+}
 const get = <T>(key: readonly unknown[], path: string) =>
   queryOptions({
     queryKey: ["factors", ...key],
-    queryFn: ({ signal }) => factorRequest<T>(path, { signal }),
+    queryFn: () => completeFactorRead(() => factorRequest<T>(path)),
   });
 export const factorCapabilitiesOptions = get<FactorCapabilities>(
   ["capabilities"],

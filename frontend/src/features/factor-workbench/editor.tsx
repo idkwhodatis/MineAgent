@@ -1,3 +1,4 @@
+import { refreshFactorsAfterMutation } from "@/lib/factor-publication";
 import { useRef, useState } from "react";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { ErrorState, Panel } from "@/components/common";
@@ -99,7 +100,7 @@ export function FactorEditor({
       });
       const version = "version" in result ? result.version : result;
       forgetFactorSubmission(owner, operation);
-      await queries.invalidateQueries({ queryKey: ["factors"] });
+      await refreshFactorsAfterMutation(queries);
       onSaved(version.factor_id, version.id);
     } catch (err) {
       setError(err);

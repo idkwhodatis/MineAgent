@@ -40,7 +40,7 @@ export function ExecutionPicker({
       ) : records.error ? (
         <ErrorState
           error={records.error}
-          retry={() => void records.refetch()}
+          retry={() => void records.refetch({ cancelRefetch: false })}
         />
       ) : (
         <>
@@ -208,7 +208,10 @@ export function ExecutionVersionResult({
   if (record.isPending) return <Loading />;
   if (record.error)
     return (
-      <ErrorState error={record.error} retry={() => void record.refetch()} />
+      <ErrorState
+        error={record.error}
+        retry={() => void record.refetch({ cancelRefetch: false })}
+      />
     );
   if (
     !record.data ||
@@ -247,7 +250,7 @@ function ExecutionRecordResult({
     return (
       <ErrorState
         error={metadata.error}
-        retry={() => void metadata.refetch()}
+        retry={() => void metadata.refetch({ cancelRefetch: false })}
       />
     );
   const data = metadata.data;
