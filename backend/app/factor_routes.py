@@ -11,6 +11,10 @@ from starlette.concurrency import run_in_threadpool
 from backend.app import factor_import_services as imports
 from backend.app import factor_services as service
 from backend.app.api.deps import CurrentUser, SessionDep
+from backend.app.factor_execution_views import (
+    FactorExecutionPage,
+    list_execution_records,
+)
 from backend.app.factor_models import Factor, FactorVersion
 from backend.app.factor_schemas import (
     FactorBundleCreate,
@@ -147,6 +151,26 @@ def version(
     service.enabled(request.app.state.settings)
     return service.get_version(
         session, user.id, factor_id, version_id, request.app.state.settings
+    )
+
+
+@router.get(
+    "/factors/{factor_id}/versions/{version_id}/execution-records",
+    operation_id="list_factor_execution_records",
+    response_model=FactorExecutionPage,
+)
+def execution_records(
+    factor_id: UUID,
+    version_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    request: Request,
+    offset: int = Query(default=0, ge=0, le=100000),
+    limit: int = Query(default=50, ge=1, le=100),
+):
+    service.enabled(request.app.state.settings)
+    return list_execution_records(
+        session, user.id, factor_id, version_id, offset=offset, limit=limit
     )
 
 

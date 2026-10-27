@@ -632,9 +632,90 @@ class PostgresDatabase:
             except (ValueError, TypeError, KeyError, AttributeError):
                 raise BackupError("Invalid native HDF restore closure") from None
             references += native_references
+            from backend.app.execution_snapshot_operations import (
+                read_execution_snapshot_closure,
+            )
+
+            try:
+                execution_closure, execution_references = (
+                    read_execution_snapshot_closure(connection, capabilities, limits)
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError(
+                    "Invalid execution snapshot restore closure"
+                ) from None
+            references += execution_references
+            from backend.app.factor_analysis_operations import (
+                read_direct_analysis_closure,
+            )
+
+            try:
+                direct_analysis_closure = read_direct_analysis_closure(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid direct analysis restore closure") from None
+            from backend.app.rdagent_submission_operations import (
+                read_submission_closure,
+            )
+
+            try:
+                rd_submission_closure = read_submission_closure(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid RD submission restore closure") from None
+            from backend.app.openevolve_operations import read_openevolve_closure
+
+            try:
+                oe_closure = read_openevolve_closure(connection, capabilities, limits)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid OE restore closure") from None
+            from backend.app.structured_operations import (
+                read_structured_strategy_closure,
+            )
+
+            try:
+                structured_closure = read_structured_strategy_closure(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError(
+                    "Invalid structured strategy restore closure"
+                ) from None
+            from backend.app.rdagent_seed_operations import read_seed_closure
+
+            try:
+                seed_closure = read_seed_closure(connection, capabilities, limits)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid seeded RD restore closure") from None
+            from backend.app.rdagent_steer_operations import read_steer_closure
+
+            try:
+                steer_closure = read_steer_closure(connection, capabilities, limits)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid RD steer restore closure") from None
             if len(references) + len(datasets) > limits.max_files:
                 raise BackupError("Database reference inventory exceeds its limit")
             return {
+                **(
+                    {"rd_steer_closure": steer_closure}
+                    if steer_closure is not None
+                    else {}
+                ),
+                **(
+                    {"rd_seed_closure": seed_closure}
+                    if seed_closure is not None
+                    else {}
+                ),
+                **(
+                    {"structured_strategy_closure": structured_closure}
+                    if structured_closure is not None
+                    else {}
+                ),
+                **(
+                    {"openevolve_closure": oe_closure} if oe_closure is not None else {}
+                ),
                 "schema_revision": revisions[0],
                 "postgres_major": major,
                 "references": references,
@@ -658,6 +739,21 @@ class PostgresDatabase:
                 **(
                     {"native_closure": native_closure}
                     if native_closure is not None
+                    else {}
+                ),
+                **(
+                    {"execution_closure": execution_closure}
+                    if execution_closure is not None
+                    else {}
+                ),
+                **(
+                    {"rd_submission_closure": rd_submission_closure}
+                    if rd_submission_closure is not None
+                    else {}
+                ),
+                **(
+                    {"direct_analysis_closure": direct_analysis_closure}
+                    if direct_analysis_closure is not None
                     else {}
                 ),
             }
@@ -876,9 +972,60 @@ def _validate_references(
             )
         except (ValueError, TypeError, KeyError, AttributeError):
             raise BackupError("Factor restore closure failed verification") from None
+
+    def read_rd_bytes(key, expected_sha256, maximum_bytes):
+        check(key, expected_sha256)
+        maximum = min(limits.max_file_bytes, maximum_bytes)
+        stream, before = _open_file(root, key)
+        with stream:
+            if before.st_size > maximum:
+                raise BackupError("RD retained evidence exceeds its bound")
+            content = stream.read(maximum + 1)
+            after = os.fstat(stream.fileno())
+        if (
+            len(content) != before.st_size
+            or hashlib.sha256(content).hexdigest() != expected_sha256
+            or (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            )
+            != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+        ):
+            raise BackupError("RD retained evidence changed while read")
+        return content
+
+    from backend.app.openevolve_operations import openevolve_closure
+
+    try:
+        oe_closure = openevolve_closure(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Invalid OE closure capability") from None
     research_revision = capabilities.research_closure_schema is not None
     if research_revision != ("research_closure" in snapshot):
         raise BackupError("Neutral research closure capability does not match schema")
+    from backend.app.rdagent_steer_operations import validate_steer_snapshot
+
+    try:
+        validate_steer_snapshot(snapshot, capabilities, limits.max_files)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Historical steer closure failed verification") from None
+    from backend.app.rdagent_seed_operations import prepare_seed_snapshot
+
+    try:
+        seed_context = prepare_seed_snapshot(
+            snapshot, capabilities, read_rd_bytes, limits.max_files
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Seeded RD parent closure failed verification") from None
     from backend.app.research_backup import validate_absence, validate_closure
 
     try:
@@ -894,6 +1041,22 @@ def _validate_references(
                 lambda path: _read_json(root, path, limits)[0],
                 limits.max_files,
                 inventory=inventory,
+                read_bytes=read_rd_bytes,
+                rd_source_closure=snapshot.get("rd_source_closure"),
+                **(
+                    {"seed_context": seed_context}
+                    if getattr(capabilities, "rd_seed_schema", None) is not None
+                    else {}
+                ),
+                **(
+                    {"openevolve_closure": oe_closure} if oe_closure is not None else {}
+                ),
+                **(
+                    {"structured_links_pending": True}
+                    if getattr(capabilities, "structured_strategy_schema", None)
+                    is not None
+                    else {}
+                ),
             )
         else:
             validate_absence(inventory)
@@ -909,36 +1072,6 @@ def _validate_references(
             validate_closure as validate_rd_source_closure,
         )
 
-        def read_rd_bytes(key, expected_sha256, maximum_bytes):
-            check(key, expected_sha256)
-            maximum = min(limits.max_file_bytes, maximum_bytes)
-            stream, before = _open_file(root, key)
-            with stream:
-                if before.st_size > maximum:
-                    raise BackupError("RD retained evidence exceeds its bound")
-                content = stream.read(maximum + 1)
-                after = os.fstat(stream.fileno())
-            if (
-                len(content) != before.st_size
-                or hashlib.sha256(content).hexdigest() != expected_sha256
-                or (
-                    before.st_dev,
-                    before.st_ino,
-                    before.st_size,
-                    before.st_mtime_ns,
-                    before.st_ctime_ns,
-                )
-                != (
-                    after.st_dev,
-                    after.st_ino,
-                    after.st_size,
-                    after.st_mtime_ns,
-                    after.st_ctime_ns,
-                )
-            ):
-                raise BackupError("RD retained evidence changed while read")
-            return content
-
         try:
             validate_rd_source_closure(
                 snapshot["rd_source_closure"],
@@ -946,6 +1079,30 @@ def _validate_references(
                 snapshot["factor_closure"],
                 read_rd_bytes,
                 limits.max_files,
+                **(
+                    {"seed_context": seed_context}
+                    if getattr(capabilities, "rd_seed_schema", None) is not None
+                    else {}
+                ),
+                **(
+                    {"execution_links_pending": True}
+                    if snapshot["rd_source_closure"].get("schema_version")
+                    in {
+                        "mineagent.rd-source-restore-closure.v3",
+                        "mineagent.rd-source-restore-closure.v4",
+                        "mineagent.rd-source-restore-closure.v5",
+                    }
+                    else {}
+                ),
+                **(
+                    {"configured_inputs_pending": True}
+                    if snapshot["rd_source_closure"].get("schema_version")
+                    in {
+                        "mineagent.rd-source-restore-closure.v4",
+                        "mineagent.rd-source-restore-closure.v5",
+                    }
+                    else {}
+                ),
             )
         except (ValueError, TypeError, KeyError, AttributeError):
             raise BackupError("RD source restore closure failed verification") from None
@@ -962,6 +1119,75 @@ def _validate_references(
         )
     except (ValueError, TypeError, KeyError, AttributeError):
         raise BackupError("Native HDF restore closure failed verification") from None
+    from backend.app.execution_snapshot_operations import validate_execution_snapshot
+
+    try:
+        validate_execution_snapshot(
+            snapshot,
+            capabilities,
+            check,
+            lambda path: _read_json(root, path, limits)[0],
+            limits.max_files,
+            inventory=inventory,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Execution snapshot restore closure failed verification"
+        ) from None
+    from backend.app.factor_analysis_operations import validate_direct_analysis_snapshot
+
+    try:
+        validate_direct_analysis_snapshot(
+            snapshot,
+            capabilities,
+            lambda key, maximum: read_rd_bytes(key, by_key[key]["sha256"], maximum),
+            limits.max_files,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Direct analysis restore closure failed verification"
+        ) from None
+    from backend.app.structured_operations import validate_structured_strategy_snapshot
+
+    try:
+        validate_structured_strategy_snapshot(
+            snapshot,
+            capabilities,
+            lambda key, maximum: read_rd_bytes(key, by_key[key]["sha256"], maximum),
+            limits.max_files,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Structured strategy restore closure failed verification"
+        ) from None
+    from backend.app.rdagent_submission_operations import validate_submission_snapshot
+
+    try:
+        validate_submission_snapshot(snapshot, capabilities, limits.max_files)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("RD submission restore closure failed verification") from None
+    try:
+        if capabilities.execution_snapshot_schema is not None:
+            from backend.app.rdagent_execution_links import (
+                validate_execution_generation_links,
+            )
+
+            validate_execution_generation_links(
+                snapshot["rd_source_closure"],
+                snapshot["execution_closure"],
+                snapshot["research_closure"],
+                lambda path: _read_json(root, path, limits)[0],
+                limits.max_files,
+                **(
+                    {"direct_analysis_closure": snapshot["direct_analysis_closure"]}
+                    if capabilities.direct_analysis_schema is not None
+                    else {}
+                ),
+            )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Execution generation restore closure failed verification"
+        ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:

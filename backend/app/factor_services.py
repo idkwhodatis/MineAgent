@@ -330,6 +330,16 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                     total += held_total
                     owned += held_owned
                     count += held_entries
+                from backend.app.execution_snapshot_capacity import (
+                    pending_snapshot_usage_for_schema,
+                )
+
+                snap_total, snap_owned, snap_entries = (
+                    pending_snapshot_usage_for_schema(session, owner_id)
+                )
+                pending_total += snap_total
+                pending_owned += snap_owned
+                pending_entries += snap_entries
                 if (
                     total + pending_total + peak_bytes
                     > getattr(settings, "factor_installation_max_bytes", 2 * 1024**3)
@@ -369,6 +379,12 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                 pending_total, pending_owned, pending_entries = (
                     pending_source_usage_for_schema(session, owner_id)
                 )
+                snap_total, snap_owned, snap_entries = (
+                    pending_snapshot_usage_for_schema(session, owner_id)
+                )
+                pending_total += snap_total
+                pending_owned += snap_owned
+                pending_entries += snap_entries
                 if (
                     final_total + pending_total > settings.factor_installation_max_bytes
                     or final_owned + pending_owned > settings.factor_owner_max_bytes
@@ -774,11 +790,25 @@ def list_factors(
                 if snapshot
                 else None,
                 "analysis_status": "not_evaluated",
+                "latest_execution": latest_execution_metadata(
+                    session, owner_id, factor.id, version.id
+                )
+                if version
+                else None,
                 "usage": usage(),
             }
         )
     session.commit()
     return {"data": data, "count": count}
+
+
+def latest_execution_metadata(session, owner_id, factor_id, version_id):
+    # Additive dedicated identity: never substitute a FeatureSnapshot or release
+    # execution-derived counts/measurements through the legacy list projection.
+    from backend.app.factor_execution_views import list_execution_records
+
+    records = list_execution_records(session, owner_id, factor_id, version_id, limit=1)
+    return records.data[0].model_dump(mode="json") if records.data else None
 
 
 def patch_factor(session, owner_id, factor_id, body):

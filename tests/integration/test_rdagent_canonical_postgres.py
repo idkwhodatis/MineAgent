@@ -25,9 +25,7 @@ SPEC.loader.exec_module(CORPUS)
 def canonical_db(migrated_engine):
     with migrated_engine.begin() as connection:
         schema = connection.execute(text("SELECT current_schema()")).scalar_one()
-        connection.exec_driver_sql(
-            render_sql(schema), execution_options={"no_parameters": True}
-        )
+        connection.exec_driver_sql(render_sql(schema))
     return migrated_engine
 
 

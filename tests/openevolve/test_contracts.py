@@ -224,9 +224,9 @@ def complete_spec():
         objective=objective,
         factors=NoFactors(),
         runtime_image="sha256:" + "b" * 64,
-        runtime_lock_sha256="c" * 64,
-        adapter_patch_sha256="d" * 64,
-        prompt_profile_sha256="e" * 64,
+        runtime_lock_sha256="c351f13fcbcdc43610d3b0b4846223e58440abb6301fe855a7cba548bee711f6",
+        adapter_patch_sha256="7eb24236ba279b25978640faf9eb249bad6d0c362b2deac9a5beb51189ff574d",
+        prompt_profile_sha256="3d2e74fc049e008807fea381b4079d48ef98eff1fbbb1018fad01ec7258eb437",
         budget=BudgetVector(
             calls=2,
             tokens=4096,

@@ -392,3 +392,11 @@ source/renderer checks do not substitute for these hosted container tests.
 Caddy directive references: [reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy),
 [body limit](https://caddyserver.com/docs/caddyfile/directives/request_body),
 and [file server](https://caddyserver.com/docs/caddyfile/directives/file_server).
+
+### Normal model-backed engines
+
+The legacy profile alone is not proof of normal RD/OE execution. See
+[NORMAL_ENGINE_COMPOSE.md](NORMAL_ENGINE_COMPOSE.md) for the isolated pinned SDK,
+explicit default-disabled RD declarations and exact build-only runtime profile
+preparation. Normal OE provider packaging and the real combined Compose/browser
+gate remain required; do not substitute the fixture image or a host-only SDK probe.

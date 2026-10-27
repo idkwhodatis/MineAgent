@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from backend.app.core.config import get_settings
 from backend.app.core.db import create_db_engine, session_factory
-from backend.app.models import ExecutionAttempt, WorkerHeartbeat, utcnow
+from backend.app.models import ExecutionAttempt, ResearchRun, WorkerHeartbeat, utcnow
 from backend.app.services import reconcile_attempt
 from workers.research.dispatcher import dispatch_outbox, recover_stalled_jobs
 from workers.research.queue import create_queue_app
@@ -105,6 +105,7 @@ def main():
 
     while True:
         try:
+            rd_ids = []
             with factory.begin() as session:
                 session.execute(
                     insert(WorkerHeartbeat)
@@ -115,17 +116,38 @@ def main():
                     )
                 )
                 if args.role == "dispatcher":
-                    dispatch_outbox(session)
+                    dispatch_outbox(session, settings=settings)
                 else:
                     ids = session.scalars(
                         select(ExecutionAttempt.id)
+                        .join(ResearchRun)
                         .where(
+                            ~(
+                                (ResearchRun.purpose == "factor_research")
+                                & (ResearchRun.engine == "rdagent")
+                            ),
                             ExecutionAttempt.finished_at.is_(None),
                             ExecutionAttempt.lease_expires_at <= utcnow(),
                         )
                         .limit(100)
                     ).all()
+                    # RD has a separate typed multi-unit terminal barrier.
+                    # Never feed its child inventory into the legacy stopper.
+                    rd_ids = session.scalars(
+                        select(ExecutionAttempt.id)
+                        .join(ResearchRun)
+                        .where(
+                            ExecutionAttempt.finished_at.is_(None),
+                            ResearchRun.purpose == "factor_research",
+                            ResearchRun.engine == "rdagent",
+                            (ExecutionAttempt.lease_expires_at <= utcnow())
+                            | (ResearchRun.status == "cancel_requested"),
+                        )
+                        .limit(100)
+                    ).all()
                     for attempt_id in ids:
+                        if attempt_id in rd_ids:
+                            continue
                         reconcile_attempt(
                             session,
                             attempt_id,
@@ -135,6 +157,23 @@ def main():
                             settings=settings,
                         )
                     recover_stalled_jobs(session)
+                    from sqlalchemy import text
+
+                    from backend.app.rdagent_submission_services import REVISION
+
+                    if session.scalars(
+                        text("SELECT version_num FROM alembic_version")
+                    ).all() in (
+                        [REVISION],
+                        ["024_openevolve_initial"],
+                        ["025_structured_factor_strategy"],
+                        ["026_rd_seeded_submissions"],
+                    ):
+                        recover_stalled_jobs(session, rd=True)
+            for attempt_id in rd_ids:
+                from workers.research.rdagent_recovery import reconcile_rd_attempt
+
+                reconcile_rd_attempt(factory, attempt_id, settings)
             if (
                 args.role == "reconciler"
                 and settings.factor_library_enabled

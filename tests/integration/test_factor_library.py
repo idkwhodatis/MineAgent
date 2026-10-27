@@ -459,3 +459,24 @@ def test_completed_code_only_import_with_no_claims_keeps_holdout_history_unknown
         )
         assert result["classification"] == "unknown_import_history"
         assert result["matching_count"] == 0
+
+
+def test_execution_record_navigation_is_separate_and_owner_scoped(
+    api, owner_headers, other_headers
+):
+    created = post(api, owner_headers, "factors", manual())
+    assert created.status_code == 201, created.text
+    body = created.json()
+    factor, version = body["factor"]["id"], body["version"]["id"]
+    path = f"/api/v1/factors/{factor}/versions/{version}/execution-records"
+    response = api.get(path, headers=owner_headers)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"data": [], "count": 0}
+    assert api.get(path, headers=other_headers).status_code == 404
+    assert (
+        api.get(path.replace(version, str(uuid4())), headers=owner_headers).status_code
+        == 404
+    )
+    assert (
+        api.get(path, headers=owner_headers, params={"limit": 101}).status_code == 422
+    )

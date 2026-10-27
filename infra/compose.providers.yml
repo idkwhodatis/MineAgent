@@ -1,0 +1,15 @@
+# Optional trusted-host credentials overlay. Never use with infra/compose.yml.
+# Pass the same private file via --env-file for explicit configuration interpolation.
+# This file enables nothing by default and contains no credential values.
+services:
+  api:
+    env_file: ["${MINEAGENT_PROVIDER_ENV_FILE:?Set an explicit private operator env file}"]
+  research-dispatcher:
+    env_file: ["${MINEAGENT_PROVIDER_ENV_FILE:?}"]
+  research-worker:
+    # Trusted host observers only; API/dispatcher/native candidates stay private.
+    pid: host
+    env_file: ["${MINEAGENT_PROVIDER_ENV_FILE:?}"]
+  evaluator-reconciler:
+    pid: host
+    env_file: ["${MINEAGENT_PROVIDER_ENV_FILE:?}"]

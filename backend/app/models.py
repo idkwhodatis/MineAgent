@@ -981,14 +981,46 @@ class ResearchNoteEvidencePin(Base):
 
 
 # Register independent MineAgent tables only after legacy declarations exist.
+# Revision021 execution snapshots; no default engine activation.
+from backend.app import execution_snapshot_models as _execution_snapshot_models  # noqa: F401
+
+# Revision022 explicit declared analysis; production launch catalog remains closed.
+from backend.app import factor_analysis_models as _factor_analysis_models  # noqa: F401
 from backend.app import factor_import_models as _factor_import_models  # noqa: F401
 from backend.app import factor_models as _factor_models  # noqa: F401
 
 # Revision019 native physical evidence; no runtime registration.
 from backend.app import factor_native_models as _factor_native_models  # noqa: F401
+from backend.app import (
+    rdagent_configured_input_models as _rdagent_configured_input_models,  # noqa: F401
+)
 
 # Revision018 source persistence; no engine dispatcher/launcher registration.
 from backend.app import rdagent_models as _rdagent_models  # noqa: F401
+
+# Revision023 immutable configured submission receipt, not activation by import.
+from backend.app import rdagent_submission_models as _rdagent_submission_models  # noqa: F401
 from backend.app import research_broker_models as _research_broker_models  # noqa: F401
 from backend.app import research_object_models as _research_object_models  # noqa: F401
 from backend.app import research_process_models as _research_process_models  # noqa: F401
+
+# isort: split
+# Revision024 retained metadata, not public engine activation. Its dependencies
+# register only after shared scope definitions, including direct import order.
+from backend.app import openevolve_models as _openevolve_models  # noqa: F401
+
+# isort: split
+# Revision025 closed structured programs; no Python strategy compatibility alias.
+from backend.app import structured_factor_models as _structured_factor_models  # noqa: F401
+
+# isort: split
+# Revision026 explicit immutable seed declaration, never a fresh-receipt alias.
+from backend.app import rdagent_seed_models as _rdagent_seed_models  # noqa: F401
+
+# isort: split
+# Revision026 immutable user direction versions; active heads affect future runs only.
+from backend.app import rdagent_steer_models as _rdagent_steer_models  # noqa: F401
+
+# isort: split
+# Revision026 SDK process evidence is retained through charged research objects.
+from backend.app import rdagent_provider_models as _rdagent_provider_models  # noqa: F401

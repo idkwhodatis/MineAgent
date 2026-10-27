@@ -79,7 +79,11 @@ def main():
             "max_rows",
             "max_bytes",
         }
-        or manifest["schema_version"] != "mineagent.factor-normalization.v1"
+        or manifest["schema_version"]
+        not in (
+            "mineagent.factor-normalization.v1",
+            "mineagent.factor-normalization.v2",
+        )
     ):
         raise InvalidFactorOutput("invalid manifest")
     listing_path = Path("/input/listings.json")
@@ -106,6 +110,18 @@ def main():
         max_bytes=manifest["max_bytes"],
     )
     write_parquet(rows, Path("/output/values.parquet"))
+    if manifest["schema_version"] == "mineagent.factor-normalization.v2":
+        from runtimes.factor_normalizer.primitive_report import build_report
+
+        report = build_report(
+            rows,
+            parquet=Path("/output/values.parquet").read_bytes(),
+            manifest=Path("/input/manifest.json").read_bytes(),
+            listings=listing_path.read_bytes(),
+        )
+        with Path("/output/rows.json").open("xb") as output:
+            os.fchmod(output.fileno(), 0o644)
+            output.write(report)
     print(
         json.dumps(
             {

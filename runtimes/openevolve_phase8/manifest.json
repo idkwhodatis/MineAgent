@@ -1,0 +1,11 @@
+{
+  "schema": "mineagent.openevolve-placement-patch.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires_phase7_manifest_sha256": "adf72e57fa249a471b4e79b30f4309db035111091f9633c887f2013921865ebb",
+  "requires_phase7_wheel_sha256": "07214b4d09808d47c913c49d33c9cafbe51271fa971542368bc7be4d54d63533",
+  "patch": "0008-observe-submitted-worker-placement.patch",
+  "patch_sha256": "cb16738aaebe5c881726e9846d5211a07c051bac2866bf916f813c5f4d228a46",
+  "file": "openevolve/process_parallel.py",
+  "before_sha256": "29a2c53620a0c47201ac9312f8299885f3004ea7c44cfd56cc1823822951d6f1",
+  "after_sha256": "97e3dedcdbdb59f3a8fa168048ba973dd38e7147861841af38a4bbd69dbfb61f"
+}

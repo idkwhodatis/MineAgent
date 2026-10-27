@@ -1,0 +1,120 @@
+{
+  "cases": {
+    "ack-failure": {
+      "checks": [],
+      "schema": "mineagent.sampling-state-probe.v1",
+      "scope": "actual phase7 native API with synthetic sampling ACK; no durable/financial acceptance"
+    },
+    "eligible": {
+      "checks": [
+        {
+          "control_sequence": 1,
+          "event": "terminal_ack",
+          "frontier": 0,
+          "outcome": "seed"
+        },
+        {
+          "after_sha256": "3be6bad0780ab361ee5c7058a47d511be4d3c64eef5de6ee1196ea56c95183e1",
+          "before_sha256": "93c00a3b6f284487ed53af43c5a8a38b1cb84bf61e9312a4a799c8b9934d089c",
+          "control_sequence": 2,
+          "event": "sampling_ack",
+          "frontier": 0,
+          "iteration": 1,
+          "state_changed": true
+        },
+        {
+          "after_sha256": "be4cc926c4f7dc1f7a26f067fc05cc980e1266b06defd06a6f5d03679f32094e",
+          "before_sha256": "3be6bad0780ab361ee5c7058a47d511be4d3c64eef5de6ee1196ea56c95183e1",
+          "control_sequence": 3,
+          "event": "sampling_ack",
+          "frontier": 0,
+          "iteration": 2,
+          "state_changed": true
+        },
+        {
+          "control_sequence": 4,
+          "event": "terminal_ack",
+          "frontier": 1,
+          "outcome": "accepted"
+        },
+        {
+          "control_sequence": 5,
+          "event": "terminal_ack",
+          "frontier": 2,
+          "outcome": "accepted"
+        }
+      ],
+      "schema": "mineagent.sampling-state-probe.v1",
+      "scope": "actual phase7 native API with synthetic sampling ACK; no durable/financial acceptance"
+    },
+    "reject": {
+      "checks": [
+        {
+          "control_sequence": 1,
+          "event": "terminal_ack",
+          "frontier": 0,
+          "outcome": "seed"
+        },
+        {
+          "after_sha256": "cc481029463446b278b203cfa70aaebe7b6f3ce31469c7a750b6d250246a4555",
+          "before_sha256": "5e28ab289ca016566a74cb4f9ae2c6585594e50d8f9bf584bb0d91b42e613eeb",
+          "control_sequence": 2,
+          "event": "sampling_ack",
+          "frontier": 0,
+          "iteration": 1,
+          "state_changed": true
+        },
+        {
+          "after_sha256": "c7b78cb57244c62e114b48bd43213aa37c640cb86cbdd4f508a7706b8a8aa67a",
+          "before_sha256": "cc481029463446b278b203cfa70aaebe7b6f3ce31469c7a750b6d250246a4555",
+          "control_sequence": 3,
+          "event": "sampling_ack",
+          "frontier": 0,
+          "iteration": 2,
+          "state_changed": true
+        },
+        {
+          "control_sequence": 4,
+          "event": "terminal_ack",
+          "frontier": 1,
+          "outcome": "error"
+        },
+        {
+          "control_sequence": 5,
+          "event": "terminal_ack",
+          "frontier": 2,
+          "outcome": "error"
+        }
+      ],
+      "schema": "mineagent.sampling-state-probe.v1",
+      "scope": "actual phase7 native API with synthetic sampling ACK; no durable/financial acceptance"
+    },
+    "zero": {
+      "checks": [
+        {
+          "control_sequence": 1,
+          "event": "terminal_ack",
+          "frontier": 0,
+          "outcome": "seed"
+        }
+      ],
+      "schema": "mineagent.sampling-state-probe.v1",
+      "scope": "actual phase7 native API with synthetic sampling ACK; no durable/financial acceptance"
+    }
+  },
+  "docker": "not_run",
+  "durable_host_acceptance": false,
+  "financial_acceptance": false,
+  "frozen_phase6_environment_replaced": false,
+  "host_ack": "explicit_in_memory_double",
+  "host_sampling_delta_validator": "Executed against all actual-loop sampling events; synthetic host transport, no durable/containment acceptance",
+  "patch_manifest_sha256": "adf72e57fa249a471b4e79b30f4309db035111091f9633c887f2013921865ebb",
+  "phase6_probe_sha256": "ee28b1b2353b752478ec8b57965d1cb191dc2babddd89b9fa4542b13115180e4",
+  "probe_sha256": "d8769730a3fb2fde70865b861a0c6e5bbb033ef2b7dc49f8d02675fb4ec8e169",
+  "real_sampling_helper": true,
+  "requires_phase6_wheel_sha256": "6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c",
+  "sampling_contracts_sha256": "434047d736fc01216354f81f8620ddda6bfd6d41cf963e6ea212d9ea7f3a40d3",
+  "sampling_control_sha256": "f8cac659d0b119db73788e0461705fb7df3f4146b6573a6010bcde90b4ca28ae",
+  "schema": "mineagent.openevolve-phase7-sampling-proof.v1",
+  "wheel_sha256": "07214b4d09808d47c913c49d33c9cafbe51271fa971542368bc7be4d54d63533"
+}

@@ -6,7 +6,7 @@ from backend.app.core.config import Settings
 
 # This executable requires the complete increment schema, not merely a prior
 # supported backup revision. An offline contract test pins this to Alembic head.
-REQUIRED_SCHEMA_REVISION = "019_native_hdf_storage"
+REQUIRED_SCHEMA_REVISION = "026_rd_seeded_submissions"
 
 
 def create_db_engine(settings: Settings):

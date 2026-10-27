@@ -102,3 +102,18 @@ def require_candidate_source(
             409,
         )
     return cutoff, prefix
+
+
+def require_configured_candidate_source(session, fence, **kwargs):
+    """Explicit022 successor: old lineage plus fresh full retained-input witness."""
+    from backend.app.rdagent_configured_inputs import require_configured_input_witness
+
+    cutoff, prefix = require_candidate_source(session, fence, **kwargs)
+    _, checked = require_configured_input_witness(
+        session, fence, execution_id=cutoff.id, settings=kwargs["settings"]
+    )
+    if checked.prefix != prefix:
+        raise DomainError(
+            "configured_native_input_drift", "Exact input witness required", 409
+        )
+    return cutoff, prefix

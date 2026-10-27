@@ -27,11 +27,15 @@ import {
   type FactorPresentation,
 } from "@/lib/factor-api";
 import { FactorImportPanel } from "./import";
+import { FactorExecutions } from "./executions";
+import { FactorStructuredExecutions } from "../structured-results";
+import { ExecutionPicker, ExecutionTabContent } from "./execution-tabs";
 import { FactorEditor } from "./editor";
 import {
   factorSearch,
   factorTabs,
   selectFactorSnapshot,
+  selectFactorExecution,
   selectFactorVersion,
   type FactorSelection,
 } from "./selection";
@@ -169,8 +173,19 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
                                 versionId: item.latest_version_id,
                               }}
                               search={{
-                                snapshot:
-                                  item.selected_snapshot_id || undefined,
+                                ...(item.latest_execution &&
+                                item.latest_execution.factor_id === item.id &&
+                                item.latest_execution.factor_version_id ===
+                                  item.latest_version_id
+                                  ? {
+                                      execution:
+                                        item.latest_execution
+                                          .execution_snapshot_id,
+                                    }
+                                  : {
+                                      snapshot:
+                                        item.selected_snapshot_id || undefined,
+                                    }),
                               }}
                             >
                               {item.name} · v{item.ordinal}
@@ -180,13 +195,32 @@ function FactorLibrary({ importEnabled }: { importEnabled: boolean }) {
                             )}
                           </td>
                           <td>{item.kind.replaceAll("_", " ")}</td>
-                          <td>{item.calculation_state.replaceAll("_", " ")}</td>
+                          <td>
+                            {item.latest_execution
+                              ? item.latest_execution.publication_state ===
+                                "completed"
+                                ? "Execution publication recorded"
+                                : "Execution publication pending"
+                              : item.calculation_state.replaceAll("_", " ")}
+                          </td>
                           <td>
                             {item.coverage === null
-                              ? "Not materialized"
+                              ? item.latest_execution
+                                ? "Execution coverage withheld — open exact version to release"
+                                : "No legacy snapshot"
                               : `${item.coverage.valid_count}/${item.coverage.row_count} valid · ${item.coverage.missing_count} missing`}
                           </td>
-                          <td>{item.analysis_status.replaceAll("_", " ")}</td>
+                          <td>
+                            {item.latest_execution
+                              ? item.latest_execution.analysis_state ===
+                                "result_recorded"
+                                ? "Direct result recorded; measurement withheld"
+                                : item.latest_execution.analysis_state ===
+                                    "pending"
+                                  ? "Direct analysis pending"
+                                  : "No direct analysis declared"
+                              : item.analysis_status.replaceAll("_", " ")}
+                          </td>
                           <td>
                             {item.usage.declared} declared ·{" "}
                             {item.usage.explicit_read} explicit reads ·{" "}
@@ -344,6 +378,10 @@ function FactorWorkbench({
           </select>
         </Field>
         <Field id="factor-snapshot" label="Exact physical snapshot">
+          <p className="muted">
+            Legacy provider snapshots only; research execution snapshots are
+            selected below.
+          </p>
           <select
             id="factor-snapshot"
             value={selection.snapshot || ""}
@@ -426,8 +464,23 @@ function FactorWorkbench({
           </Link>
         ))}
       </nav>
+      <ExecutionPicker
+        key={versionId}
+        factorId={factorId}
+        versionId={versionId}
+        value={selection.execution}
+        select={(id) => changeSelection(selectFactorExecution(selection, id))}
+      />
+      <ExecutionTabContent
+        version={data.version}
+        selection={selection}
+        versions={versions.data?.data || []}
+        changeSelection={changeSelection}
+      />
       {tab === "overview" && <FactorOverview detail={data} />}
       {(tab === "overview" || tab === "values") &&
+        !selection.execution &&
+        !selection.invalidExecution &&
         !snapshotProblem &&
         (snapshot ? (
           <FactorValuesPanel
@@ -446,13 +499,19 @@ function FactorWorkbench({
             </p>
           </Panel>
         ))}
-      {tab === "evaluation" && <FactorEvaluationPanel detail={data} />}
+      {tab === "evaluation" &&
+        !selection.execution &&
+        !selection.invalidExecution && <FactorEvaluationPanel detail={data} />}
       {tab === "usage" && <FactorUsagePanel usage={data.usage} />}
       {tab === "evolution" && (
         <FactorEvolutionPanel
           detail={data}
           versions={versions.data?.data || []}
-          snapshot={snapshotProblem ? undefined : snapshot}
+          snapshot={
+            snapshotProblem || selection.execution || selection.invalidExecution
+              ? undefined
+              : snapshot
+          }
           owner={user.data?.id}
         />
       )}
@@ -490,12 +549,28 @@ function FactorWorkbench({
           {user.data && (
             <FactorExportPanel
               version={data.version}
-              snapshot={snapshotProblem ? undefined : snapshot}
+              snapshot={
+                snapshotProblem ||
+                selection.execution ||
+                selection.invalidExecution
+                  ? undefined
+                  : snapshot
+              }
               owner={user.data.id}
             />
           )}
         </>
       )}
+      <FactorExecutions
+        key={versionId}
+        factorId={factorId}
+        versionId={versionId}
+      />
+      <FactorStructuredExecutions
+        key={versionId}
+        factorId={factorId}
+        versionId={versionId}
+      />
       <FactorPresentationEditor factorId={factorId} />
     </div>
   );
@@ -529,7 +604,7 @@ function FactorOverview({ detail }: { detail: FactorDetail }) {
         <article>
           <h3>Observed calculation</h3>
           <p>
-            {detail.snapshots.length} published physical snapshot
+            {detail.snapshots.length} legacy published physical snapshot
             {detail.snapshots.length === 1 ? "" : "s"}.
           </p>
           <p>

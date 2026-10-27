@@ -683,6 +683,24 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     from backend.app.factor_routes import router as factor_router
 
     app.include_router(factor_router, prefix=PREFIX)
+    from backend.app.engine_run_routes import router as engine_run_router
+
+    app.include_router(engine_run_router, prefix=PREFIX)
+    from backend.app.engine_input_routes import router as engine_input_router
+
+    app.include_router(engine_input_router, prefix=PREFIX)
+    from backend.app.rdagent_steer_routes import router as rdagent_steer_router
+
+    app.include_router(rdagent_steer_router, prefix=PREFIX)
+    from backend.app.engine_snapshot_routes import router as engine_snapshot_router
+
+    app.include_router(engine_snapshot_router, prefix=PREFIX)
+    from backend.app.engine_result_routes import router as engine_result_router
+
+    app.include_router(engine_result_router, prefix=PREFIX)
+    from backend.app.structured_result_routes import router as structured_result_router
+
+    app.include_router(structured_result_router, prefix=PREFIX)
     from backend.app.factor_import_services import FactorImportIngressMiddleware
 
     app.add_middleware(

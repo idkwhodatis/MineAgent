@@ -39,7 +39,7 @@ def test_all_physical_attempts_close_before_upstream_exchange(mode):
         "attempt_id": fence.attempt_id,
         "generation": 1,
     }
-    operation = SimpleNamespace(id=UUID(int=10))
+    operation = SimpleNamespace(id=UUID(int=10), protocol="mineagent.rdagent-chat.v1")
     chain, reservations, answers = [], {}, []
     for i, state in enumerate(("failed", "completed"), 1):
         row = SimpleNamespace(

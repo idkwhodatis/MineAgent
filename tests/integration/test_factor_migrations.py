@@ -104,7 +104,7 @@ def test_empty_factor_import_migration_round_trip_preserves_core(
             .one()
             == before
         )
-    assert revision(migrated_engine) == "019_native_hdf_storage"
+    assert revision(migrated_engine) == "021_execution_snapshots"
 
 
 def test_empty_factor_library_migration_round_trip_preserves_legacy(

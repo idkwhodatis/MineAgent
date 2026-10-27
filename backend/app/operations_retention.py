@@ -125,11 +125,58 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             if capabilities.native_closure_schema is not None
             else set()
         )
+        | (
+            {"execution_closure"}
+            if capabilities.execution_snapshot_schema is not None
+            else set()
+        )
+        | (
+            {"rd_submission_closure"}
+            if capabilities.rd_submission_schema is not None
+            else set()
+        )
+        | (
+            {"direct_analysis_closure"}
+            if capabilities.direct_analysis_schema is not None
+            else set()
+        )
+        | (
+            {"openevolve_closure"}
+            if getattr(capabilities, "openevolve_closure_schema", None) is not None
+            else set()
+        )
+        | (
+            {"structured_strategy_closure"}
+            if getattr(capabilities, "structured_strategy_schema", None) is not None
+            else set()
+        )
+        | (
+            {"rd_steer_closure"}
+            if getattr(capabilities, "rd_steer_schema", None) is not None
+            else set()
+        )
+        | (
+            {"rd_seed_closure"}
+            if getattr(capabilities, "rd_seed_schema", None) is not None
+            else set()
+        )
         or snapshot["schema_revision"] not in REVISIONS
         or type(snapshot["postgres_major"]) is not int
         or not 14 <= snapshot["postgres_major"] <= 99
     ):
         raise RetentionError("Unsupported database reference snapshot")
+    from backend.app.rdagent_steer_operations import steer_closure
+
+    try:
+        steer_closure(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Steer closure capability differs") from None
+    from backend.app.rdagent_seed_operations import seed_closure
+
+    try:
+        seed_closure(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Seed closure capability differs") from None
     rows = (snapshot["references"], snapshot["datasets"], snapshot["checkpoints"])
     if (
         any(type(value) is not list for value in rows)
@@ -227,6 +274,32 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
         keys.update(native_manifest_keys(snapshot, capabilities))
     except (ValueError, TypeError, KeyError, AttributeError):
         raise RetentionError("Invalid native HDF manifest inventory") from None
+    from backend.app.execution_snapshot_operations import execution_manifest_keys
+
+    try:
+        keys.update(execution_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid execution snapshot manifest inventory") from None
+    from backend.app.factor_analysis_operations import direct_analysis_manifest_keys
+
+    try:
+        keys.update(direct_analysis_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid direct analysis manifest inventory") from None
+    from backend.app.openevolve_operations import openevolve_manifest_keys
+
+    try:
+        keys.update(openevolve_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid OE retained byte inventory") from None
+    from backend.app.structured_operations import structured_strategy_manifest_keys
+
+    try:
+        keys.update(structured_strategy_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Invalid structured strategy retained byte inventory"
+        ) from None
     return keys
 
 
@@ -411,6 +484,35 @@ def _protected(snapshot, files, manifests, deadline):
             raise RetentionError(
                 "Factor retention closure failed verification"
             ) from None
+
+    def read_rd_bytes(key, sha, maximum):
+        check(key, sha)
+        raw = manifests[key]
+        if len(raw) > maximum or hashlib.sha256(raw).hexdigest() != sha:
+            raise ValueError("RD retention bytes differ")
+        return raw
+
+    from backend.app.openevolve_operations import openevolve_closure
+
+    try:
+        capabilities = capabilities_for(snapshot.get("schema_revision"))
+        oe_closure = openevolve_closure(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid OE closure capability") from None
+    from backend.app.rdagent_steer_operations import validate_steer_snapshot
+
+    try:
+        validate_steer_snapshot(snapshot, capabilities, 100_000)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Historical steer closure failed verification") from None
+    from backend.app.rdagent_seed_operations import prepare_seed_snapshot
+
+    try:
+        seed_context = prepare_seed_snapshot(
+            snapshot, capabilities, read_rd_bytes, 100_000
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Seeded RD parent closure failed verification") from None
     from backend.app.research_backup import validate_absence, validate_closure
 
     try:
@@ -421,6 +523,22 @@ def _protected(snapshot, files, manifests, deadline):
                 lambda key: _json_manifest(manifests[key]),
                 100_000,
                 inventory=list(files.values()),
+                read_bytes=read_rd_bytes,
+                rd_source_closure=snapshot.get("rd_source_closure"),
+                **(
+                    {"seed_context": seed_context}
+                    if getattr(capabilities, "rd_seed_schema", None) is not None
+                    else {}
+                ),
+                **(
+                    {"openevolve_closure": oe_closure} if oe_closure is not None else {}
+                ),
+                **(
+                    {"structured_links_pending": True}
+                    if getattr(capabilities, "structured_strategy_schema", None)
+                    is not None
+                    else {}
+                ),
             )
             # N1 has no garbage-collection authority for neutral objects, journals,
             # prepared markers or charged orphan/temp bytes. Preserve the entire
@@ -435,13 +553,6 @@ def _protected(snapshot, files, manifests, deadline):
     if "rd_source_closure" in snapshot:
         from backend.app.rdagent_backup import validate_closure as validate_rd_source
 
-        def read_rd_bytes(key, sha, maximum):
-            check(key, sha)
-            raw = manifests[key]
-            if len(raw) > maximum or hashlib.sha256(raw).hexdigest() != sha:
-                raise ValueError("RD retention bytes differ")
-            return raw
-
         try:
             validate_rd_source(
                 snapshot["rd_source_closure"],
@@ -449,6 +560,30 @@ def _protected(snapshot, files, manifests, deadline):
                 snapshot["factor_closure"],
                 read_rd_bytes,
                 100_000,
+                **(
+                    {"seed_context": seed_context}
+                    if getattr(capabilities, "rd_seed_schema", None) is not None
+                    else {}
+                ),
+                **(
+                    {"execution_links_pending": True}
+                    if snapshot["rd_source_closure"].get("schema_version")
+                    in {
+                        "mineagent.rd-source-restore-closure.v3",
+                        "mineagent.rd-source-restore-closure.v4",
+                        "mineagent.rd-source-restore-closure.v5",
+                    }
+                    else {}
+                ),
+                **(
+                    {"configured_inputs_pending": True}
+                    if snapshot["rd_source_closure"].get("schema_version")
+                    in {
+                        "mineagent.rd-source-restore-closure.v4",
+                        "mineagent.rd-source-restore-closure.v5",
+                    }
+                    else {}
+                ),
             )
         except (ValueError, TypeError, KeyError, AttributeError):
             raise RetentionError(
@@ -472,6 +607,78 @@ def _protected(snapshot, files, manifests, deadline):
     except (ValueError, TypeError, KeyError, AttributeError):
         raise RetentionError(
             "Native HDF retention closure failed verification"
+        ) from None
+    from backend.app.execution_snapshot_operations import validate_execution_snapshot
+
+    try:
+        validate_execution_snapshot(
+            snapshot,
+            capabilities,
+            check,
+            lambda key: _json_manifest(manifests[key]),
+            100_000,
+            inventory=list(files.values()),
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Execution snapshot retention closure failed verification"
+        ) from None
+    from backend.app.factor_analysis_operations import validate_direct_analysis_snapshot
+
+    try:
+        validate_direct_analysis_snapshot(
+            snapshot,
+            capabilities,
+            lambda key, maximum: read_rd_bytes(key, files[key]["sha256"], maximum),
+            100_000,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Direct analysis retention closure failed verification"
+        ) from None
+    from backend.app.structured_operations import validate_structured_strategy_snapshot
+
+    try:
+        validate_structured_strategy_snapshot(
+            snapshot,
+            capabilities,
+            lambda key, maximum: read_rd_bytes(key, files[key]["sha256"], maximum),
+            100_000,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Structured strategy retention closure failed verification"
+        ) from None
+    from backend.app.rdagent_submission_operations import validate_submission_snapshot
+
+    try:
+        validate_submission_snapshot(snapshot, capabilities, 100_000)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "RD submission retention closure failed verification"
+        ) from None
+    try:
+        if capabilities.execution_snapshot_schema is not None:
+            from backend.app.rdagent_execution_links import (
+                validate_execution_generation_links,
+            )
+
+            validate_execution_generation_links(
+                snapshot["rd_source_closure"],
+                snapshot["execution_closure"],
+                snapshot["research_closure"],
+                lambda key: _json_manifest(manifests[key]),
+                100_000,
+                **(
+                    {"direct_analysis_closure": snapshot["direct_analysis_closure"]}
+                    if capabilities.direct_analysis_schema is not None
+                    else {}
+                ),
+            )
+            trees.add("factors")
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Execution generation retention closure failed verification"
         ) from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))

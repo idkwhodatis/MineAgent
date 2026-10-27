@@ -94,6 +94,16 @@ class FactorGenerationBoundary(AttemptEvidence, Base):
         exact_attempt_fk("controller_launch_id", "factor_controller_launches"),
         UniqueConstraint("start_id"),
         UniqueConstraint("observation_id"),
+        UniqueConstraint(
+            "owner_id",
+            "run_id",
+            "attempt_id",
+            "generation",
+            "id",
+            "controller_launch_id",
+            "start_id",
+            name="uq_rd_boundary_execution_actor",
+        ),
         ForeignKeyConstraint(
             [
                 "owner_id",

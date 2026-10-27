@@ -106,3 +106,20 @@ def test_018_rejects_added_native_closure(tmp_path):
         _validate_references(tmp_path, [], value, BackupLimits())
     with pytest.raises(RetentionError):
         _snapshot_manifest_keys(value, BackupLimits())
+
+
+def test_historical_native_capability_rejects_future_manifest_dispatch():
+    import pytest
+
+    from backend.app.factor_native_backup import FIELDS
+    from backend.app.native_operations import native_manifest_keys
+    from backend.app.schema_capabilities import capabilities_for
+
+    snapshot = {
+        "native_closure": {
+            "schema_version": "mineagent.native-hdf-restore-closure.v2",
+            "tables": {name: [] for name in FIELDS},
+        }
+    }
+    with pytest.raises(ValueError, match="version"):
+        native_manifest_keys(snapshot, capabilities_for("019_native_hdf_storage"))

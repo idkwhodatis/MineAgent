@@ -1,5 +1,3 @@
-import ast
-from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -26,68 +24,6 @@ def test_new_protocol_column_is_revision_explicit():
     assert closure_fields(SCHEMA_V4) is FIELDS_V4
     assert "protocol" not in FIELDS_V2["research_model_operations"].split()
     assert "protocol" in FIELDS_V4["research_model_operations"].split()
-
-    # The active source-retention integration fixture is not a stopped backup.
-    # Exercise its exact bounded SQL-reference reader without importing PG setup.
-    from sqlalchemy import text
-
-    from backend.app import research_backup
-
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "integration/test_rdagent_source_backup_postgres.py"
-    )
-    tree = ast.parse(path.read_text())
-    function = next(
-        n
-        for n in tree.body
-        if isinstance(n, ast.FunctionDef) and n.name == "active_source_references"
-    )
-    namespace = {"text": text, "research_backup": research_backup}
-    exec(  # noqa: S102 -- exact checked-in test helper, never user/provider code
-        compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"),
-        namespace,
-    )
-    read = namespace["active_source_references"]
-
-    class Stream:
-        def __init__(self, values):
-            self.values = values
-            self.closed = False
-
-        def scalars(self):
-            return self
-
-        def __iter__(self):
-            return iter(self.values)
-
-        def close(self):
-            self.closed = True
-
-    class Connection:
-        def __init__(self, values):
-            self.values = values
-            self.streams = []
-
-        def execute(self, statement, params):
-            assert set(statement._bindparams) == {"limit"}
-            assert params["limit"] >= 1
-            assert statement.get_execution_options()["yield_per"] == 1
-            stream = Stream(self.values)
-            self.streams.append(stream)
-            return stream
-
-    connection = Connection([])
-    snapshot = read(connection)
-    assert set(snapshot["tables"]) == set(FIELDS_V4)
-    assert snapshot["schema_version"] == SCHEMA_V4
-    assert set(snapshot["external_bindings"]) == {"runs", "attempts"}
-    assert all(stream.closed for stream in connection.streams)
-    for bounds in ({"maximum_rows": 0}, {"maximum_bytes": 0}):
-        connection = Connection([{"id": "retained, not fabricated"}])
-        with pytest.raises(ValueError, match="snapshot exceeds bounds"):
-            read(connection, **bounds)
-        assert all(stream.closed for stream in connection.streams)
 
 
 def test_assembly_physical_path_needs_explicit_v4_capability():

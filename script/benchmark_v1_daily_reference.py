@@ -57,6 +57,11 @@ from script.benchmark_v1_workloads import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+# Source identity inventory only: these are not workload/performance budgets.
+# The versioned engine runtimes exceed the former 512-file legacy inventory.
+SOURCE_FILES_MAX = 1024
+SOURCE_FILE_BYTES_MAX = 2097152
+SOURCE_TOTAL_BYTES_MAX = 16777216
 PROFILE_ID = "cn-one-listing-six-year-v1"
 PROFILE_PATH = "tests/performance/fixtures/cn-daily-six-year-v1.json"
 FIXTURE_PATH = "tests/performance/fixtures/cn-daily-six-year-v1.csv"
@@ -170,16 +175,18 @@ def code_identity(env):
                 )
             ):
                 paths.add(path.relative_to(ROOT).as_posix())
-                if len(paths) > 512:
+                if len(paths) > SOURCE_FILES_MAX:
                     raise BenchmarkError("fixture_integrity")
     paths.update(
         {".dockerignore", "backend/requirements.lock", PROFILE_PATH, FIXTURE_PATH}
     )
+    if len(paths) > SOURCE_FILES_MAX:
+        raise BenchmarkError("fixture_integrity")
     entries, size = [], 0
     for relative in sorted(paths):
-        content = local_file(relative, 2097152)
+        content = local_file(relative, SOURCE_FILE_BYTES_MAX)
         size += len(content)
-        if size > 16777216:
+        if size > SOURCE_TOTAL_BYTES_MAX:
             raise BenchmarkError("fixture_integrity")
         entries.append([relative, digest(content)])
     revision = env.get("GITHUB_SHA", "")

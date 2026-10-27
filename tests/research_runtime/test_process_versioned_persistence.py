@@ -68,8 +68,11 @@ def test_model_requires_explicit_columns_and_closed_source_persistence_catalog()
         if hasattr(item, "sqltext")
     }
     from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE
+    from backend.app.research_process_models import PROFILE_GATE
 
-    assert constraints["ck_process_v2_unregistered"] == CONTROLLER_PROFILE_GATE
+    assert constraints["ck_process_v2_unregistered"] == PROFILE_GATE
+    assert PROFILE_GATE.startswith("(" + CONTROLLER_PROFILE_GATE + ") OR (")
+    assert "mineagent.rdagent-orchestrator.v2" in PROFILE_GATE
     assert ROW_FIELDS <= set(columns.keys())
 
 

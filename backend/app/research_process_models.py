@@ -17,7 +17,13 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.models import Base, utcnow
 from backend.app.process_admission_ddl_draft import GRAMMAR, HASHES
-from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE as PROFILE_GATE
+from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE
+
+PROFILE_GATE = (
+    "("
+    + CONTROLLER_PROFILE_GATE
+    + ") OR (schema_version='mineagent.process-admission.v2' AND role='rd_orchestrator' AND profile='mineagent.rdagent-orchestrator.v2' AND ipc_policy='host_ticket' AND ticket_sha256 IS NOT NULL AND ticket_sha256 ~ '^[a-f0-9]{64}$')"
+)
 
 
 class ResearchProcessAdmission(Base):
@@ -124,7 +130,7 @@ class ResearchProcessReceipt(Base):
             ],
         ),
         CheckConstraint(
-            "kind IN ('launch_intent','launch_identity','stop','extraction')",
+            "kind IN ('launch_intent','launch_identity','controller_child','stop','extraction')",
             name="ck_research_process_receipt_kind",
         ),
         CheckConstraint(

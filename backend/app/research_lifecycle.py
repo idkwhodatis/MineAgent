@@ -55,7 +55,56 @@ def _try_neutral_lock(session, scope):
         raise _neutral_error("neutral_busy")
 
 
-def _check_neutral_fence(run, attempt, fence):
+def _terminal_fence_matches(run, attempt, terminal):
+    """Exact producer-sealed final state, not authority to perform further work."""
+    families = {
+        "structured_succeeded": ("factor_strategy", "structured", "succeeded", None),
+        "oe_structured_succeeded": ("strategy_search", "openevolve", "succeeded", None),
+        "oe_initial_succeeded": ("strategy_search", "openevolve", "succeeded", 124),
+        "rd_controller_succeeded": ("factor_research", "rdagent", "succeeded", 124),
+        "rd_controller_failed": ("factor_research", "rdagent", "failed", "measured"),
+    }
+    if type(terminal) is not tuple or len(terminal) not in (4, 5):
+        return False
+    expected = families.get(terminal[0]) if type(terminal[0]) is str else None
+    if expected is None:
+        return False
+    purpose, engine, status, exit_code = expected
+    # Same engine family does not make initial and structured provider profiles
+    # interchangeable. Normal identity validation still runs below this seal.
+    schemas = {
+        "oe_initial_succeeded": "mineagent.strategy-search.v1",
+        "oe_structured_succeeded": "mineagent.oe-structured-provider-run.v1",
+    }
+    if terminal[0] in schemas and (
+        type(run.config) is not dict
+        or run.config.get("schema_version") != schemas[terminal[0]]
+    ):
+        return False
+    measured = attempt.exit_code
+    if exit_code == "measured":
+        if measured is not None and (
+            type(measured) is not int or not 0 <= measured <= 255
+        ):
+            return False
+        if attempt.error != "rd_controller_execution_failed":
+            return False
+    elif measured != exit_code or (measured is not None and type(measured) is not int):
+        return False
+    short = terminal[0] in {"structured_succeeded", "oe_structured_succeeded"}
+    snapshot = (terminal[0], run.id, attempt.id, attempt.finished_at)
+    if not short:
+        snapshot += (measured,)
+    return (
+        terminal == snapshot
+        and (run.purpose, run.engine) == (purpose, engine)
+        and run.status == attempt.status == status
+        and attempt.finished_at is not None
+        and attempt.sandbox_stopped is True
+    )
+
+
+def _check_neutral_fence(run, attempt, fence, *, terminal=None):
     from backend.app.models import utcnow
 
     if (
@@ -70,9 +119,17 @@ def _check_neutral_fence(run, attempt, fence):
         or attempt.generation != fence.generation
         or attempt.lease_token != fence.lease_token
         or attempt.lease_expires_at <= utcnow()
-        or run.status not in {"preparing", "running", "finalizing"}
-        or attempt.status not in {"preparing", "running", "finalizing"}
-        or attempt.finished_at is not None
+        or (
+            terminal is None
+            and (
+                run.status not in {"preparing", "running", "finalizing"}
+                or attempt.status not in {"preparing", "running", "finalizing"}
+                or attempt.finished_at is not None
+            )
+        )
+        or (
+            terminal is not None and not _terminal_fence_matches(run, attempt, terminal)
+        )
     ):
         raise _neutral_error("attempt_fenced")
     # Revision018 permits exact RD persistence, never dispatcher/launcher entry.
@@ -84,11 +141,26 @@ def _check_neutral_fence(run, attempt, fence):
             require_source_identity(run)
         except ValueError:
             raise _neutral_error("unsupported_run_identity") from None
+    elif (run.purpose, run.engine) == ("strategy_search", "openevolve"):
+        from packages.openevolve_adapter.persisted_identity import (
+            require_search_identity,
+        )
+
+        try:
+            require_search_identity(run)
+        except ValueError:
+            raise _neutral_error("unsupported_run_identity") from None
+    elif (run.purpose, run.engine) == ("factor_strategy", "structured"):
+        from backend.app.structured_factor_services import require_structured_identity
+
+        require_structured_identity(run)
     else:
         require_legacy_run(run)
 
 
-def require_neutral_transaction(session, fence: AttemptFence, *, resource_scope=None):
+def require_neutral_transaction(
+    session, fence: AttemptFence, *, resource_scope=None, _terminal_commit=False
+):
     """Require the same active, locked transaction; never reconnect lost authority."""
     state = session.info.get(_NEUTRAL_KEY)
     if (
@@ -105,9 +177,12 @@ def require_neutral_transaction(session, fence: AttemptFence, *, resource_scope=
         or not session.is_active
         or state["connection"].closed
         or state["connection"].invalidated
+        or (state.get("terminal") is not None and not _terminal_commit)
     ):
         raise _neutral_error()
-    _check_neutral_fence(state["run"], state["attempt"], fence)
+    _check_neutral_fence(
+        state["run"], state["attempt"], fence, terminal=state.get("terminal")
+    )
     return state["run"], state["attempt"]
 
 
@@ -174,14 +249,14 @@ def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
             def before_commit(_session):
                 if not state["allow_commit"]:
                     raise _neutral_error("neutral_helper_commit_forbidden")
-                require_neutral_transaction(session, fence)
+                require_neutral_transaction(session, fence, _terminal_commit=True)
 
             event.listen(session, "before_commit", before_commit)
             try:
                 yield session
-                require_neutral_transaction(session, fence)
+                require_neutral_transaction(session, fence, _terminal_commit=True)
                 session.flush()
-                require_neutral_transaction(session, fence)
+                require_neutral_transaction(session, fence, _terminal_commit=True)
                 state["allow_commit"] = True
                 # Commit while the authority context and veto remain installed.
                 transaction.commit()

@@ -67,7 +67,12 @@ def _native_aware_inventory(session, fd, fence, settings):
         total += pending_total
         owned += pending_owned
         count += pending_entries
-    return total, owned, count
+    from backend.app.execution_snapshot_capacity import (
+        pending_snapshot_usage_for_schema,
+    )
+
+    extra, own, entries = pending_snapshot_usage_for_schema(session, fence.owner_id)
+    return total + extra, owned + own, count + entries
 
 
 # New owner + objects directories, journal final, source temporary and final.

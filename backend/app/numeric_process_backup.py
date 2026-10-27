@@ -4,11 +4,12 @@ import hashlib
 from uuid import UUID
 
 from packages.research_runtime.numeric_process_journal import (
-    NumericExtraction,
     NumericIdentity,
     NumericLaunch,
+    NumericReportExtraction,
     NumericStop,
     numeric_admission,
+    parse_numeric_extraction,
     validate_numeric_journal,
 )
 from packages.research_runtime.process_contracts import canonical, digest
@@ -18,7 +19,15 @@ SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 
 
 def validate_numeric_closure_unit(
-    row, indexes, physical, check, read_json, allowed, reservation_ids
+    row,
+    indexes,
+    physical,
+    check,
+    read_json,
+    allowed,
+    reservation_ids,
+    *,
+    allow_reports=False,
 ):
     values = {key: value for key, value in row.items() if key != "created_at"}
     for field in (
@@ -65,7 +74,7 @@ def validate_numeric_closure_unit(
     prefix = f"research-processes/{row['owner_id']}/{row['id']}/"
     models = {"launch": NumericLaunch, "identity": NumericIdentity, "stop": NumericStop}
     if "extraction" in by_kind:
-        models["extraction"] = NumericExtraction
+        models["extraction"] = None
     records = {}
     for name, model in models.items():
         key = prefix + "control/" + name + ".json"
@@ -76,7 +85,13 @@ def validate_numeric_closure_unit(
             raise ValueError("Numeric protected record oversized")
         check(key, hashlib.sha256(data).hexdigest(), len(data))
         allowed.add(key)
-        records[name] = model.model_validate_json(data)
+        records[name] = (
+            parse_numeric_extraction(read_json(key))
+            if model is None
+            else model.model_validate_json(data)
+        )
+        if isinstance(records[name], NumericReportExtraction) and not allow_reports:
+            raise ValueError("Report extraction requires successor closure")
     launch, identity, stop, extraction = validate_numeric_journal(
         records["launch"],
         records["identity"],
@@ -99,6 +114,12 @@ def validate_numeric_closure_unit(
             raise ValueError("Numeric output absent")
         check(key, extraction.sha256, extraction.size_bytes)
         allowed.add(key)
+        if isinstance(extraction, NumericReportExtraction):
+            report_key = prefix + "output/" + extraction.report_basename
+            if report_key not in physical:
+                raise ValueError("Numeric primitive report absent")
+            check(report_key, extraction.report_sha256, extraction.report_size_bytes)
+            allowed.add(report_key)
     if any(
         by_kind[k]["payload"] != value.model_dump(mode="json")
         for k, value in expected.items()

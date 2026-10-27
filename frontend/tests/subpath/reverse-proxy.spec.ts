@@ -73,6 +73,113 @@ test("real login, deep-link reload, assets and logout stay under runtime mount",
     page.getByRole("heading", { name: "Experiments", exact: true }),
   ).toBeVisible();
   await expect(page.locator("script[src]")).not.toHaveCount(0);
+  // New engine history must use the same real Caddy mount, not root URLs or
+  // intercepted responses. The full saved-source browser gate is separate.
+  await page.getByRole("link", { name: "Engine history", exact: true }).click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `${prefix}/engine-runs`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Engine research history", exact: true }),
+  ).toBeVisible();
+  const auth = await token(request);
+  const capability = await request.get(api("/engine-runs/capabilities"), {
+    headers: authorization(auth),
+  });
+  expect(capability.status()).toBe(200);
+  expect(
+    (await capability.json()).engines.every(
+      (item: { can_create: boolean }) => item.can_create === false,
+    ),
+  ).toBe(true);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Engine research history", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Check RD-Agent dataset eligibility" })
+    .click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `${prefix}/engine-runs/preflight`,
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Check RD-Agent research eligibility",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create run — not enabled" }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(
+    page.getByLabel("Retained dataset", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Back to engine history" }).click();
+  const unknown = "00000000-0000-0000-0000-000000000000";
+  const failedDetail = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+        `${prefix}/api/v1/engine-runs/${unknown}` && response.status() === 404,
+  );
+  await page.goto(href(`/engine-runs/${unknown}`));
+  await failedDetail;
+  await expect(page.getByText(/not found/i).first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Seed evaluation", exact: true }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText(/not found/i).first()).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `${prefix}/engine-runs`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Engine research history", exact: true }),
+  ).toBeVisible();
+  // Actual Caddy deep-link/reload/error coverage, not a saved-result claim.
+  const structured = await request.get(
+    api("/structured-executions/capabilities"),
+    { headers: authorization(auth) },
+  );
+  expect(structured.status()).toBe(200);
+  const structuredCapability = await structured.json();
+  expect(structuredCapability.can_create).toBe(false);
+  for (const path of [
+    `/engine-runs/${unknown}/structured-executions/${unknown}`,
+    `/engine-runs/${unknown}/structured-comparison?before=${unknown}&after=11111111-1111-1111-1111-111111111111`,
+  ]) {
+    await page.goto(href(path));
+    if (structuredCapability.can_read)
+      await expect(page.getByText(/not found/i).first()).toBeVisible();
+    else
+      await expect(
+        page.getByRole("heading", {
+          name: "Structured history unavailable",
+          exact: true,
+        }),
+      ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Observed closed-program comparison",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await page.reload();
+    if (structuredCapability.can_read)
+      await expect(page.getByText(/not found/i).first()).toBeVisible();
+    else
+      await expect(
+        page.getByRole("heading", {
+          name: "Structured history unavailable",
+          exact: true,
+        }),
+      ).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === `${prefix}/engine-runs`,
+    );
+  }
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),

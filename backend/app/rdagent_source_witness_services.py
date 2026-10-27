@@ -51,9 +51,21 @@ def _error():
     )
 
 
+def _parse_responses(responses):
+    from packages.rdagent_provider.contracts import RDProviderChatResponse
+
+    if responses and type(responses[0]) is RDProviderChatResponse:
+        from packages.rdagent_provider.source_parser import (
+            parse_selected_provider_responses,
+        )
+
+        return parse_selected_provider_responses(responses)
+    return parse_selected_responses(responses)
+
+
 def require_exact_extracted_source(responses, document):
     try:
-        parsed = parse_selected_responses(tuple(responses))
+        parsed = _parse_responses(tuple(responses))
     except ValueError as error:
         raise _error() from error
     if (parsed.source, parsed.source_sha256) != (
@@ -74,6 +86,10 @@ def _owned(session, model, owner, identity):
 def derive_source_read_witness(session, fence, *, source_id, settings):
     """No caller supplied content/hash/finish reason enters this derivation."""
     require_neutral_transaction(session, fence, resource_scope="factor_objects")
+    from backend.app.rdagent_services import require_research_spec
+
+    _, config = require_research_spec(session, fence)
+    provider = config.schema_version == "mineagent.factor-research.v2"
     source = _scope_row(session, FactorGenerationSource, source_id, fence, lock=True)
     assembly = _scope_row(session, FactorResponseAssembly, source.assembly_id, fence)
     call = _scope_row(session, FactorUpstreamCall, source.call_id, fence)
@@ -142,7 +158,7 @@ def derive_source_read_witness(session, fence, *, source_id, settings):
     selected, responses = _verify_response_parts(
         session, fence, call, projected, settings
     )
-    parsed = parse_selected_responses(tuple(responses))
+    parsed = _parse_responses(tuple(responses))
     version = _owned(session, FactorVersion, fence.owner_id, source.factor_version_id)
     verify_version(session, fence.owner_id, version, settings)
     obj = _owned(session, FactorObject, fence.owner_id, version.code_object_id)
@@ -175,9 +191,17 @@ def derive_source_read_witness(session, fence, *, source_id, settings):
         operation = _scope_row(
             session, ResearchModelOperation, member.operation_id, fence
         )
-        request = parse_request(member.protocol, operation.request)
+        decoder = parse_request
+        if provider:
+            from packages.rdagent_provider.codec import parse_request as decoder
+        request = decoder(member.protocol, operation.request)
         if (
-            member.protocol != "mineagent.rdagent-chat.v1"
+            member.protocol
+            != (
+                "mineagent.rdagent-provider-chat.v1"
+                if provider
+                else "mineagent.rdagent-chat.v1"
+            )
             or request.kind != "chat"
             or request.response_format is None
             or request.response_format.type != "json_object"
@@ -204,7 +228,9 @@ def derive_source_read_witness(session, fence, *, source_id, settings):
         "assembly_id": assembly.id,
         "call_id": call.id,
         "controller_launch_id": launch.id,
-        "parser_profile": PARSER_PROFILE,
+        "parser_profile": "mineagent.rdagent-provider-source-parser.v1"
+        if provider
+        else PARSER_PROFILE,
         "parser_source_sha256": UPSTREAM_FRAGMENT_SHA256,
         "source_sha256": parsed.source_sha256,
         "source_size_bytes": parsed.source_size_bytes,

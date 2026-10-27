@@ -9,6 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 from backend.app.operations_schemas import BackupReceipt
+from backend.app.rdagent_provider_profile import RDProviderServerRuntimeProfile
+from backend.app.rdagent_seed_runtime_profile import RDSeededServerRuntimeProfile
+from backend.app.rdagent_server_profile import RDServerRuntimeProfile
+from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
 from packages.tradegrad_adapter.model_profiles import (
     OperatorModelProfile,
     validate_registry,
@@ -82,6 +86,16 @@ class Settings(BaseSettings):
     factor_installation_max_bytes: int = Field(default=2 * 1024**3, ge=1024)
     factor_max_files: int = Field(default=10_000, ge=1, le=100_000)
     rdagent_research_enabled: bool = False
+    rdagent_runtime_profile: RDServerRuntimeProfile | None = None
+    rdagent_seeded_runtime_profile: RDSeededServerRuntimeProfile | None = None
+    rdagent_provider_runtime_profile: RDProviderServerRuntimeProfile | None = None
+    rdagent_provider_profiles: tuple[RDOperatorModelProfile, ...] = Field(
+        default=(), repr=False
+    )
+    rdagent_live_provider_enabled: bool = False
+    rdagent_synthetic_provider_enabled: bool = False
+    # Host-owned SDK interpreter; never selected by a public research request.
+    rdagent_provider_python: Path | None = None
     openevolve_research_enabled: bool = False
 
     @model_validator(mode="after")

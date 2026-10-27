@@ -10,6 +10,10 @@ export type FactorTab = (typeof factorTabs)[number];
 export type FactorSelection = {
   tab?: FactorTab;
   snapshot?: string;
+  execution?: string;
+  compareVersion?: string;
+  compareExecution?: string;
+  invalidExecution?: boolean;
   listing?: string;
   date?: string;
   offset?: number;
@@ -25,6 +29,29 @@ export function factorSearch(input: Record<string, unknown>): FactorSelection {
       typeof input.snapshot === "string" && uuid.test(input.snapshot)
         ? input.snapshot
         : undefined,
+    execution:
+      typeof input.execution === "string" && uuid.test(input.execution)
+        ? input.execution
+        : undefined,
+    compareVersion:
+      typeof input.compareVersion === "string" &&
+      uuid.test(input.compareVersion)
+        ? input.compareVersion
+        : undefined,
+    compareExecution:
+      typeof input.compareExecution === "string" &&
+      uuid.test(input.compareExecution)
+        ? input.compareExecution
+        : undefined,
+    invalidExecution:
+      input.invalidExecution === true ||
+      ["execution", "compareVersion", "compareExecution"].some(
+        (key) =>
+          input[key] !== undefined &&
+          (typeof input[key] !== "string" || !uuid.test(input[key] as string)),
+      ) ||
+      (!!input.execution && !!input.snapshot) ||
+      undefined,
     listing:
       typeof input.listing === "string" &&
       input.listing.length <= 200 &&
@@ -122,4 +149,11 @@ export function forgetFactorSubmission(owner: string, operation: string): void {
   sessionStorage.removeItem(
     `mineagent.factor.submission.v1.${owner}.${operation}`,
   );
+}
+
+export function selectFactorExecution(
+  selection: FactorSelection,
+  execution?: string,
+): FactorSelection {
+  return { tab: selection.tab, execution };
 }

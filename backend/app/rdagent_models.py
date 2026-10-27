@@ -19,7 +19,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.app.models import Base, utcnow
+
+def _created_at():
+    # Central registration may import dependent scope models while this module
+    # is initializing. Resolve the unchanged clock only when inserting a row.
+    from backend.app.models import utcnow
+
+    return utcnow()
 
 
 class OwnedRunEvidence:
@@ -29,7 +35,7 @@ class OwnedRunEvidence:
     owner_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     run_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True))
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True), default=_created_at
     )
 
 
@@ -64,6 +70,9 @@ def exact_attempt_fk(column, table):
 
 def scope_key():
     return UniqueConstraint("owner_id", "run_id", "attempt_id", "generation", "id")
+
+
+from backend.app.models import Base
 
 
 class FactorResearchSpec(OwnedRunEvidence, Base):

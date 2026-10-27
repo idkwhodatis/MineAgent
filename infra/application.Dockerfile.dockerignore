@@ -20,3 +20,9 @@
 !backend/LICENSE.fastapi-template
 !backend/LICENSE.procrastinate
 !backend/NOTICE.md
+
+# Exact host-side numeric verifier/launch inputs; never arbitrary JSON uploads.
+!runtimes/hostile_deadline/seccomp.default.json
+!runtimes/factor_execution/runtime-draft-inventory.json
+!runtimes/factor_execution/Dockerfile.dockerignore
+!runtimes/factor_normalizer/Dockerfile.dockerignore

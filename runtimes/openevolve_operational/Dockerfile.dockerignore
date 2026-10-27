@@ -1,0 +1,11 @@
+*
+!runtimes
+!runtimes/**
+!packages
+!packages/**
+!.runtime
+!.runtime/openevolve-source
+!.runtime/openevolve-source/**
+**/__pycache__
+**/*.pyc
+**/.git

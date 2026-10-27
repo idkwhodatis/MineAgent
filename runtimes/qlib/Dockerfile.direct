@@ -1,0 +1,14 @@
+# Disabled successor over an exact digest of the accepted installed-Qlib image.
+# Build caller supplies QLIB_IMAGE=sha256:<locally verified installed image ID>.
+# Never use an upstream tag or add dependency/provider installation here.
+ARG QLIB_IMAGE
+FROM ${QLIB_IMAGE}
+LABEL io.mineagent.managed="mineagent-disabled-qlib-direct-analysis-v1"
+COPY packages/factors/contracts.py /opt/qlib/lib/python3.12/site-packages/packages/factors/contracts.py
+COPY packages/qlib_adapter/contracts.py packages/qlib_adapter/direct.py packages/qlib_adapter/direct_wire.py /opt/qlib/lib/python3.12/site-packages/packages/qlib_adapter/
+COPY runtimes/qlib/direct_entrypoint.py runtimes/qlib/protected_output.py runtimes/qlib/protected_deadline.py /opt/qlib/lib/python3.12/site-packages/runtimes/qlib/
+COPY runtimes/hostile_deadline/contract.py runtimes/hostile_deadline/deadline.py /opt/qlib/lib/python3.12/site-packages/runtimes/hostile_deadline/
+USER 0:0
+WORKDIR /
+ENTRYPOINT ["/opt/qlib/bin/python","-I","-m","runtimes.qlib.protected_deadline"]
+CMD []

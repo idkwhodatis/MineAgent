@@ -1,0 +1,11 @@
+**
+!runtimes/
+!runtimes/rdagent/
+!runtimes/rdagent/requirements.lock
+!.runtime/
+!.runtime/rdagent-wheels/
+!.runtime/rdagent-wheels/*.whl
+!.runtime/rdagent-wheels/build-report.json
+!.runtime/rdagent-operational-wheels/
+!.runtime/rdagent-operational-wheels/*.whl
+!.runtime/rdagent-operational-wheels/operational-build-report.json

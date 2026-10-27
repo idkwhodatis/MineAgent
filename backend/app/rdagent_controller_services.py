@@ -5,7 +5,24 @@ from sqlalchemy import select
 from backend.app.rdagent_models import FactorResearchAttemptBinding
 from backend.app.rdagent_services import _scope, require_research_spec
 from backend.app.services import DomainError
-from packages.rdagent_adapter.operational_bootstrap import RDOperationalBootstrap
+from packages.rdagent_adapter.provider_bootstrap import build_operational_bootstrap
+
+
+def controller_profile(admission):
+    """Exact explicit successor, never a wildcard orchestrator profile."""
+    if admission.profile == "mineagent.rdagent-orchestrator.v1":
+        return admission.profile
+    if (
+        admission.profile == "mineagent.rdagent-orchestrator.v2"
+        and admission.schema_version == "mineagent.process-admission.v2"
+        and admission.ipc_policy == "host_ticket"
+        and isinstance(admission.ticket_sha256, str)
+        and len(admission.ticket_sha256) == 64
+    ):
+        return admission.profile
+    raise DomainError(
+        "factor_controller_profile", "Exact RD controller profile required", 409
+    )
 
 
 def expected_operational_bootstrap(session, fence):
@@ -26,7 +43,14 @@ def expected_operational_bootstrap(session, fence):
             "Fresh RD attempt binding is required",
             409,
         )
-    bootstrap = RDOperationalBootstrap(
+    from backend.app.rdagent_seed_controller import seeded_bootstrap_if_declared
+
+    seeded = seeded_bootstrap_if_declared(
+        session, fence, binding=binding, spec=spec, config=config
+    )
+    if seeded is not None:
+        return binding, seeded
+    bootstrap = build_operational_bootstrap(
         owner_id=fence.owner_id,
         run_id=fence.run_id,
         attempt_id=fence.attempt_id,
@@ -56,7 +80,7 @@ def bind_controller_launch(session, fence, *, admission_id):
         admission.logical_operation_id,
     ) != (
         "rd_orchestrator",
-        "mineagent.rdagent-orchestrator.v1",
+        controller_profile(admission),
         bootstrap.config.runtime.orchestrator_image,
         bootstrap.sha256,
         attempt_binding.id,
@@ -105,6 +129,14 @@ def bind_controller_launch(session, fence, *, admission_id):
 
 def require_rd_controller(session, fence, authorization):
     """Every event revalidates locked immutable launch plus current kernel peer."""
+    from runtimes.rdagent_operational.peer import ControllerPeer
+
+    if type(authorization) is ControllerPeer:
+        from backend.app.rdagent_protected_controller import (
+            require_protected_controller,
+        )
+
+        return require_protected_controller(session, fence, authorization)
     from backend.app.engine_peer_services import (
         ControllerBinding,
         require_controller_peer,
@@ -194,7 +226,7 @@ def require_recorded_controller(session, fence, admission_id):
     ) != (
         attempt_binding.id,
         "rd_orchestrator",
-        "mineagent.rdagent-orchestrator.v1",
+        controller_profile(admission),
         bootstrap.config.runtime.orchestrator_image,
         bootstrap.sha256,
     ):

@@ -7,10 +7,13 @@ def read_native_snapshot(connection, capabilities, limits):
     schema = getattr(capabilities, "native_closure_schema", None)
     if schema is None:
         return None, []
-    if schema != native.SCHEMA:
+    if schema not in native.SCHEMAS:
         raise ValueError("Unsupported native snapshot capability")
     closure = native.read_closure(
-        connection, limits.max_files, maximum_bytes=limits.max_manifest_bytes
+        connection,
+        limits.max_files,
+        maximum_bytes=limits.max_manifest_bytes,
+        schema=schema,
     )
     references = {}
     for row in closure["tables"]["factor_native_objects"]:
@@ -35,7 +38,7 @@ def validate_native_snapshot(
         # Old generic backup may retain .h5 orphans, but cannot register them.
         return
     if (
-        schema != native.SCHEMA
+        schema not in native.SCHEMAS
         or snapshot["native_closure"].get("schema_version") != schema
     ):
         raise ValueError("Native closure version differs")
@@ -56,6 +59,9 @@ def native_manifest_keys(snapshot, capabilities):
         raise ValueError("Native snapshot capability differs")
     if schema is None:
         return set()
-    if schema != native.SCHEMA:
+    if (
+        schema not in native.SCHEMAS
+        or snapshot["native_closure"].get("schema_version") != schema
+    ):
         raise ValueError("Native closure version differs")
     return native.manifest_keys(snapshot["native_closure"])

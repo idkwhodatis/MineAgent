@@ -1,0 +1,85 @@
+name: MineAgent protected native evaluator containment
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - 'runtimes/openevolve_evaluator/**'
+      - 'runtimes/research_supervisor/**'
+      - 'runtimes/hostile_deadline/**'
+      - 'runtimes/evaluator/**'
+      - 'packages/openevolve_adapter/**'
+      - 'packages/tradegrad_adapter/**'
+      - 'workers/openevolve/**'
+      - 'tests/openevolve/**'
+      - 'tests/integration/openevolve_native_fixture.py'
+      - 'tests/integration/test_openevolve_native_runtime.py'
+      - '.github/workflows/mineagent-openevolve-native.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-protected-unit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      MINEAGENT_OE_NATIVE_REQUIRED: '1'
+      DATA_PROVIDER_MODE: fixture
+      E2E_LIVE_PROVIDERS: '0'
+      MODEL_PROFILES_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Materialize unchanged compatibility source
+        run: python script/bootstrap_tradegrad_compat.py
+      - name: Install pinned host-only test closure
+        run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Build unchanged native engine and protected derivative
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/oe-native-proof var/oe-native-private
+          native=$(python -m packages.tradegrad_adapter.environment)
+          [[ "$native" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s\n' "$native" > var/oe-native-proof/native-source.sha256
+          python -m runtimes.openevolve_evaluator.recipe > var/oe-native-proof/wrapper.sha256
+          docker build --build-arg "TRADEGRAD_ENVIRONMENT_DIGEST=$native" --iidfile var/oe-native-proof/parent.iid -f runtimes/evaluator/Dockerfile .
+          parent=$(cat var/oe-native-proof/parent.iid)
+          [[ "$parent" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker build --network none --build-arg "NATIVE_EVALUATOR_IMAGE=$parent" --iidfile var/oe-native-proof/protected.iid -f runtimes/openevolve_evaluator/Dockerfile .
+      - name: Require both actual native observation and owner-loss containment cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MINEAGENT_OE_NATIVE_IMAGE="$(cat var/oe-native-proof/protected.iid)"
+          export MINEAGENT_OE_NATIVE_PARENT_IMAGE="$(cat var/oe-native-proof/parent.iid)"
+          status=0
+          python -m pytest tests/integration/test_openevolve_native_runtime.py -q --junitxml=var/oe-native-private/runtime.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/oe-native-private/runtime.xml')
+          summarize(source,Path('var/oe-native-proof/outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==2
+          assert {case.get('name') for case in cases}=={'test_actual_native_observation_protected_bytes_and_exact_stop','test_actual_native_owner_loss_original_deadline_without_result'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Require no retained native unit without label-wide removal
+        if: always()
+        run: |
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.oe-native.admission)
+          test -z "$ids" || { echo 'Native unit containment not confirmed' >&2; exit 1; }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: openevolve-native-containment-proof
+          path: var/oe-native-proof/
+          retention-days: 7
+          if-no-files-found: error

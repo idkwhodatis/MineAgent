@@ -98,13 +98,29 @@ def initialize_budget(session, fence, limits: BudgetVector):
 
 
 def reserve_budget(
-    session, fence, *, purpose: str, logical_key: str, amounts: BudgetVector
+    session,
+    fence,
+    *,
+    purpose: str,
+    logical_key: str,
+    amounts: BudgetVector,
+    settings=None,
 ):
     budget = _budget(session, fence)
     if purpose == "engine_mutation":
-        from backend.app.rdagent_services import require_research_spec
+        from backend.app.models import ResearchRun
 
-        require_research_spec(session, fence)
+        run = session.get(ResearchRun, fence.run_id)
+        if (run.purpose, run.engine) == ("strategy_search", "openevolve"):
+            from packages.openevolve_adapter.persisted_identity import (
+                require_search_identity,
+            )
+
+            require_search_identity(run)
+        else:
+            from backend.app.rdagent_services import require_research_spec
+
+            require_research_spec(session, fence)
         if amounts != BudgetVector(mutation_slots=1):
             raise BrokerAbort("invalid_accounting")
     if (
@@ -130,6 +146,10 @@ def reserve_budget(
         BudgetVector.model_validate(budget.used).add(held)
     ):
         raise BrokerAbort("budget_exhausted")
+    if purpose == "process_unit":
+        from backend.app.openevolve_process_quota import admit_process_capacity
+
+        admit_process_capacity(session, fence, amounts, settings)
     row = ResearchBudgetReservation(
         id=uuid4(),
         **_values(fence),
@@ -408,7 +428,7 @@ def request_reservation(request) -> BudgetVector:
 
 
 def _versioned_reservation(operation):
-    from packages.rdagent_adapter.persisted_broker import (
+    from packages.openevolve_adapter.persisted_broker import (
         request_reservation as versioned,
     )
 
@@ -416,10 +436,10 @@ def _versioned_reservation(operation):
 
 
 def _versioned_response(operation, response):
-    from packages.rdagent_adapter.persisted_broker import (
+    from packages.openevolve_adapter.persisted_broker import (
         parse_request as versioned_request,
     )
-    from packages.rdagent_adapter.persisted_broker import (
+    from packages.openevolve_adapter.persisted_broker import (
         validate_response as versioned_response,
     )
 
@@ -599,11 +619,51 @@ def replay_completed(session, fence, operation_id, request_sha256: str):
     return ref
 
 
-def validate_accounting_closure(tables, indexes, *, rd_source=False):
+def validate_accounting_closure(
+    tables,
+    indexes,
+    *,
+    rd_source=False,
+    openevolve=False,
+    rd_provider=False,
+    model_bindings=None,
+):
     """Validate restored evidence without launching, refunding or redispatching."""
     from collections import defaultdict
 
     from packages.research_runtime.broker_contracts import FixtureContext
+
+    if type(rd_provider) is not bool or (rd_provider and not rd_source):
+        raise ValueError("Provider accounting requires exact RD successor dispatch")
+    if (rd_provider and type(model_bindings) is not dict) or (
+        not rd_provider and model_bindings is not None
+    ):
+        raise ValueError("Exact provider model binding inventory required")
+
+    def provider_binding(operation):
+        from packages.rdagent_provider.codec import PROTOCOLS
+
+        if operation.get("protocol") not in PROTOCOLS:
+            return None
+        if not rd_provider:
+            raise ValueError("Historical accounting cannot acquire provider protocol")
+        from packages.factors.contracts import canonical_bytes
+        from packages.rdagent_provider.contracts import RDModelBinding
+
+        binding = model_bindings.get(str(operation["run_id"]))
+        if type(binding) is not RDModelBinding:
+            raise ValueError("Provider operation lacks exact immutable model binding")
+        return RDModelBinding.model_validate_json(canonical_bytes(binding))
+
+    if type(rd_source) is not bool or type(openevolve) is not bool:
+        raise ValueError("Exact accounting version flags required")
+    if openevolve and not rd_source:
+        raise ValueError("OE accounting requires the RD successor closure")
+    versioned = None
+    if openevolve:
+        from packages.openevolve_adapter import persisted_broker as versioned
+    elif rd_source:
+        from packages.rdagent_adapter import persisted_broker as versioned
 
     def rows(name):
         return tables[name]
@@ -719,10 +779,8 @@ def validate_accounting_closure(tables, indexes, *, rd_source=False):
             raise ValueError("Budget projections do not conserve immutable ledger")
     context_keys = set()
     for context in rows("research_operation_contexts"):
-        if rd_source:
-            from packages.rdagent_adapter.persisted_broker import validate_context
-
-            typed = validate_context(context["context"])
+        if versioned is not None:
+            typed = versioned.validate_context(context["context"])
         else:
             typed = FixtureContext.model_validate(context["context"])
         if digest(typed) != context["context_sha256"]:
@@ -759,16 +817,38 @@ def validate_accounting_closure(tables, indexes, *, rd_source=False):
             operation["state"] == "aborted" and not revoked
         ):
             raise ValueError("Operation disagrees with durable context revocation")
-        if rd_source:
-            from packages.rdagent_adapter.persisted_broker import (
-                parse_request as versioned,
+        protocol = (
+            operation.get("protocol")
+            if versioned is not None
+            else operation.get("protocol", "mineagent.neutral-model.v1")
+        )
+        binding = provider_binding(operation)
+        if binding is not None:
+            from packages.rdagent_provider.codec import (
+                parse_request as provider_request,
             )
+            from packages.rdagent_provider.contracts import require_request_binding
 
-            request = versioned(operation["protocol"], operation["request"])
+            request = provider_request(protocol, operation["request"])
+            require_request_binding(request, binding)
+        elif versioned is not None:
+            request = versioned.parse_request(protocol, operation["request"])
         else:
+            if protocol != "mineagent.neutral-model.v1":
+                raise ValueError("Unsupported historical accounting protocol")
             request = parse_request(operation["request"])
+        if binding is not None:
+            from packages.rdagent_provider.codec import request_sha256 as provider_hash
+
+            request_digest = provider_hash(protocol, request)
+        elif protocol == "mineagent.openevolve-chat.v1":
+            from packages.research_runtime.engine_broker_contracts import request_sha256
+
+            request_digest = request_sha256(protocol, request)
+        else:
+            request_digest = digest(request)
         if (
-            digest(request) != operation["request_sha256"]
+            request_digest != operation["request_sha256"]
             or operation["purpose"] not in {"chat", "embedding", "continuation"}
             or ((operation["purpose"] == "embedding") != (request.kind == "embedding"))
             or type(operation["ordinal"]) is not int
@@ -803,7 +883,11 @@ def validate_accounting_closure(tables, indexes, *, rd_source=False):
             for suffix in ("object_id", "object_kind", "sha256")
         ):
             raise ValueError("Failed transport contains a response")
-        if (outcome["outcome"] == "unknown") != (
+        operation = lookup("research_model_operations", transport["operation_id"])
+        if provider_binding(operation) is not None:
+            if settlement["outcome"] != "conservative_unknown":
+                raise ValueError("Provider billing cannot imply a measured refund")
+        elif (outcome["outcome"] == "unknown") != (
             settlement["outcome"] == "conservative_unknown"
         ):
             raise ValueError("Unknown usage is not conservatively retained")
@@ -817,11 +901,30 @@ def validate_accounting_closure(tables, indexes, *, rd_source=False):
         )
         same(transport, operation)
         same(transport, reservation)
+        binding = provider_binding(operation)
+        if binding is not None:
+            from packages.rdagent_provider.accounting import (
+                request_reservation as provider_reservation,
+            )
+            from packages.rdagent_provider.codec import (
+                parse_request as provider_request,
+            )
+
+            expected_amount = provider_reservation(
+                provider_request(operation["protocol"], operation["request"]), binding
+            )
+        else:
+            expected_amount = (
+                versioned.request_reservation(
+                    operation["protocol"], operation["request"]
+                )
+                if versioned is not None
+                else request_reservation(operation["request"])
+            )
         if (
             reservation["purpose"] != "model_transport"
             or str(reservation["id"]) in used_reservations
-            or reservation["amounts"]
-            != request_reservation(operation["request"]).model_dump()
+            or reservation["amounts"] != expected_amount.model_dump()
         ):
             raise ValueError("Physical transport reservation mismatch")
         used_reservations.add(str(reservation["id"]))
@@ -842,6 +945,8 @@ def validate_accounting_closure(tables, indexes, *, rd_source=False):
         by_operation[str(operation["id"])].append(transport)
     for operation in operations:
         chain = sorted(by_operation[str(operation["id"])], key=lambda t: t["ordinal"])
+        if provider_binding(operation) is not None and len(chain) > 1:
+            raise ValueError("Provider submission cannot silently retry a transport")
         if [t["ordinal"] for t in chain] != list(range(1, len(chain) + 1)) or any(
             t["state"] != "failed" for t in chain[:-1]
         ):

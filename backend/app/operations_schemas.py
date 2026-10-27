@@ -29,6 +29,13 @@ class BackupReceipt(BaseModel):
         "017_numeric_process_boundary",
         "018_rd_source_persistence",
         "019_native_hdf_storage",
+        "020_rd_controller",
+        "021_execution_snapshots",
+        "022_factor_analysis",
+        "023_rd_submissions",
+        "024_openevolve_initial",
+        "025_structured_factor_strategy",
+        "026_rd_seeded_submissions",
     ]
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     backup_created_at: datetime

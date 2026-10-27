@@ -3,10 +3,6 @@
 The fixture controller is only admitted; full shared process backup must continue
 rejecting it. This test exercises RD's own source closure with actual SQL rows and
 files; no fake stopped controller or bypass of the shared backup gate is used.
-The RD subvalidator receives actual active-run references solely to test source
-retention; this does not satisfy its production caller's independently checked
-shared-closure prerequisite. Full production cold restore remains separately
-required by test_neutral_restore and the completed-evidence acceptance gate.
 """
 
 import copy
@@ -14,7 +10,6 @@ import copy
 # pytest fixture import is deliberately re-used as a test parameter.
 # ruff: noqa: F811
 import pytest
-from sqlalchemy import text
 from test_rd_source_persistence import persist, source_setup  # noqa: F401
 
 from backend.app import factor_backup, rdagent_backup, research_backup
@@ -24,66 +19,12 @@ pytestmark = pytest.mark.postgres
 REVISION = "018_rd_source_persistence"
 
 
-def active_source_references(connection, maximum_rows=10000, maximum_bytes=32_000_000):
-    """Test-only SQL references, NOT a validated or restorable research closure.
-
-    The source fixture deliberately has an active run/admitted controller. Read
-    its actual immutable references without forging terminal/stop evidence or
-    changing the production cold-closure reader's admission rules.
-    """
-    count = size = 0
-
-    def rows(query):
-        nonlocal count, size
-        stream = connection.execute(
-            text(query).execution_options(stream_results=True, yield_per=1),
-            {"limit": maximum_rows + 1},
-        ).scalars()
-        result = []
-        try:
-            for row in stream:
-                count += 1
-                size += len(research_backup.canonical(row))
-                if count > maximum_rows or size > maximum_bytes:
-                    raise ValueError("Active source reference snapshot exceeds bounds")
-                result.append(row)
-        finally:
-            stream.close()
-        return result
-
-    return {
-        "schema_version": research_backup.SCHEMA_V4,
-        "tables": {
-            name: rows(
-                f"SELECT to_jsonb(t) FROM {name} t ORDER BY {research_backup.PRIMARY_KEYS.get(name, 'id')} LIMIT :limit"
-            )
-            for name in research_backup.FIELDS_V4
-        },
-        "external_bindings": {
-            "runs": rows(
-                "SELECT to_jsonb(t) FROM (SELECT id,owner_id,generation,purpose,engine,status FROM research_runs ORDER BY id) t LIMIT :limit"
-            ),
-            "attempts": rows(
-                "SELECT to_jsonb(t) FROM (SELECT a.id,r.owner_id,a.run_id,a.generation,a.status,a.sandbox_stopped,a.finished_at FROM execution_attempts a JOIN research_runs r ON r.id=a.run_id ORDER BY a.id) t LIMIT :limit"
-            ),
-        },
-    }
-
-
 def snapshots(setup):
     factory, _, _, settings = setup
     saved = persist(setup)
     with factory.kw["bind"].connect() as connection:
         rd = rdagent_backup.read_closure(connection, 10000, revision=REVISION)
-        with pytest.raises(
-            ValueError, match="Active runs cannot enter neutral cold closure"
-        ):
-            research_backup.read_closure(connection, 10000, revision=REVISION)
-        research = active_source_references(connection)
-        with pytest.raises(
-            ValueError, match="Active runs cannot enter neutral cold closure"
-        ):
-            research_backup._indexes(research, 10000)
+        research = research_backup.read_closure(connection, 10000, revision=REVISION)
         factors = factor_backup.read_closure(connection, 10000, revision=REVISION)
 
     def read_bytes(key, sha, maximum):
@@ -128,10 +69,6 @@ def test_real_rd_snapshot_row_and_byte_caps(source_setup):
     factory, _, _, _ = source_setup
     persist(source_setup)
     with factory.kw["bind"].connect() as connection:
-        with pytest.raises(ValueError, match="snapshot exceeds bounds"):
-            active_source_references(connection, maximum_rows=1)
-        with pytest.raises(ValueError, match="snapshot exceeds bounds"):
-            active_source_references(connection, maximum_bytes=100)
         with pytest.raises(ValueError):
             rdagent_backup.read_closure(connection, 1, revision=REVISION)
         with pytest.raises(ValueError):

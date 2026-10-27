@@ -780,3 +780,52 @@ def test_request_body_cap_rejects_before_connecting():
 def test_physical_timestamp_requires_timezone(value):
     with pytest.raises(bench.BenchmarkError, match="^invalid_execution_evidence$"):
         bench.interval(value, "2025-01-02T00:00:00+00:00", 240)
+
+
+def test_source_identity_exact_inventory_limit_includes_fixed_inputs(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(bench, "ROOT", tmp_path)
+    source = tmp_path / "packages"
+    source.mkdir()
+    for index in range(bench.SOURCE_FILES_MAX - 4):
+        (source / f"source_{index}.py").write_bytes(b"pass\n")
+    for relative in (
+        ".dockerignore",
+        "backend/requirements.lock",
+        bench.PROFILE_PATH,
+        bench.FIXTURE_PATH,
+    ):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"fixed\n")
+    assert bench.code_identity({})["source_file_count"] == bench.SOURCE_FILES_MAX
+    (source / "overflow.py").write_bytes(b"pass\n")
+    with pytest.raises(bench.BenchmarkError, match="fixture_integrity"):
+        bench.code_identity({})
+
+
+def test_source_identity_file_size_and_symlink_rejection_unchanged(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(bench, "ROOT", tmp_path)
+    path = tmp_path / "source.py"
+    path.write_bytes(b"x" * (bench.SOURCE_FILE_BYTES_MAX + 1))
+    with pytest.raises(bench.BenchmarkError, match="fixture_integrity"):
+        bench.local_file("source.py", bench.SOURCE_FILE_BYTES_MAX)
+    path.write_bytes(b"pass\n")
+    (tmp_path / "linked.py").symlink_to(path)
+    with pytest.raises(bench.BenchmarkError, match="fixture_integrity"):
+        bench.local_file("linked.py", bench.SOURCE_FILE_BYTES_MAX)
+
+
+def test_source_identity_total_bytes_still_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(bench, "ROOT", tmp_path)
+    source = tmp_path / "packages"
+    source.mkdir()
+    for index in range(5):
+        (source / f"source_{index}.py").write_bytes(b"pass\n")
+    block = b"x" * bench.SOURCE_FILE_BYTES_MAX
+    monkeypatch.setattr(bench, "local_file", lambda relative, cap: block)
+    with pytest.raises(bench.BenchmarkError, match="fixture_integrity"):
+        bench.code_identity({})

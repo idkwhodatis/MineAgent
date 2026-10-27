@@ -22,15 +22,15 @@ from pathlib import Path
 
 # Filled from the reviewed source snapshot, not inferred from caller metadata.
 SOURCE_PINS = {
-    "backend/app/rdagent_source_witness_services.py": "fc2ce5d64341d55c1f4a53d37bddc16b7deea0aa27f181f8f46d527d55d042a0",
-    "backend/app/research_process_models.py": "965975ca4dd4748416a9bdd0cefc2cb24f1c1fc9457a7ac8ced20dd936932980",
-    "backend/app/models.py": "394eba6f2966c6e181998b574ccd49df2db09848bc88ab3a13da5ed4144e7ee9",
+    "backend/app/rdagent_source_witness_services.py": "0f78664b353206246070d22c0332f4529451cd43fabaa727e70198b22c0322d6",
+    "backend/app/research_process_models.py": "da0a3e80abaac7d5b4099debeedfabe9bb3ac4cf1817a91909f24d00265fa65d",
+    "backend/app/models.py": "80a747e38cd2b126f90572506efd6c3af9ddba28bede697a547a09f01af57615",
     "backend/app/engine_evidence_ddl.py": "401741d6d717dc375c65a7fa9d6c8be035bb2a150e91c5904117fbe1d13c93c4",
     "backend/app/factor_models.py": "a5d3f27f2b8e23048e754b161944bf2f9dde518feff8de716e94748a321dde6b",
-    "backend/app/rdagent_models.py": "b68d559286c7796701dcc9757a4b51193504df66f0cc9ce15a113de9b40477fd",
+    "backend/app/rdagent_models.py": "8c329f76ca273d8f3610ef8a57432a381dfbecdea89d976083f946cd5d15e78e",
     "backend/app/rdagent_source_witness_models.py": "d2396f03edb782e47bfedc1ef0abcdc4ed7fdebc0e2894ccff108d4896518263",
     "backend/app/research_broker_models.py": "89c8bfd83e201eb02909cd5c17af2866d5e2964800fdedbf27757d460fbc1248",
-    "backend/app/research_object_models.py": "562091d1a552b7e2a073f957cb9496721303d1c374580a15049897ab5f6a1687",
+    "backend/app/research_object_models.py": "9eeed4592afe36eecc1c34966814e7109c627633bb4dab505c7ccfe2502ebaf8",
     "packages/rdagent_adapter/response_parser.py": "a6f771c98a7b87be16368a04a5fa957b98b745acb8159f3ec6e0cecb67ae9c5a",
 }
 

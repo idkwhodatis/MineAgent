@@ -241,6 +241,11 @@ def main(argv=None) -> None:
                 raise ValueError("Unknown role")
             if args.role in SUPERVISORS:
                 validate_supervisor()
+            if args.role in {"api", "research-dispatcher", *SUPERVISORS}:
+                from backend.app.core.config import get_settings
+                from script.compose_provider_runtime import validate_enabled_profiles
+
+                validate_enabled_profiles(get_settings(), args.role)
             command = ROLES[args.role]
         elif args.action == "migrate":
             command = ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]

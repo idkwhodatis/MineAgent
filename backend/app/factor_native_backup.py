@@ -13,16 +13,19 @@ from uuid import UUID
 from sqlalchemy import text
 
 from backend.app.factor_native_services import decode_intent
+from backend.app.rdagent_snapshot_config import parse_snapshot_config
 from packages.factors.contracts import SnapshotInput, canonical_bytes, digest
 from packages.factors.native_publication import NativePublicationIntent
 from packages.rdagent_adapter.assembly import validate_projection_binding
-from packages.rdagent_adapter.contracts import FactorResearchConfig
 from packages.rdagent_adapter.host_evidence import research_snapshot_input
 from packages.rdagent_adapter.prefix import PrefixManifest
 from packages.research_runtime.numeric_process_journal import NumericIntent
 from packages.research_runtime.process_persistence_codec import ROW_FIELDS, decode_row
 
 SCHEMA = "mineagent.native-hdf-restore-closure.v1"
+SCHEMA_V2 = "mineagent.native-hdf-restore-closure.v2"
+SCHEMA_V3 = "mineagent.native-hdf-restore-closure.v3"
+SCHEMAS = frozenset({SCHEMA, SCHEMA_V2, SCHEMA_V3})
 FIELDS = {
     "factor_native_publications": "id owner_id run_id attempt_id generation cutoff_id admission_id reservation_id source_id source_object_id source_sha256 stop_receipt_id extraction_receipt_id stop_kind extraction_kind intent intent_sha256 object_id sha256 size_bytes storage_key journal_key peak_bytes peak_entries created_at",
     "factor_native_normalizer_inputs": "admission_id owner_id run_id attempt_id generation publication_id reservation_id object_id sha256 size_bytes storage_key input_sha256 intent_sha256 created_at",
@@ -38,7 +41,9 @@ PK = {
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 
 
-def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
+def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000, schema=SCHEMA):
+    if schema not in SCHEMAS:
+        raise ValueError("Unsupported native closure version")
     tables, count, size = {}, 0, 0
     for name in FIELDS:
         where = (
@@ -62,14 +67,14 @@ def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
         finally:
             stream.close()
         tables[name] = rows
-    return {"schema_version": SCHEMA, "tables": tables}
+    return {"schema_version": schema, "tables": tables}
 
 
 def _indexes(closure, maximum_rows):
     if (
         type(closure) is not dict
         or set(closure) != {"schema_version", "tables"}
-        or closure["schema_version"] != SCHEMA
+        or closure["schema_version"] not in SCHEMAS
     ):
         raise ValueError("Unsupported native closure")
     tables = closure["tables"]
@@ -117,6 +122,27 @@ def validate_closure(
     rd_source_closure,
 ):
     indexes = _indexes(closure, maximum_rows)
+    if (
+        closure["schema_version"] in {SCHEMA_V2, SCHEMA_V3}
+        and research_closure.get("schema_version")
+        not in {
+            SCHEMA_V2: {"mineagent.research-restore-closure.v6"},
+            SCHEMA_V3: {
+                "mineagent.research-restore-closure.v7",
+                "mineagent.research-restore-closure.v8",
+                "mineagent.research-restore-closure.v9",
+                "mineagent.research-restore-closure.v10",
+            },
+        }[closure["schema_version"]]
+    ):
+        raise ValueError("Native report closure requires research v6")
+    if (
+        research_closure.get("schema_version")
+        == "mineagent.research-restore-closure.v10"
+        and rd_source_closure.get("schema_version")
+        != "mineagent.rd-source-restore-closure.v5"
+    ):
+        raise ValueError("Seeded native closure requires exact RD v5")
     physical = {row["path"]: row for row in inventory}
     if len(physical) != len(inventory):
         raise ValueError("Duplicate physical paths")
@@ -260,7 +286,17 @@ def validate_closure(
         ]
         if len(specs) != 1:
             raise ValueError("Native research spec missing")
-        config = FactorResearchConfig.model_validate(specs[0]["config"])
+        config = parse_snapshot_config(
+            specs[0]["config"],
+            owner_id=specs[0]["owner_id"],
+            provider_config=(
+                closure["schema_version"] == SCHEMA_V3
+                and research_closure.get("schema_version")
+                == "mineagent.research-restore-closure.v10"
+                and rd_source_closure.get("schema_version")
+                == "mineagent.rd-source-restore-closure.v5"
+            ),
+        )
         expected = research_snapshot_input(
             config,
             factor_version_id=intent.factor_version_id,
@@ -426,9 +462,20 @@ def validate_closure(
         )
         c = source["factor_cutoff_executions"][p["cutoff_id"]]
         prefix = PrefixManifest.model_validate(c["projection"])
-        from packages.factors.native_normalizer_binding import normalizer_inventory
+        from packages.factors.native_normalizer_binding import (
+            normalizer_inventory,
+            normalizer_report_selection,
+        )
 
-        expected = normalizer_inventory(prefix, candidate.output)
+        report = normalizer_report_selection(
+            prefix,
+            candidate.output,
+            normalizer.inputs.files,
+            allow_reports=closure["schema_version"] in {SCHEMA_V2, SCHEMA_V3},
+        )
+        expected = normalizer_inventory(
+            prefix, candidate.output, primitive_report=report
+        )
         if (
             normalizer.admission.role,
             normalizer.admission.profile,

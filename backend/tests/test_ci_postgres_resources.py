@@ -174,11 +174,19 @@ def test_disposable_workflow_resource_limits_do_not_weaken_production_durability
         assert "POSTGRES_HOST_AUTH_METHOD=trust" not in source
     # The resource tuning and diagnostic are CI-only, never application settings
     # or either deployed/full-Compose PostgreSQL service's startup command.
-    for path in (ROOT / "infra").glob("compose*.yml"):
+    profiles = tuple((ROOT / "infra").glob("compose*.yml"))
+    database_profiles = {"compose.yml", "compose.full.yml"}
+    # The explicit provider overlay has no database service (also checked by
+    # the mandatory parsed Compose contracts), so it must not duplicate an image.
+    assert {path.name for path in profiles} == database_profiles | {
+        "compose.providers.yml"
+    }
+    for path in profiles:
         source = path.read_text()
         assert "ci_postgres_resources" not in source
         assert "max_wal_size" not in source and "checkpoint_timeout" not in source
-        assert "postgres:18.6" in source
+        if path.name in database_profiles:
+            assert "postgres:18.6" in source
 
 
 @pytest.mark.parametrize("operation", ["mkdir", "write_text"])

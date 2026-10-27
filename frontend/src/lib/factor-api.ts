@@ -1,3 +1,4 @@
+import type { FactorExecutionRecord } from "./factor-execution-api";
 import { deploymentUrl } from "./deployment";
 import { queryOptions } from "@tanstack/react-query";
 import { clearSession, readSession } from "./session";
@@ -28,6 +29,7 @@ export type FactorListItem = FactorPresentation & {
     missing_count: number;
   } | null;
   analysis_status: string;
+  latest_execution?: FactorExecutionRecord | null;
   usage: FactorUsage;
 };
 export type FactorVersion = {

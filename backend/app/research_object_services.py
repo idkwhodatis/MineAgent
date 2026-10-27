@@ -29,7 +29,7 @@ from backend.app.research_object_models import (
     ResearchObjectPublication,
 )
 from backend.app.services import DomainError
-from packages.rdagent_adapter.object_identity import (
+from packages.rdagent_provider.object_identity import (
     identity_for_content,
     parse_storage_key,
     publication_journal,
@@ -43,6 +43,44 @@ from packages.research_runtime.object_identity import (
 INSTALLATION_MAX_BYTES = 2 * 1024**3
 OWNER_MAX_BYTES = 512 * 1024**2
 MAX_FILES = 10000
+
+
+def _versioned_identity(session, owner, kind, content):
+    if kind == "rd_provider_process_receipt":
+        from sqlalchemy import text
+
+        if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
+            "026_rd_seeded_submissions"
+        ]:
+            raise _error("rd_provider_receipt_revision")
+    if kind == "factor_generation_feedback":
+        if type(content) is not bytes or not 1 <= len(content) <= 65536:
+            raise _error("rd_feedback_body_bound")
+        import json
+
+        try:
+            version = json.loads(content).get("schema_version")
+        except (ValueError, AttributeError, UnicodeError, RecursionError):
+            version = None
+        if version == "mineagent.rd-execution-feedback.v2":
+            from sqlalchemy import text
+
+            from packages.rdagent_adapter.analysis_object_codec import (
+                identity_for_content as analysis_identity,
+            )
+
+            if session.scalars(
+                text("SELECT version_num FROM alembic_version")
+            ).all() not in (
+                ["022_factor_analysis"],
+                ["023_rd_submissions"],
+                ["024_openevolve_initial"],
+                ["025_structured_factor_strategy"],
+                ["026_rd_seeded_submissions"],
+            ):
+                raise _error("rd_analysis_feedback_revision")
+            return analysis_identity(owner, kind, content)
+    return identity_for_content(owner, kind, content)
 
 
 def _error(code="neutral_object_uncertain"):
@@ -90,7 +128,27 @@ def physical_inventory(
                             "model_request",
                             "model_response",
                             "process_receipt",
+                            "rd_provider_process_receipt",
                             "factor_response_assembly",
+                            "factor_generation_proposal",
+                            "factor_generation_feedback",
+                            "factor_adoption_receipt",
+                            "search_checkpoint_chunk",
+                            "search_checkpoint_file",
+                            "search_checkpoint_inventory",
+                            "search_evaluation_input",
+                            "search_source",
+                            "search_rendered_prompt",
+                            "search_proposal_source",
+                            "search_checkpoint_closure",
+                            "search_worker_identity",
+                            "search_population",
+                            "search_context",
+                            "search_controller_event",
+                            "search_worker_outcome",
+                            "search_native_observation",
+                            "search_native_failure",
+                            "search_objective",
                         }:
                             raise _error()
                     else:
@@ -236,10 +294,18 @@ def _check_write_capacity(session, fence, publication, settings):
         + publication.peak_bytes
         + sum(row.peak_bytes for row in others if row.owner_id == fence.owner_id)
     )
+    from backend.app.openevolve_process_quota import combined_holds
+
+    upload_capacity = combined_holds(session, settings)
+    total += sum(x[1] for x in upload_capacity)
+    owned += sum(x[1] for x in upload_capacity if x[0] == fence.owner_id)
     if (
         total > settings.neutral_object_installation_max_bytes
         or owned > settings.neutral_object_owner_max_bytes
-        or len(inventory) - len(credited) + 4 * (len(others) + 1)
+        or len(inventory)
+        - len(credited)
+        + 4 * (len(others) + 1)
+        + sum(x[2] for x in upload_capacity)
         > settings.neutral_object_max_files
     ):
         raise _error("neutral_object_capacity")
@@ -250,11 +316,89 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
     require_neutral_transaction(session, fence, resource_scope="objects")
     from backend.app.research_broker_services import require_reservation
 
+    if kind == "rd_provider_process_receipt":
+        from backend.app.rdagent_services import require_research_spec
+        from packages.rdagent_provider.process_receipts import parse_receipt
+
+        _, config = require_research_spec(session, fence)
+        document = parse_receipt(content)
+        if (
+            config.schema_version != "mineagent.factor-research.v2"
+            or any(
+                getattr(document, key) != getattr(fence, key)
+                for key in ("owner_id", "run_id", "attempt_id", "generation")
+            )
+            or document.model_binding_sha256 != config.model_binding.sha256
+        ):
+            raise _error("rd_provider_receipt_scope")
     if kind == "factor_response_assembly":
         from backend.app.rdagent_services import require_research_spec
 
         require_research_spec(session, fence)
-    identity = identity_for_content(fence.owner_id, kind, content)
+    from packages.rdagent_adapter.execution_object_identity import KINDS
+
+    if kind in KINDS:
+        from sqlalchemy import text
+
+        from backend.app.rdagent_services import require_research_spec
+        from packages.rdagent_adapter.execution_outcomes import parse_document
+
+        revisions = session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all()
+        if revisions not in (
+            ["021_execution_snapshots"],
+            ["022_factor_analysis"],
+            ["023_rd_submissions"],
+            ["024_openevolve_initial"],
+            ["025_structured_factor_strategy"],
+            ["026_rd_seeded_submissions"],
+        ):
+            raise _error("rd_execution_object_revision")
+        require_research_spec(session, fence)
+        if revisions in (
+            ["022_factor_analysis"],
+            ["023_rd_submissions"],
+            ["024_openevolve_initial"],
+            ["025_structured_factor_strategy"],
+            ["026_rd_seeded_submissions"],
+        ):
+            from packages.rdagent_adapter.analysis_object_codec import parse_document
+        document = parse_document(kind, content)
+        if any(
+            getattr(document, key) != getattr(fence, key)
+            for key in ("owner_id", "run_id", "attempt_id", "generation")
+        ):
+            raise _error("rd_execution_object_scope")
+    from packages.openevolve_adapter.object_identity import KINDS as OE_KINDS
+
+    if kind in OE_KINDS:
+        from sqlalchemy import text
+
+        from backend.app.openevolve_services import _current_search
+        from packages.openevolve_adapter.object_identity import (
+            parse_document as parse_oe,
+        )
+        from packages.openevolve_adapter.persisted_identity import (
+            require_search_identity,
+        )
+
+        if session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all() not in (
+            ["024_openevolve_initial"],
+            ["025_structured_factor_strategy"],
+            ["026_rd_seeded_submissions"],
+        ):
+            raise _error("oe_object_revision")
+        require_search_identity(_current_search(session, fence))
+        document = parse_oe(kind, content)
+        if hasattr(document, "owner_id") and any(
+            getattr(document, key) != getattr(fence, key)
+            for key in ("owner_id", "run_id", "attempt_id", "generation")
+        ):
+            raise _error("oe_object_scope")
+    identity = _versioned_identity(session, fence.owner_id, kind, content)
     peak = 2 * len(content) + 2 * MAX_JOURNAL_BYTES
     require_reservation(
         session,
@@ -307,10 +451,16 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
         owned = sum(
             item.size_bytes for item in inventory if item.owner_id == fence.owner_id
         ) + sum(row.peak_bytes for row in held if row.owner_id == fence.owner_id)
+        from backend.app.openevolve_process_quota import combined_holds
+
+        upload_capacity = combined_holds(session, settings)
+        total += sum(x[1] for x in upload_capacity)
+        owned += sum(x[1] for x in upload_capacity if x[0] == fence.owner_id)
         if (
             total + peak > settings.neutral_object_installation_max_bytes
             or owned + peak > settings.neutral_object_owner_max_bytes
-            or len(inventory) + 4 * (len(held) + 1) > settings.neutral_object_max_files
+            or len(inventory) + 4 * (len(held) + 1) + sum(x[2] for x in upload_capacity)
+            > settings.neutral_object_max_files
         ):
             raise _error("neutral_object_capacity")
         publication = ResearchObjectPublication(
@@ -364,7 +514,7 @@ def finalize_object(session, fence, publication_id, settings):
         publication.sha256,
         publication.size_bytes,
     )
-    identity_for_content(fence.owner_id, publication.object_kind, content)
+    _versioned_identity(session, fence.owner_id, publication.object_kind, content)
     existing = session.scalar(
         select(ResearchObject).where(
             ResearchObject.owner_id == fence.owner_id,
@@ -438,8 +588,8 @@ def publish_reserved_object(factory, fence, publication_id, content, settings):
     ):
         with neutral_transaction(factory, fence, resource_scope="objects") as session:
             publication = _publication(session, fence, publication_id)
-            identity = identity_for_content(
-                fence.owner_id, publication.object_kind, content
+            identity = _versioned_identity(
+                session, fence.owner_id, publication.object_kind, content
             )
             if (
                 identity.storage_key != publication.storage_key
@@ -500,5 +650,5 @@ def read_research_object(session, fence, object_id, kind, sha256, settings):
     content = _read_exact(
         settings.storage_root, row.storage_key, row.sha256, row.size_bytes
     )
-    identity_for_content(fence.owner_id, kind, content)
+    _versioned_identity(session, fence.owner_id, kind, content)
     return content

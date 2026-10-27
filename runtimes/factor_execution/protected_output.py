@@ -20,7 +20,7 @@ MAX_FRAME = MAX_OUTPUT + 1024
 def read_regular(name: str, cap: int) -> bytes:
     if (
         type(name) is not str
-        or name not in OUTPUTS
+        or name not in (*OUTPUTS, "rows.json")
         or type(cap) is not int
         or not 0 < cap <= MAX_OUTPUT
     ):
@@ -80,7 +80,7 @@ def read_regular(name: str, cap: int) -> bytes:
 def frame(kind: int, payload: bytes) -> bytes:
     if (
         type(kind) is not int
-        or kind not in (2, 3)
+        or kind not in (2, 3, 4)
         or type(payload) is not bytes
         or len(payload) > MAX_FRAME
     ):
@@ -92,7 +92,7 @@ def parse_frame(raw: bytes) -> tuple[int, bytes]:
     if type(raw) is not bytes or len(raw) < 11 or raw[:6] != MAGIC:
         raise ValueError("missing or truncated protected frame")
     kind, size = raw[6], struct.unpack(">I", raw[7:11])[0]
-    if kind not in (2, 3) or size > MAX_FRAME or len(raw) != 11 + size:
+    if kind not in (2, 3, 4) or size > MAX_FRAME or len(raw) != 11 + size:
         raise ValueError("invalid, truncated, duplicate or oversized protected frame")
     return kind, raw[11:]
 
@@ -115,6 +115,16 @@ def export_output(name: str, child_exit_code: int) -> None:
     except (OSError, ValueError):
         write_frame(3, rejection_metadata(name, child_exit_code))
         return
+    if name == "values.parquet":
+        # Report output is emitted only for normalization.v2. Missing report
+        # remains legacy MANU2; a report-required host rejects that downgrade.
+        try:
+            report = read_regular("rows.json", MAX_OUTPUT)
+        except FileNotFoundError:
+            report = None
+        if report is not None:
+            write_frame(4, report_export(content, report, child_exit_code))
+            return
     metadata = json.dumps(
         {
             "schema": "mineagent.numeric-quiescence.v2",
@@ -189,3 +199,53 @@ def validate_rejection(
     if payload != rejection_metadata(expected_basename, expected_exit_code):
         raise ValueError("protected rejection did not match exact child exit")
     return expected_exit_code
+
+
+def report_export(content: bytes, report: bytes, child_exit_code: int) -> bytes:
+    """Explicit MANU2 kind4 / quiescence.v3; legacy kind2 grammar is unchanged."""
+    if (
+        type(content) is not bytes
+        or type(report) is not bytes
+        or not content
+        or not report
+        or len(content) + len(report) > MAX_OUTPUT
+        or type(child_exit_code) is not int
+    ):
+        raise ValueError("bounded paired output required")
+    metadata = json.dumps(
+        {
+            "schema": "mineagent.numeric-quiescence.v3",
+            "basename": "values.parquet",
+            "report_basename": "rows.json",
+            "child_exit_code": child_exit_code,
+            "descendants_reaped": True,
+            "size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "report_size": len(report),
+            "report_sha256": hashlib.sha256(report).hexdigest(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return struct.pack(">I", len(metadata)) + metadata + content + report
+
+
+def validate_report_export(payload: bytes) -> tuple[bytes, bytes]:
+    if type(payload) is not bytes or not 4 <= len(payload) <= MAX_FRAME:
+        raise ValueError("paired export bound")
+    size = struct.unpack(">I", payload[:4])[0]
+    if not 0 < size <= 768 or len(payload) < 4 + size:
+        raise ValueError("paired metadata bound")
+    metadata = json.loads(payload[4 : 4 + size])
+    if type(metadata) is not dict or type(metadata.get("size")) is not int:
+        raise ValueError("paired metadata grammar")
+    content_size = metadata["size"]
+    if not 0 < content_size < len(payload) - 4 - size:
+        raise ValueError("paired output size")
+    content, report = (
+        payload[4 + size : 4 + size + content_size],
+        payload[4 + size + content_size :],
+    )
+    if report_export(content, report, 0) != payload:
+        raise ValueError("paired export metadata mismatch")
+    return content, report

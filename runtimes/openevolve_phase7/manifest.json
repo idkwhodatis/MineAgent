@@ -1,0 +1,11 @@
+{
+  "schema": "mineagent.openevolve-sampling-patch.v1",
+  "upstream_commit": "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc",
+  "requires_wheel_sha256": "6351899adbfea1a40df4e1710219c11053d68bf7a2cee1df64564c0f17a7908c",
+  "requires_proof_sha256": "6fbb85110843a0194ad867762e79f133a7e7f60d100e2993ae37ecce31659fce",
+  "patch": "0007-observe-native-sampling-state.patch",
+  "patch_sha256": "d7c7dcf83dbe748b14e049e7fde68e16e04c5670059c6d7d4cacdf3ceb5c1f16",
+  "file": "openevolve/process_parallel.py",
+  "before_sha256": "82e41425a20a2eba642ac6ae20c48942fdcc558c94d9a32f68c923dd2d130cd0",
+  "after_sha256": "29a2c53620a0c47201ac9312f8299885f3004ea7c44cfd56cc1823822951d6f1"
+}

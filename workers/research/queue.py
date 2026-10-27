@@ -25,4 +25,16 @@ def create_queue_app(settings: Settings | None = None, database_url: str | None 
 
         execute(run_id, generation, settings=settings)
 
+    from workers.research.rdagent_queue import TASK_NAME as RD_TASK_NAME
+
+    @app.task(
+        name=RD_TASK_NAME,
+        queue="research",
+        retry=procrastinate.RetryStrategy(max_attempts=3, wait=5),
+    )
+    def execute_rd_run(run_id: str, generation: int):
+        from workers.research.rdagent_queue import execute
+
+        execute(run_id, generation, settings=settings or get_settings())
+
     return app

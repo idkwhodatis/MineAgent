@@ -27,6 +27,7 @@ const navigation = [
   { to: "/universes", label: "Universes", icon: Layers },
   { to: "/datasets", label: "Datasets", icon: Database },
   { to: "/strategies", label: "Strategy library", icon: Braces },
+  { to: "/engine-runs", label: "Engine history", icon: FlaskConical },
   { to: "/runs", label: "Experiments", icon: FlaskConical },
   { to: "/portable/new", label: "Portable research", icon: FlaskConical },
   { to: "/settings", label: "Settings & status", icon: Settings2 },

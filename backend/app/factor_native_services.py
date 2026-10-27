@@ -107,7 +107,15 @@ def _resolve(session, fence, intent, settings, *, content=False):
     ):
         raise error("native_publication_scope")
     # Actual persisted cutoff/evaluation-start/source lineage, not same-owner code.
-    cutoff, prefix = require_candidate_source(
+    from backend.app.factor_analysis_dispatch import configured_analysis_run
+    from backend.app.native_candidate_source import require_configured_candidate_source
+
+    source_resolver = (
+        require_configured_candidate_source
+        if configured_analysis_run(session, fence)
+        else require_candidate_source
+    )
+    cutoff, prefix = source_resolver(
         session,
         fence,
         cutoff_id=intent.admission.logical_operation_id,
@@ -234,6 +242,16 @@ def _capacity(session, fence, settings, factor_fd, *, extra=(0, 0)):
     source_total, source_owned, source_count = pending_source_usage(
         session, fence.owner_id
     )
+    from backend.app.execution_snapshot_capacity import (
+        pending_snapshot_usage_for_schema,
+    )
+
+    snap_total, snap_owned, snap_count = pending_snapshot_usage_for_schema(
+        session, fence.owner_id
+    )
+    pending_total += snap_total
+    pending_owned += snap_owned
+    pending_count += snap_count
     if (
         total + pending_total + source_total + extra[0]
         > settings.factor_installation_max_bytes
@@ -529,10 +547,11 @@ def native_capability(session):
     revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
     if len(revisions) != 1:
         raise error("native_publication_schema_unsupported")
-    return (
-        getattr(capabilities_for(revisions[0]), "native_closure_schema", None)
-        == "mineagent.native-hdf-restore-closure.v1"
-    )
+    return getattr(capabilities_for(revisions[0]), "native_closure_schema", None) in {
+        "mineagent.native-hdf-restore-closure.v1",
+        "mineagent.native-hdf-restore-closure.v2",
+        "mineagent.native-hdf-restore-closure.v3",
+    }
 
 
 def publish_completed_candidate(factory, fence, admission_id, settings):

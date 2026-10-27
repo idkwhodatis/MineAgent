@@ -41,7 +41,9 @@ def require_research_spec(
         raise DomainError(
             "factor_research_spec_missing", "Research specification is unavailable", 409
         )
-    config = FactorResearchConfig.model_validate(spec.config)
+    from packages.rdagent_adapter.provider_config import parse_research_config
+
+    config = parse_research_config(spec.config)
     if (
         config.sha256 != spec.config_sha256
         or config.input.sha256 != spec.input_sha256
@@ -52,6 +54,10 @@ def require_research_spec(
             "Research specification identity differs",
             409,
         )
+    if config.schema_version == "mineagent.factor-research.v2":
+        from backend.app.rdagent_steer_services import verify_steer_snapshot
+
+        verify_steer_snapshot(session, fence.owner_id, config.steer_snapshot)
     return spec, config
 
 
@@ -131,6 +137,7 @@ def begin_generation(
     context_id: UUID,
     mutation_reservation_id: UUID,
     parent_factor_version_id: UUID | None = None,
+    seeded_submission_id: UUID | None = None,
 ):
     """Consume already-host-reserved mutation authority; never fabricate a grant.
 
@@ -163,6 +170,21 @@ def begin_generation(
     if type(logical_step) is not int or not 0 <= logical_step < config.max_iterations:
         raise DomainError(
             "factor_step_invalid", "Logical step exceeds frozen configuration", 409
+        )
+    if seeded_submission_id is not None:
+        from backend.app.rdagent_seed_services import require_initial_seed
+
+        if logical_step != 0:
+            raise DomainError(
+                "factor_seed_not_initial",
+                "Seed declaration applies only to the first generation",
+                409,
+            )
+        require_initial_seed(
+            session,
+            fence,
+            submission_id=seeded_submission_id,
+            parent_factor_version_id=parent_factor_version_id,
         )
     # Serialize all starts under the immutable spec row (not a local counter).
     session.scalar(
@@ -208,6 +230,12 @@ def begin_generation(
             "factor_step_order", "Generation starts must be contiguous", 409
         )
     if previous:
+        if seeded_submission_id is not None:
+            raise DomainError(
+                "factor_seed_not_initial",
+                "Seed declaration applies only to the first generation",
+                409,
+            )
         outcome = session.scalar(
             select(FactorGenerationOutcome).filter_by(
                 **_scope(fence), start_id=previous[-1].id
@@ -223,6 +251,9 @@ def begin_generation(
                 "Previous completed nonterminal generation required",
                 409,
             )
+    elif seeded_submission_id is not None:
+        # The same persisted receipt was checked before exact replay above.
+        pass
     elif parent_factor_version_id is not None:
         raise DomainError(
             "factor_initial_parent", "Fresh research has no parent implementation", 409
@@ -432,7 +463,24 @@ def _closed_transport_chain(session, fence, operation):
             held.calls != 1
             or usage.calls != 1
             or usage != charged
-            or settlement.outcome != "measured"
+            or settlement.outcome
+            != (
+                "conservative_unknown"
+                if operation.protocol
+                in {
+                    "mineagent.rdagent-provider-chat.v1",
+                    "mineagent.rdagent-provider-embedding.v1",
+                }
+                else "measured"
+            )
+            or (
+                operation.protocol
+                in {
+                    "mineagent.rdagent-provider-chat.v1",
+                    "mineagent.rdagent-provider-embedding.v1",
+                }
+                and charged != held
+            )
         ):
             raise DomainError(
                 "factor_transport_accounting_drift",
@@ -462,6 +510,24 @@ def _completed_member_response(session, fence, member, settings):
     )
 
     operation = _scope_row(session, ResearchModelOperation, member.operation_id, fence)
+    from packages.rdagent_provider.codec import PROTOCOLS
+
+    provider = member.protocol in PROTOCOLS
+    if provider:
+        from packages.rdagent_provider.codec import (
+            parse_request,
+            request_sha256,
+            validate_response,
+        )
+        from packages.rdagent_provider.contracts import (
+            RDProviderChatResponse,
+            RDProviderEmbeddingResponse,
+        )
+
+        RDChatResponse, RDEmbeddingResponse = (
+            RDProviderChatResponse,
+            RDProviderEmbeddingResponse,
+        )
     request = parse_request(member.protocol, operation.request)
     if (
         operation.context_id != member.context_id
@@ -491,6 +557,17 @@ def _completed_member_response(session, fence, member, settings):
     response_type = RDChatResponse if request.kind == "chat" else RDEmbeddingResponse
     response = response_type.model_validate_json(raw)
     response = validate_response(member.protocol, request, response)
+    if provider:
+        from backend.app.rdagent_provider_receipts import read_chain
+        from packages.rdagent_provider.accounting import expected_usage
+
+        _, config = require_research_spec(session, fence)
+        read_chain(session, fence, outcome.transport_id, settings, completed=True)
+        response, held = expected_usage(
+            member.protocol, request, response, config.model_binding
+        )
+        if outcome.usage != held.model_dump():
+            raise ValueError("Provider full conservative accounting differs")
     return outcome, response
 
 
@@ -554,14 +631,17 @@ def _verify_response_parts(session, fence, call, parts, settings):
 
 
 def _require_orchestrator_receipt(session, fence, admission_id, config):
-    from backend.app.rdagent_controller_services import require_recorded_controller
+    from backend.app.rdagent_controller_services import (
+        controller_profile,
+        require_recorded_controller,
+    )
     from backend.app.research_process_models import ResearchProcessAdmission
 
     require_recorded_controller(session, fence, admission_id)
     admission = _scope_row(session, ResearchProcessAdmission, admission_id, fence)
     if (admission.role, admission.profile, admission.image_id) != (
         "rd_orchestrator",
-        "mineagent.rdagent-orchestrator.v1",
+        controller_profile(admission),
         config.runtime.orchestrator_image,
     ):
         raise DomainError(
@@ -608,8 +688,20 @@ def attach_request_operation(
         if call.kind == "chat"
         else "mineagent.rdagent-embedding.v1"
     )
+    if config.schema_version == "mineagent.factor-research.v2":
+        from packages.rdagent_provider.codec import parse_request, request_sha256
+
+        protocol = (
+            "mineagent.rdagent-provider-chat.v1"
+            if call.kind == "chat"
+            else "mineagent.rdagent-provider-embedding.v1"
+        )
     operation = _scope_row(session, ResearchModelOperation, operation_id, fence)
     request = parse_request(protocol, operation.request)
+    if config.schema_version == "mineagent.factor-research.v2":
+        from packages.rdagent_provider.contracts import require_request_binding
+
+        require_request_binding(request, config.model_binding)
     expected_purpose = (
         "embedding"
         if call.kind == "embedding"
@@ -1014,7 +1106,7 @@ def admit_atomic_request(
         request_sha256,
     )
 
-    require_research_spec(session, fence)
+    _, config = require_research_spec(session, fence)
     if type(idempotency_key) is not UUID or type(request_bytes) is not bytes:
         raise DomainError(
             "factor_atomic_request_invalid",
@@ -1027,7 +1119,23 @@ def admit_atomic_request(
         if call.kind == "chat"
         else "mineagent.rdagent-embedding.v1"
     )
+    if config.schema_version == "mineagent.factor-research.v2":
+        from packages.rdagent_provider.codec import (
+            canonical_bytes,
+            parse_request,
+            request_sha256,
+        )
+
+        protocol = (
+            "mineagent.rdagent-provider-chat.v1"
+            if call.kind == "chat"
+            else "mineagent.rdagent-provider-embedding.v1"
+        )
     request = parse_request(protocol, request_bytes)
+    if config.schema_version == "mineagent.factor-research.v2":
+        from packages.rdagent_provider.contracts import require_request_binding
+
+        require_request_binding(request, config.model_binding)
     if canonical_bytes(protocol, request) != request_bytes:
         raise DomainError(
             "factor_request_not_canonical",
@@ -1085,6 +1193,10 @@ def admit_atomic_request(
                 409,
             )
         return operation, previous, transport
+    if config.schema_version == "mineagent.factor-research.v2":
+        from backend.app.rdagent_provider_quota import require_provider_call_capacity
+
+        require_provider_call_capacity(session, fence)
     if (
         session.scalar(
             select(ResearchContextAbort).filter_by(
@@ -1096,6 +1208,19 @@ def admit_atomic_request(
         raise DomainError(
             "factor_context_closed", "Model context is already closed", 409
         )
+    if (
+        config.schema_version == "mineagent.factor-research.v2"
+        and call.phase == "generation"
+        and call.ordinal == 0
+        and not _call_members(session, fence, call.id)
+    ):
+        from backend.app.rdagent_provider_prompt_guard import (
+            require_first_provider_prompt,
+        )
+
+        if relation != "initial":
+            raise ValueError("First provider generation request must be initial")
+        require_first_provider_prompt(session, fence, call, request, config, settings)
     purpose = (
         "embedding"
         if call.kind == "embedding"
@@ -1148,12 +1273,20 @@ def admit_atomic_request(
         if request.kind == "chat"
         else sum(len(text.encode("utf-8")) for text in request.inputs)
     )
+    amounts = BudgetVector(calls=1, tokens=tokens)
+    if config.schema_version == "mineagent.factor-research.v2":
+        from packages.rdagent_provider.accounting import request_reservation
+
+        amounts = request_reservation(request, config.model_binding)
+        from backend.app.rdagent_provider_quota import admit_provider_capacity
+
+        admit_provider_capacity(session, fence, amounts, settings)
     reservation = reserve_budget(
         session,
         fence,
         purpose="model_transport",
         logical_key=f"transport:{operation.id}:1",
-        amounts=BudgetVector(calls=1, tokens=tokens),
+        amounts=amounts,
     )
     transport = ResearchModelTransport(
         id=uuid4(),

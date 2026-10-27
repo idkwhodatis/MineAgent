@@ -32,15 +32,13 @@ from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.engine_broker_contracts import (
     RDChatResponse,
     RDEmbeddingResponse,
-    parse_request,
-    request_sha256,
-    validate_response,
-)
-from packages.research_runtime.engine_broker_contracts import (
-    canonical_bytes as broker_bytes,
 )
 
 SCHEMA = "mineagent.rd-source-restore-closure.v1"
+SCHEMA_V2 = "mineagent.rd-source-restore-closure.v2"
+SCHEMA_V3 = "mineagent.rd-source-restore-closure.v3"
+SCHEMA_V4 = "mineagent.rd-source-restore-closure.v4"
+SCHEMA_V5 = "mineagent.rd-source-restore-closure.v5"
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 MAX_BYTES = 32_000_000
 # Literal inventory: changing a model never silently widens a backup grammar.
@@ -70,6 +68,25 @@ FIELDS = {
     "factor_candidate_input_inventories": "execution_id admission_id input_sha256 projection_sha256 file_count attempt_id generation id owner_id run_id created_at",
     "factor_candidate_input_files": "inventory_id destination ordinal object_kind sha256 size_bytes factor_object_id research_object_id publication_id attempt_id generation id owner_id run_id created_at",
 }
+# Configured witness rows have one owner: direct_analysis_closure.v1.
+# RDv4 records the mandatory dependency without duplicating its inventory.
+FIELDS_V4 = FIELDS
+FIELDS_V5 = {
+    **FIELDS_V4,
+    "rd_provider_transport_receipts": "transport_id kind receipt_object_id receipt_object_kind receipt_sha256 size_bytes attempt_id generation id owner_id run_id created_at",
+}
+
+
+def closure_fields(schema):
+    if schema == SCHEMA_V5:
+        return FIELDS_V5
+    if schema == SCHEMA_V4:
+        return FIELDS_V4
+    if schema in {SCHEMA, SCHEMA_V2, SCHEMA_V3}:
+        return FIELDS
+    raise ValueError("Unsupported RD source closure")
+
+
 RUN_FIELDS = "id owner_id idempotency_key request_sha256 submission_binding config purpose engine dataset_version_id strategy_version_id experiment_id split_version_id final_selection_id status generation active_attempt_id research_image_digest portable_policy_image_digest latest_checkpoint_id resume_checkpoint_id next_event_seq result error created_at updated_at"
 CONSUMER_FIELDS = (
     "reservation_id owner_id run_id attempt_id generation consumer_kind consumer_id"
@@ -245,6 +262,16 @@ UNIQUE_KEYS = {
     ],
     "factor_generation_boundaries": [
         ("owner_id", "run_id", "attempt_id", "generation", "id"),
+        # Redundant on historical id; explicit020 actor target.
+        (
+            "owner_id",
+            "run_id",
+            "attempt_id",
+            "generation",
+            "id",
+            "controller_launch_id",
+            "start_id",
+        ),
         ("start_id",),
         ("observation_id",),
     ],
@@ -1092,7 +1119,8 @@ def _require(value, reason):
 
 def read_closure(connection, maximum_rows, *, revision, maximum_bytes=MAX_BYTES):
     _require(
-        capabilities_for(revision).rd_source_closure_schema == SCHEMA,
+        capabilities_for(revision).rd_source_closure_schema
+        in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5},
         "revision capability",
     )
     _require(
@@ -1123,7 +1151,7 @@ def read_closure(connection, maximum_rows, *, revision, maximum_bytes=MAX_BYTES)
 
     tables = {
         name: rows(f"SELECT to_jsonb(t) FROM {name} t ORDER BY id LIMIT :limit")
-        for name in FIELDS
+        for name in closure_fields(capabilities_for(revision).rd_source_closure_schema)
     }
     consumers = rows(
         "SELECT to_jsonb(t) FROM engine_object_reservation_consumers t WHERE consumer_kind IN ('research_object','factor_source') ORDER BY reservation_id LIMIT :limit"
@@ -1137,7 +1165,7 @@ def read_closure(connection, maximum_rows, *, revision, maximum_bytes=MAX_BYTES)
         ),
     }
     closure = {
-        "schema_version": SCHEMA,
+        "schema_version": capabilities_for(revision).rd_source_closure_schema,
         "tables": tables,
         "consumer_claims": consumers,
         "external_bindings": external,
@@ -1152,11 +1180,13 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
         type(closure) is dict
         and set(closure)
         == {"schema_version", "tables", "consumer_claims", "external_bindings"}
-        and closure["schema_version"] == SCHEMA,
+        and closure["schema_version"]
+        in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5},
         "schema",
     )
     _require(
-        type(closure["tables"]) is dict and set(closure["tables"]) == set(FIELDS),
+        type(closure["tables"]) is dict
+        and set(closure["tables"]) == set(closure_fields(closure["schema_version"])),
         "table inventory",
     )
     _require(
@@ -1168,7 +1198,7 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
     result = {}
     count = 0
     for name, fields in {
-        **FIELDS,
+        **closure_fields(closure["schema_version"]),
         **EXTERNAL_FIELDS,
         "consumer_claims": CONSUMER_FIELDS,
     }.items():
@@ -1212,14 +1242,35 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
             index[row[key]] = row
         result[name] = index
     _require(
-        all(not result[name] for name in PHASE_EMPTY),
+        all(
+            not result[name]
+            for name in (
+                PHASE_EMPTY
+                if closure["schema_version"] == SCHEMA
+                else PHASE_EMPTY
+                - {"factor_generation_observations", "factor_generation_boundaries"}
+                - (
+                    {"factor_generation_outcomes"}
+                    if closure["schema_version"] in {SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}
+                    else set()
+                )
+            )
+        ),
         "unsupported outcomes/adoption/checkpoint",
     )
     return result
 
 
 def validate_closure(
-    closure, research_closure, factor_closure, read_bytes, maximum_rows
+    closure,
+    research_closure,
+    factor_closure,
+    read_bytes,
+    maximum_rows,
+    *,
+    execution_links_pending=False,
+    configured_inputs_pending=False,
+    seed_context=None,
 ):
     """Cross-close already independently checked shared closures and actual bytes.
 
@@ -1228,10 +1279,39 @@ def validate_closure(
     Pending source publications may lack final files/outcomes; their reservations
     remain charged and global inventory preserves every physical orphan.
     """
+    from collections.abc import Mapping
+
+    if closure["schema_version"] == SCHEMA_V5:
+        if not isinstance(seed_context, Mapping):
+            raise ValueError("Seed context required before RD domain closure")
+    elif seed_context is not None:
+        raise ValueError("Historical RD closure cannot acquire seed authority")
     idx = _indexes(closure, maximum_rows)
+    if closure["schema_version"] in {SCHEMA_V4, SCHEMA_V5}:
+        _require(
+            configured_inputs_pending is True, "configured input closure must follow"
+        )
+    if (
+        closure["schema_version"] in {SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}
+        and idx["factor_generation_outcomes"]
+    ):
+        _require(
+            execution_links_pending is True,
+            "final links must be checked after execution closure",
+        )
     _require(
         research_closure.get("schema_version")
-        == "mineagent.research-restore-closure.v4",
+        in {
+            SCHEMA: {"mineagent.research-restore-closure.v4"},
+            SCHEMA_V2: {"mineagent.research-restore-closure.v5"},
+            SCHEMA_V3: {"mineagent.research-restore-closure.v6"},
+            SCHEMA_V5: {"mineagent.research-restore-closure.v10"},
+            SCHEMA_V4: {
+                "mineagent.research-restore-closure.v7",
+                "mineagent.research-restore-closure.v8",
+                "mineagent.research-restore-closure.v9",
+            },
+        }[closure["schema_version"]],
         "research revision",
     )
     _require(
@@ -1333,6 +1413,12 @@ def validate_closure(
 
         values = dict(run)
         values["dataset_version_id"] = UUID(values["dataset_version_id"])
+        values["owner_id"] = UUID(values["owner_id"])
+        _require(
+            closure["schema_version"] == SCHEMA_V5
+            or run["config"].get("schema_version") == "mineagent.factor-research.v1",
+            "historical config grammar",
+        )
         config = require_source_identity(SimpleNamespace(**values))
         dataset = link(run, "dataset_version_id", "datasets", scope=False)
         _require(
@@ -1348,7 +1434,51 @@ def validate_closure(
         )
         _require(control["limits"] == config.budget.model_dump(), "config budget")
         configs[run["id"]] = config
-    for name in FIELDS:
+    if closure["schema_version"] == SCHEMA_V5:
+        from backend.app.rdagent_provider_backup import (
+            validate_operation_membership,
+            validate_receipts,
+        )
+
+        validate_operation_membership(
+            shared["research_model_operations"],
+            idx["factor_generation_model_operations"].values(),
+            shared["research_model_transports"],
+        )
+        validate_receipts(
+            list(idx["rd_provider_transport_receipts"].values()),
+            transports=shared["research_model_transports"],
+            operations=shared["research_model_operations"],
+            objects=shared["research_objects"],
+            configs=configs,
+            reservations=shared["research_budget_reservations"],
+            settlements=shared["research_budget_settlements"],
+            outcomes=shared["research_model_outcomes"],
+            read_bytes=read_bytes,
+        )
+
+    def model_codec(run_id):
+        provider = (
+            closure["schema_version"] == SCHEMA_V5
+            and configs[run_id].model_profile == "configured.rdagent.v1"
+        )
+        if provider:
+            from packages.rdagent_provider import codec
+        else:
+            from packages.research_runtime import engine_broker_contracts as codec
+        return codec, provider
+
+    def source_parser(run_id):
+        _, provider = model_codec(run_id)
+        if provider:
+            from packages.rdagent_provider.source_parser import (
+                parse_selected_provider_responses,
+            )
+
+            return parse_selected_provider_responses
+        return parse_selected_responses
+
+    for name in closure_fields(closure["schema_version"]):
         for row in idx[name].values():
             link(row, "run_id", "runs")
             if "attempt_id" in row:
@@ -1368,10 +1498,7 @@ def validate_closure(
     for launch in idx["factor_controller_launches"].values():
         binding = link(launch, "attempt_binding_id", "factor_research_attempt_bindings")
         spec = link(binding, "spec_id", "factor_research_specs")
-        bootstrap = RDOperationalBootstrap.model_validate_json(
-            json.dumps(launch["bootstrap"])
-        )
-        expected = RDOperationalBootstrap(
+        bootstrap_values = dict(
             **{k: launch[k] for k in SCOPE},
             spec_id=spec["id"],
             attempt_binding_id=binding["id"],
@@ -1379,6 +1506,15 @@ def validate_closure(
             config_sha256=spec["config_sha256"],
             input_sha256=spec["input_sha256"],
         )
+        if closure["schema_version"] == SCHEMA_V5:
+            from backend.app.rdagent_seed_backup import build_expected_bootstrap
+
+            expected = build_expected_bootstrap(
+                seed_context=seed_context, **bootstrap_values
+            )
+        else:
+            expected = RDOperationalBootstrap(**bootstrap_values)
+        bootstrap = type(expected).model_validate_json(json.dumps(launch["bootstrap"]))
         _require(
             bootstrap == expected and launch["bootstrap_sha256"] == bootstrap.sha256,
             "controller bootstrap",
@@ -1394,7 +1530,17 @@ def validate_closure(
             )
             == (
                 "rd_orchestrator",
-                "mineagent.rdagent-orchestrator.v1",
+                (
+                    admission["profile"]
+                    if closure["schema_version"]
+                    in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}
+                    and admission["profile"]
+                    in {
+                        "mineagent.rdagent-orchestrator.v1",
+                        "mineagent.rdagent-orchestrator.v2",
+                    }
+                    else "mineagent.rdagent-orchestrator.v1"
+                ),
                 bootstrap.config.runtime.orchestrator_image,
                 bootstrap.sha256,
                 binding["id"],
@@ -1422,7 +1568,14 @@ def validate_closure(
         )
         # Phase018 has no completed prior-generation/adoption rows.
         _require(
-            start["logical_step"] == 0 and start["parent_factor_version_id"] is None,
+            start["logical_step"] == 0
+            and start["parent_factor_version_id"]
+            == (
+                str(seed_context[start["run_id"]].parent.reference.factor_version_id)
+                if closure["schema_version"] == SCHEMA_V5
+                and start["run_id"] in seed_context
+                else None
+            ),
             "initial source-only lineage",
         )
         context = link(start, "context_id", "research_operation_contexts")
@@ -1488,11 +1641,41 @@ def validate_closure(
             "member scope",
         )
         operation = link(member, "operation_id", "research_model_operations")
-        protocol = "mineagent.rdagent-" + call["kind"] + ".v1"
-        request = parse_request(protocol, operation["request"])
+        codec, provider = model_codec(member["run_id"])
+        protocol = (
+            ("mineagent.rdagent-provider-" if provider else "mineagent.rdagent-")
+            + call["kind"]
+            + ".v1"
+        )
+        request = codec.parse_request(protocol, operation["request"])
+        if provider:
+            from packages.rdagent_provider.contracts import require_request_binding
+
+            require_request_binding(request, configs[member["run_id"]].model_binding)
+            if (
+                call["phase"] == "generation"
+                and call["ordinal"] == 0
+                and member["request_ordinal"] == 0
+                and member["relation"] == "initial"
+            ):
+                from packages.rdagent_adapter.provider_prompt import (
+                    first_provider_messages,
+                )
+
+                prepared = seed_context.get(member["run_id"])
+                system, user = first_provider_messages(
+                    configs[member["run_id"]], prepared.parent if prepared else None
+                )
+                _require(
+                    tuple(
+                        (message.role, message.content) for message in request.messages
+                    )
+                    == (("system", system), ("user", user)),
+                    "actual first provider prompt consumes immutable steer/seed",
+                )
         _require(
             member["protocol"] == operation["protocol"] == protocol
-            and request_sha256(protocol, request) == operation["request_sha256"]
+            and codec.request_sha256(protocol, request) == operation["request_sha256"]
             and operation["context_id"] == call["context_id"],
             "request identity",
         )
@@ -1509,7 +1692,7 @@ def validate_closure(
         )
         obj = link(operation, "request_object_id", "research_objects", scope=False)
         _require(
-            raw(obj, "model_request") == broker_bytes(protocol, request),
+            raw(obj, "model_request") == codec.canonical_bytes(protocol, request),
             "request bytes",
         )
         members_by_call[call["id"]].append(member)
@@ -1544,6 +1727,7 @@ def validate_closure(
     def completed(member):
         op = link(member, "operation_id", "research_model_operations")
         _require(op["state"] == "completed", "completed operation")
+        codec, provider = model_codec(member["run_id"])
         transports = sorted(
             [
                 t
@@ -1579,7 +1763,8 @@ def validate_closure(
             _require(
                 held["purpose"] == "model_transport"
                 and held["state"] == "settled"
-                and settlement["outcome"] == "measured"
+                and settlement["outcome"]
+                == ("conservative_unknown" if provider else "measured")
                 and settlement["charge"] == outcome["usage"],
                 "transport accounting",
             )
@@ -1601,12 +1786,35 @@ def validate_closure(
             if op["protocol"] == "mineagent.rdagent-chat.v1"
             else RDEmbeddingResponse
         )
+        if provider:
+            from packages.rdagent_provider.contracts import (
+                RDProviderChatResponse,
+                RDProviderEmbeddingResponse,
+            )
+
+            response_type = (
+                RDProviderChatResponse
+                if op["protocol"] == "mineagent.rdagent-provider-chat.v1"
+                else RDProviderEmbeddingResponse
+            )
         response = response_type.model_validate_json(data)
-        validate_response(
-            op["protocol"], parse_request(op["protocol"], op["request"]), response
-        )
+        request = codec.parse_request(op["protocol"], op["request"])
+        codec.validate_response(op["protocol"], request, response)
+        if provider:
+            from packages.rdagent_provider.accounting import expected_usage
+
+            _, expected_charge = expected_usage(
+                op["protocol"],
+                request,
+                response,
+                configs[member["run_id"]].model_binding,
+            )
+            _require(
+                outcome["usage"] == expected_charge.model_dump(),
+                "provider conservative usage",
+            )
         _require(
-            data == broker_bytes(op["protocol"], response),
+            data == codec.canonical_bytes(op["protocol"], response),
             "response canonical bytes",
         )
         return outcome, response
@@ -1616,7 +1824,7 @@ def validate_closure(
             if member["relation"] == "continuation":
                 previous_response = completed(members[n - 1])[1]
                 _require(
-                    isinstance(previous_response, RDChatResponse)
+                    previous_response.kind == "chat"
                     and previous_response.finish_reason == "length",
                     "continuation authorization",
                 )
@@ -1695,7 +1903,9 @@ def validate_closure(
         first = max(n for n, m in enumerate(members) if m["relation"] != "continuation")
         selected = members[first:]
         results = [completed(m) for m in selected]
-        parsed = parse_selected_responses(tuple(response for _, response in results))
+        parsed = source_parser(pub["run_id"])(
+            tuple(response for _, response in results)
+        )
         _require(
             document.source == parsed.source
             and document.source_sha256 == parsed.source_sha256,
@@ -1742,6 +1952,7 @@ def validate_closure(
             completed,
             members_by_call,
             read_bytes,
+            parse_responses=source_parser(source["run_id"]),
         )
     _require(
         {
@@ -1753,6 +1964,10 @@ def validate_closure(
         "unbound RD factor version",
     )
     _validate_pending(idx, shared, configs, link)
+    if closure["schema_version"] in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5}:
+        from backend.app.rdagent_controller_cold_links import validate_controller_links
+
+        validate_controller_links(idx, shared, configs)
     return True
 
 
@@ -1767,6 +1982,8 @@ def _validate_source(
     completed,
     members_by_call,
     read_bytes,
+    *,
+    parse_responses=parse_selected_responses,
 ):
     start = link(source, "start_id", "factor_generation_starts")
     call = link(source, "call_id", "factor_upstream_calls")
@@ -1800,7 +2017,12 @@ def _validate_source(
         "witness scope",
     )
     _require(
-        witness["parser_profile"] == "mineagent.rdagent-source-parser.v1"
+        witness["parser_profile"]
+        == (
+            "mineagent.rdagent-provider-source-parser.v1"
+            if configs[source["run_id"]].model_profile == "configured.rdagent.v1"
+            else "mineagent.rdagent-source-parser.v1"
+        )
         and witness["parser_source_sha256"] == UPSTREAM_FRAGMENT_SHA256,
         "pinned parser",
     )
@@ -1866,7 +2088,7 @@ def _validate_source(
             op["request"]["response_format"] == {"type": "json_object"},
             "source JSON mode",
         )
-    parsed = parse_selected_responses(tuple(responses))
+    parsed = parse_responses(tuple(responses))
     version = link(source, "factor_version_id", "factor_versions", scope=False)
     obj = link(version, "code_object_id", "factor_objects", scope=False)
     data = raw(obj, "code", factor=True)

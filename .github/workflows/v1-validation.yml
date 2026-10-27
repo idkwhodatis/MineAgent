@@ -274,6 +274,37 @@ jobs:
       - name: Install matched Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium
+      - name: Require real isolated RD history browser acceptance
+        shell: bash
+        run: |
+          umask 077
+          set +e
+          env -u PYTEST_ADDOPTS -u PYTEST_PLUGINS PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+            python -m pytest tests/engine_history_browser/test_history_browser.py::test_real_isolated_schema_history_browser \
+            -q --tb=no -o addopts= --junitxml="$RUNNER_TEMP/engine-history-browser-private.xml" \
+            > "$RUNNER_TEMP/engine-history-browser-private.log" 2>&1
+          status=$?
+          export ENGINE_HISTORY_BROWSER_EXIT="$status"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          try:
+              path = Path(os.environ["RUNNER_TEMP"]) / "engine-history-browser-private.xml"
+              if path.is_symlink() or not path.is_file() or path.stat().st_size > 20_000_000:
+                  raise ValueError("Missing bounded report")
+              cases = ET.parse(path).getroot().findall(".//testcase")
+              summarize(path, Path("var/ci-evidence/engine-history-browser-junit.xml"))
+              assert os.environ["ENGINE_HISTORY_BROWSER_EXIT"] == "0"
+              assert len(cases) == 1
+              assert cases[0].get("name") == "test_real_isolated_schema_history_browser"
+              assert not any(cases[0].find(tag) is not None for tag in ("failure", "error", "skipped"))
+          except Exception:
+              print("Real engine history browser acceptance failed; private diagnostics retained on disposable runner")
+              raise SystemExit(1)
+          print("Exactly one real engine history browser case passed with fixture cleanup")
+          PY
       - name: Migrate and explicitly provision disposable synthetic accounts
         id: application_ready
         run: |

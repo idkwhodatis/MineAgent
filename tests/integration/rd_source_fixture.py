@@ -57,7 +57,7 @@ from backend.app.research_process_models import (
     ResearchProcessAdmission,
     ResearchProcessState,
 )
-from packages.factors.contracts import digest, source_sha256
+from packages.factors.contracts import DateWindow, digest, source_sha256
 from packages.factors.fixtures import demo_fixture
 from packages.rdagent_adapter.contracts import FactorResearchConfig, RuntimePins
 from packages.rdagent_adapter.host_evidence import (
@@ -95,8 +95,16 @@ class PersistedSource:
 
 
 def _config(
-    dataset, *, runtime: RuntimePins | None = None, budget: BudgetVector | None = None
+    dataset,
+    *,
+    runtime: RuntimePins | None = None,
+    budget: BudgetVector | None = None,
+    window: DateWindow | None = None,
 ):
+    if window is not None:
+        if type(window) is not DateWindow:
+            raise ValueError("Exact immutable DateWindow required")
+        window = DateWindow.model_validate(window.model_dump())
     if runtime is not None:
         if type(runtime) is not RuntimePins:
             raise ValueError("Exact immutable RuntimePins required")
@@ -119,7 +127,7 @@ def _config(
                 "calculation_universe": sample.calculation_universe.model_dump(
                     mode="json"
                 ),
-                "window": sample.window.model_dump(mode="json"),
+                "window": (window or sample.window).model_dump(mode="json"),
                 "calendar_sha256": sample.calendar_sha256,
                 "market_timezone": sample.market_timezone,
                 "input_fields": [
@@ -203,6 +211,7 @@ def persist_maintained_source(
     source_utf8,
     runtime: RuntimePins | None = None,
     budget: BudgetVector | None = None,
+    window: DateWindow | None = None,
 ):
     """owner is UUID; dataset is an existing same-owner DatasetVersion row.
 
@@ -231,7 +240,7 @@ def persist_maintained_source(
     chunks = tuple(raw_reply[i : i + 32768] for i in range(0, len(raw_reply), 32768))
     if not 1 <= len(chunks) <= 6:
         raise ValueError("Fixture response exceeds six bounded continuation parts")
-    config = _config(dataset, runtime=runtime, budget=budget)
+    config = _config(dataset, runtime=runtime, budget=budget, window=window)
     for directory in ("factors", "research-objects"):
         provision_directory(
             settings.storage_root / directory, durable_parent=settings.storage_root

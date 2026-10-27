@@ -9,7 +9,7 @@ COPY --from=dependencies /opt/numeric/ /usr/local/
 COPY runtimes/factor_normalizer/requirements.lock /opt/mineagent/requirements.lock
 COPY runtimes/hostile_deadline/contract.py runtimes/hostile_deadline/deadline.py /usr/local/lib/python3.12/site-packages/runtimes/hostile_deadline/
 COPY runtimes/factor_execution/numeric_deadline.py runtimes/factor_execution/probe_dependencies.py runtimes/factor_execution/protected_output.py /usr/local/lib/python3.12/site-packages/runtimes/factor_execution/
-COPY runtimes/factor_normalizer/normalize.py runtimes/factor_normalizer/entrypoint.py runtimes/factor_normalizer/protected_deadline.py /usr/local/lib/python3.12/site-packages/runtimes/factor_normalizer/
+COPY runtimes/factor_normalizer/normalize.py runtimes/factor_normalizer/primitive_report.py runtimes/factor_normalizer/entrypoint.py runtimes/factor_normalizer/protected_deadline.py /usr/local/lib/python3.12/site-packages/runtimes/factor_normalizer/
 USER 0:0
 WORKDIR /
 ENTRYPOINT ["python","-I","-m","runtimes.factor_normalizer.protected_deadline"]

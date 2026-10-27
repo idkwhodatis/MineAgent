@@ -64,3 +64,26 @@ label query as authority to remove containers.
 Local structural/FD/legacy regressions and test collection are not substitutes for
 those hosted runs. PostgreSQL and Docker are unavailable in the local executor;
 no actual composed execution or restore pass is claimed here.
+
+## Authenticated controller submission checks
+
+The maintained numeric issuers accept an internal host-only
+`authorize_submission(session, fence)` callback when invoked by the real RD
+controller bridge. It must return an exact issued `ControllerPeer`; the numeric
+boundary independently revalidates its live kernel/socket identity and persisted
+controller binding. A no-op, boolean, deserialized record or forged peer is not a
+launch grant. `None` remains solely the existing explicitly labelled maintained
+component fixture path, not a newly opened production/default entrypoint.
+
+Controller-backed calls recheck current attempt and peer after the durable
+one-shot claim, after input staging immediately before create, and again before
+start. Database callbacks run outside the process namespace flock; after
+reacquiring that flock, the supervisor rechecks the exact durable launch/root and
+staged input bytes. The original deadline is never extended. This is not a claim
+that a peer cannot die in the instant after a successful check. Known-dead peers
+cannot submit new units after the image-inspection/staging delay.
+
+If a pre-start check fails, any exact already-created container is contained by
+its verified ID without inventing a PID or positive stop. Inputs and uncertain
+reservation obligations remain retained; no extraction or refund follows from a
+rejected callback. Actual controller+numeric hosted acceptance remains required.

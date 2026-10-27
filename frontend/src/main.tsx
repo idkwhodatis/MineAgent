@@ -1,3 +1,5 @@
+import { providerPreflightSearch } from "@/lib/rd-provider-inputs";
+import { structuredPairSearch } from "@/lib/structured-results-api";
 import React, { useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -23,6 +25,7 @@ import {
 } from "@/lib/session";
 import "./styles.css";
 import { APP_SUBPATH } from "@/lib/deployment";
+import { engineHistorySearch } from "@/lib/navigation";
 import { comparisonSearch } from "@/lib/navigation";
 import {
   factorLibrarySearch,
@@ -338,10 +341,86 @@ const settingsRoute = createRoute({
     "SettingsPage",
   ),
 });
+const engineHistoryRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs",
+  validateSearch: engineHistorySearch,
+  component: lazyRouteComponent(
+    () => import("@/features/engine-history"),
+    "EngineHistoryPage",
+  ),
+});
+const enginePreflightRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/preflight",
+  validateSearch: providerPreflightSearch,
+  component: lazyRouteComponent(
+    () => import("@/features/engine-preflight"),
+    "EnginePreflightPage",
+  ),
+});
+const engineHistoryDetailRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/$runId",
+  validateSearch: engineHistorySearch,
+  component: lazyRouteComponent(
+    () => import("@/features/engine-history"),
+    "EngineHistoryDetailPage",
+  ),
+});
+const engineAnalysisRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/$runId/analyses/$analysisId",
+  component: lazyRouteComponent(
+    () => import("@/features/engine-results"),
+    "DirectAnalysisPage",
+  ),
+});
+const executionSnapshotRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/$runId/snapshots/$snapshotId",
+  component: lazyRouteComponent(
+    () => import("@/features/engine-snapshot"),
+    "ExecutionSnapshotPage",
+  ),
+});
+const structuredExecutionRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/$runId/structured-executions/$executionId",
+  component: lazyRouteComponent(
+    () => import("@/features/structured-results"),
+    "StructuredExecutionPage",
+  ),
+});
+const structuredComparisonRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/$runId/structured-comparison",
+  validateSearch: structuredPairSearch,
+  component: lazyRouteComponent(
+    () => import("@/features/structured-results"),
+    "StructuredComparisonPage",
+  ),
+});
+const rdSteersRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/rd-steers",
+  component: lazyRouteComponent(
+    () => import("@/features/rd-steers"),
+    "RDSteersPage",
+  ),
+});
 const routeTree = rootRoute.addChildren([
   loginRoute,
   privateRoute.addChildren([
     overviewRoute,
+    engineHistoryRoute,
+    rdSteersRoute,
+    enginePreflightRoute,
+    engineHistoryDetailRoute,
+    executionSnapshotRoute,
+    structuredExecutionRoute,
+    structuredComparisonRoute,
+    engineAnalysisRoute,
     datasetsRoute,
     dataSourcesRoute,
     importsRoute,

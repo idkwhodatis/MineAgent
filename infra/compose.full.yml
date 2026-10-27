@@ -40,12 +40,21 @@ x-app: &app
     SUBPATH: ${SUBPATH:-}
     HEARTBEAT_SECONDS: "5"
     LEASE_SECONDS: "60"
+# Same operator declarations in API admission, dispatch and trusted execution/recovery.
+# Credentials are not defaulted or passed to any candidate container.
+x-rd-environment: &rd-environment
+  RDAGENT_RESEARCH_ENABLED: ${RDAGENT_RESEARCH_ENABLED:-false}
+  RDAGENT_PROVIDER_RUNTIME_PROFILE: '${RDAGENT_PROVIDER_RUNTIME_PROFILE:-null}'
+  RDAGENT_PROVIDER_PROFILES: '${RDAGENT_PROVIDER_PROFILES:-[]}'
+  RDAGENT_PROVIDER_PYTHON: /opt/mineagent-provider/bin/python
+  RDAGENT_SYNTHETIC_PROVIDER_ENABLED: ${RDAGENT_SYNTHETIC_PROVIDER_ENABLED:-false}
+  RDAGENT_LIVE_PROVIDER_ENABLED: ${RDAGENT_LIVE_PROVIDER_ENABLED:-false}
 x-api-build: &api-build
   context: ..
   dockerfile: infra/application.Dockerfile
   target: api
   args:
-    PYTHON_IMAGE: ${TRADEGRAD_PYTHON_IMAGE:-python:3.12.14-slim-bookworm}
+    PYTHON_IMAGE: ${TRADEGRAD_PYTHON_IMAGE:-python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e}
     DOCKER_CLI_IMAGE: ${DOCKER_CLI_IMAGE:?Set an official docker CLI image pinned by sha256 digest}
 x-research-build: &research-build
   <<: *api-build
@@ -64,7 +73,7 @@ x-runner-volumes: &runner-volumes
     target: /var/run/docker.sock
     bind: {create_host_path: false}
 x-runner-environment: &runner-environment
-  <<: *environment
+  <<: [*environment, *rd-environment]
   TRADEGRAD_RUNNER_STATE_DIR: ${TRADEGRAD_STATE_ROOT:?}/runner
   TRADEGRAD_DOCKER_HOST: unix:///var/run/docker.sock
   EVALUATOR_IMAGE: ${EVALUATOR_IMAGE:?Build the native evaluator first}
@@ -120,7 +129,7 @@ services:
     build: *api-build
     command: [run, api]
     environment:
-      <<: *environment
+      <<: [*environment, *rd-environment]
       MODEL_PROFILES_ENABLED: ${MODEL_PROFILES_ENABLED:-false}
       MODEL_PROFILES: "${MODEL_PROFILES:-[]}"
     healthcheck:
@@ -131,6 +140,8 @@ services:
     image: ${TRADEGRAD_IMAGE_PREFIX:-tradegrad-local}/api:${TRADEGRAD_RELEASE:?}
     build: *api-build
     command: [run, research-dispatcher]
+    environment:
+      <<: [*environment, *rd-environment]
     healthcheck:
       <<: *health
       test: [CMD, python, -m, script.compose_runtime, health, dispatcher]

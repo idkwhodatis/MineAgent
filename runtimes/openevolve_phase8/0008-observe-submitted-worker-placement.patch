@@ -1,0 +1,13 @@
+--- a/openevolve/process_parallel.py
++++ b/openevolve/process_parallel.py
+@@ -1116,6 +1116,10 @@
+                 [insp.id for insp in inspirations],
+                 observer_descriptor,
+             )
++            # Observe actual submitted pool identity; worker admission remains a
++            # separate host-verified, bounded-wait handshake, never first arrival.
++            from packages.openevolve_adapter.placement_observer import observe_submitted
++            observe_submitted(self.executor, copy.deepcopy(observer_descriptor))
+ 
+             return future
+ 

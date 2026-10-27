@@ -207,6 +207,13 @@ def _resolve(session, fence, admission_id, storage_root):
         for kind, value in expected.items()
     ):
         raise ProcessError("numeric_process_receipt")
+    from packages.research_runtime.numeric_process_journal import (
+        NumericReportExtraction,
+    )
+    from runtimes.research_supervisor.numeric_journal import read_primitive_report
+
+    if isinstance(extraction, NumericReportExtraction):
+        read_primitive_report(storage_root, admission, extraction)
     receipt = NumericOutputReceipt(
         admission,
         launch.intent.inputs,

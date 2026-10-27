@@ -1,0 +1,8 @@
+**
+!runtimes/
+!runtimes/openevolve_evaluator/
+!runtimes/openevolve_evaluator/protected_deadline.py
+!runtimes/openevolve_evaluator/protected_output.py
+!runtimes/hostile_deadline/
+!runtimes/hostile_deadline/contract.py
+!runtimes/hostile_deadline/deadline.py

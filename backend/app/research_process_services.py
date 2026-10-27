@@ -255,6 +255,40 @@ def reconcile_attempt_units(session, run_id, attempt_id, generation):
     ).all()
     stopped = 0
     for row in rows:
+        if (
+            row.schema_version == "mineagent.process-admission.v2"
+            and row.profile == "mineagent.factor-strategy-engine.v1"
+        ):
+            from backend.app.structured_process_services import (
+                structured_stop_committed,
+            )
+
+            stopped += int(structured_stop_committed(session, row))
+            continue
+        if row.schema_version == "mineagent.process-admission.v2" and row.profile in {
+            "mineagent.openevolve-orchestrator.v1",
+            "mineagent.openevolve-native-evaluator.v1",
+        }:
+            from backend.app.openevolve_process_stop import stop_committed
+
+            stopped += int(stop_committed(session, row))
+            continue
+        if (
+            row.schema_version == "mineagent.process-admission.v2"
+            and row.profile == "mineagent.rdagent-orchestrator.v2"
+        ):
+            from backend.app.rdagent_controller_stop import controller_stop_committed
+
+            stopped += int(controller_stop_committed(session, row))
+            continue
+        if (
+            row.schema_version == "mineagent.process-admission.v2"
+            and row.profile == "mineagent.qlib-direct-analysis.v1"
+        ):
+            from backend.app.analysis_process_services import analysis_stop_committed
+
+            stopped += int(analysis_stop_committed(session, row))
+            continue
         if row.schema_version == "mineagent.process-admission.v2":
             from backend.app.numeric_process_services import numeric_stop_committed
 

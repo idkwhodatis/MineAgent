@@ -214,6 +214,10 @@ class NativeNormalizerInput(Base):
         DateTime(timezone=True), default=utcnow
     )
     __table_args__ = (
+        # Revision021 exact snapshot partition FK; historical019 DDL stays fixed.
+        UniqueConstraint(
+            "publication_id", "admission_id", name="uq_native_normalizer_snapshot_pair"
+        ),
         UniqueConstraint("publication_id"),
         UniqueConstraint("reservation_id"),
         ForeignKeyConstraint(

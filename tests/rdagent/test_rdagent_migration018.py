@@ -82,12 +82,16 @@ def test_frozen_revision_and_exact_domain_inventory():
     assert created == set(DOMAIN_TABLES) | {"engine_object_reservation_consumers"}
 
 
-def test_upgrade_equals_current_exact_renderer_composition():
+def test_upgrade_equals_explicit_historical_projection_of_successor_metadata():
     rendered = domain()["sql"].replace(
         "consumer_kind text NOT NULL CHECK",
         "consumer_kind text NOT NULL CONSTRAINT "
         "engine_object_reservation_consumers_consumer_kind_check CHECK",
     )
+    # 020 adds only this domain unique; project it out explicitly, never rewrite 018.
+    successor = ", \n\tCONSTRAINT uq_rd_boundary_execution_actor UNIQUE (owner_id, run_id, attempt_id, generation, id, controller_launch_id, start_id)"
+    assert rendered.count(successor) == 1
+    rendered = rendered.replace(successor, "")
     expected = substitute(
         "\n".join(
             [

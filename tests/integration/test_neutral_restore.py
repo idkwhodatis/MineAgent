@@ -19,7 +19,7 @@ from test_backup_restore import drill_databases as shared_drill_databases
 
 drill_databases = shared_drill_databases
 pytestmark = pytest.mark.postgres
-HEAD = "019_native_hdf_storage"
+HEAD = "021_execution_snapshots"
 
 
 def _required_image():
@@ -257,6 +257,8 @@ def test_historical_upgrade_preserves_legacy_pins_and_allows_neutral_publication
         "017_numeric_process_boundary",
         "018_rd_source_persistence",
         "019_native_hdf_storage",
+        "020_rd_controller",
+        "021_execution_snapshots",
     ],
 )
 def test_neutral_cold_restore_preserves_rows_bytes_and_uncertain_accounting(

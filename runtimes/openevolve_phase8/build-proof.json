@@ -1,0 +1,56 @@
+{
+  "schema": "mineagent.openevolve-phase8-placement-proof.v1",
+  "wheel_sha256": "01a3d7fe9f76d6d49dca5f55bde293727ff5f2d64f452f2e09d89282bbb1e47b",
+  "files": {
+    "runtimes/openevolve_phase8/apply.py": "51f0a0ba2039f7772ee03f3e27f6b0263292ed38ac970e3a5a00fb5028958559",
+    "runtimes/openevolve_phase8/manifest.json": "7eb24236ba279b25978640faf9eb249bad6d0c362b2deac9a5beb51189ff574d",
+    "runtimes/openevolve_phase8/0008-observe-submitted-worker-placement.patch": "cb16738aaebe5c881726e9846d5211a07c051bac2866bf916f813c5f4d228a46",
+    "runtimes/openevolve_phase8/placement_probe.py": "a58389390148aa4ffc06218c8653bca70aa717209235083590ab1c9bb88023fc",
+    "packages/openevolve_adapter/placement_observer.py": "b91f33b76ade2af8323359fa9d7cbc80b20383c6c9f0722d74ccaa53e6bfdfba",
+    "packages/openevolve_adapter/placement_contracts.py": "a0c261fb19474de394bda26f9f29b3d047c3ac930e47c13cce40f9d8afefc560",
+    "runtimes/research_supervisor/worker_placement.py": "8a30660be29159eef2db42ced1ba9a60407e5b5f0d583b2f40d1f14c1ebc3209"
+  },
+  "cases": {
+    "placement": {
+      "children_rejected": false,
+      "denied": false,
+      "namespace_start_identity_observed": true,
+      "placement_count": 2,
+      "schema": "mineagent.worker-placement-probe.v1",
+      "scope": "actual pinned spawn/API with explicit synthetic host; no production issuance, SQL, SO_PEERCRED or containment acceptance",
+      "zero_mutations": false
+    },
+    "denied": {
+      "children_rejected": false,
+      "denied": true,
+      "namespace_start_identity_observed": true,
+      "placement_count": 0,
+      "schema": "mineagent.worker-placement-probe.v1",
+      "scope": "actual pinned spawn/API with explicit synthetic host; no production issuance, SQL, SO_PEERCRED or containment acceptance",
+      "zero_mutations": false
+    },
+    "rejected": {
+      "children_rejected": true,
+      "denied": false,
+      "namespace_start_identity_observed": true,
+      "placement_count": 2,
+      "schema": "mineagent.worker-placement-probe.v1",
+      "scope": "actual pinned spawn/API with explicit synthetic host; no production issuance, SQL, SO_PEERCRED or containment acceptance",
+      "zero_mutations": false
+    },
+    "zero": {
+      "children_rejected": false,
+      "denied": false,
+      "namespace_start_identity_observed": true,
+      "placement_count": 0,
+      "schema": "mineagent.worker-placement-probe.v1",
+      "scope": "actual pinned spawn/API with explicit synthetic host; no production issuance, SQL, SO_PEERCRED or containment acceptance",
+      "zero_mutations": true
+    }
+  },
+  "default_transport": "disabled_abort",
+  "production_admission": false,
+  "database_acceptance": false,
+  "authenticated_socket_acceptance": false,
+  "shared_kernel_helper": "Actual local controller/pool/resource-tracker proc identities exercised; PID inventory is synthetic, not Docker-derived"
+}

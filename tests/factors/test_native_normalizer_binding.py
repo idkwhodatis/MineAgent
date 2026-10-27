@@ -12,7 +12,10 @@ from packages.rdagent_adapter.numeric_profile import normalizer_inputs
 from tests.rdagent.test_rdagent_numeric_profile import projected
 
 
-def test_independent_backup_inventory_matches_actual_host_builder_without_native_parse():
+@pytest.mark.parametrize("primitive_report", [False, True])
+def test_independent_backup_inventory_matches_actual_host_builder_without_native_parse(
+    primitive_report,
+):
     _, _, prefix, files, _, _ = projected()
     opaque = b"opaque bytes are never parsed here"
     identity = storage_identity(
@@ -31,8 +34,21 @@ def test_independent_backup_inventory_matches_actual_host_builder_without_native
         hdf=opaque,
         expected_hdf_sha256=identity.object.sha256,
         listings=files["listings.json"],
+        primitive_report=primitive_report,
     )
-    assert normalizer_inventory(prefix, identity) == actual
+    assert (
+        normalizer_inventory(prefix, identity, primitive_report=primitive_report)
+        == actual
+    )
+    from packages.factors.native_normalizer_binding import normalizer_report_selection
+
+    assert (
+        normalizer_report_selection(prefix, identity, actual, allow_reports=True)
+        is primitive_report
+    )
+    if primitive_report:
+        with pytest.raises(ValueError):
+            normalizer_report_selection(prefix, identity, actual)
 
 
 def test_normalizer_inventory_cannot_replace_listing_hash():

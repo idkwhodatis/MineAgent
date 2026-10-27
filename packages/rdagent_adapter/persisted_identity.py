@@ -2,7 +2,7 @@
 
 import json
 
-from packages.rdagent_adapter.contracts import FactorResearchConfig
+from packages.rdagent_adapter.provider_config import parse_research_config
 
 LEGACY_ONLY_FIELDS = (
     "strategy_version_id",
@@ -23,9 +23,12 @@ def require_source_identity(run):
         getattr(run, field) is not None for field in LEGACY_ONLY_FIELDS
     ):
         raise ValueError("Legacy fields cannot stand in for RD identity")
-    config = FactorResearchConfig.model_validate_json(
-        json.dumps(run.config, allow_nan=False)
-    )
+    config = parse_research_config(json.loads(json.dumps(run.config, allow_nan=False)))
+    if (
+        hasattr(config, "steer_snapshot")
+        and config.steer_snapshot.owner_id != run.owner_id
+    ):
+        raise ValueError("Frozen steer owner differs from research owner")
     if (
         config.model_dump(mode="json") != run.config
         or run.dataset_version_id != config.input.dataset.dataset_version_id

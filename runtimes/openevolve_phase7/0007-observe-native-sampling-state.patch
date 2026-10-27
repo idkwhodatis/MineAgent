@@ -1,0 +1,29 @@
+--- a/openevolve/process_parallel.py
++++ b/openevolve/process_parallel.py
+@@ -1086,10 +1086,14 @@
+             # Inspirations are the diverse/creative examples; size them by
+             # num_diverse_programs (not num_top_programs) so the config parameter
+             # actually controls the inspiration count (GitHub issue #452).
++            from packages.openevolve_adapter.checkpoint_native import snapshot as native_state
++            from packages.openevolve_adapter import sampling_control
++            sampling_before = native_state(self.database)
+             parent, inspirations = self.database.sample_from_island(
+                 island_id=target_island,
+                 num_inspirations=self.config.prompt.num_diverse_programs,
+             )
++            sampling_after = native_state(self.database)
+ 
+             # Create database snapshot
+             db_snapshot = self._create_database_snapshot()
+@@ -1098,9 +1102,9 @@
+             # Publish actual native selection before dispatch; observers cannot
+             # mutate the selected native snapshot through their argument.
+             import copy
+-            observer_descriptor = mineagent_observer.before_submit(
++            observer_descriptor = sampling_control.before_submit(
+                 iteration, parent.id, [insp.id for insp in inspirations],
+-                copy.deepcopy(db_snapshot),
++                copy.deepcopy(db_snapshot), sampling_before, sampling_after,
+             )
+ 
+             # Submit to process pool

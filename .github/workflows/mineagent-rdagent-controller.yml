@@ -1,0 +1,208 @@
+name: MineAgent maintained actual RD controller generation
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    paths:
+      - "runtimes/factor_execution/**"
+      - "runtimes/factor_normalizer/**"
+      - "runtimes/hostile_deadline/**"
+      - "packages/rdagent_adapter/**"
+      - "tests/rdagent/**"
+      - "runtimes/rdagent_operational/**"
+      - "runtimes/rdagent/**"
+      - "workers/research/rdagent_operational.py"
+      - "tests/integration/test_rdagent_actual_controller.py"
+      - "tests/integration/test_rdagent_execution_restore.py"
+      - "tests/integration/rd_controller_fixture.py"
+      - "backend/**"
+      - "workers/research/numeric*"
+      - "packages/research_runtime/numeric*"
+      - "tests/integration/test_numeric*"
+      - ".github/workflows/mineagent-rdagent-controller.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actual-rd-generation:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      POSTGRES_USER: tradegrad_ci
+      POSTGRES_DB: tradegrad_ci
+      DATA_PROVIDER_MODE: fixture
+      E2E_LIVE_PROVIDERS: "0"
+      MODEL_PROFILES_ENABLED: "false"
+      MINEAGENT_RD_CONTROLLER_REQUIRED: "1"
+      RUN_BACKUP_RESTORE_DRILL: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Materialize unchanged legacy compatibility sources
+        run: python script/bootstrap_tradegrad_compat.py
+      - name: Install unchanged host test closure
+        run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Require complete local factor RD runtime and operations contracts
+        run: |
+          mkdir -p var/numeric-private var/numeric-proof
+          python -m pytest tests/factors tests/rdagent tests/research_runtime tests/operations tests/structured tests/structured_factor_strategy -q --junitxml=var/numeric-private/contracts.xml
+          python - <<'PYCONTRACTS'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/contracts.xml')
+          summarize(source,Path('var/numeric-proof/contracts-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases) == 3452
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYCONTRACTS
+      - name: Fetch only exact existing numeric wheels
+        run: |
+          mkdir -p .wheelhouse-factor-numeric var/numeric-proof
+          python -m runtimes.factor_execution.verify_inventory > var/numeric-proof/source-inventory.json
+          python -m pip download --require-hashes --only-binary=:all: --no-deps -r runtimes/factor_normalizer/requirements.lock -d .wheelhouse-factor-numeric
+      - name: Materialize exact pinned base in local Docker daemon
+        run: docker pull python:3.12.14-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+      - name: Build separate fixed candidate and native normalizer images
+        run: |
+          docker build --iidfile var/numeric-proof/candidate.iid -f runtimes/factor_execution/Dockerfile .
+          docker build --iidfile var/numeric-proof/normalizer.iid -f runtimes/factor_normalizer/Dockerfile .
+      - name: Verify installed numeric native dependency closures without candidate execution
+        run: |
+          for role in candidate normalizer; do
+            docker run --rm --network none --ipc none --read-only --cap-drop ALL \
+              --security-opt no-new-privileges --user 65533:65533 --pids-limit 32 \
+              --memory 256m --memory-swap 256m --cpus 1 \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev,size=4m,uid=65533,gid=65533,mode=0700 \
+              --entrypoint python "$(cat var/numeric-proof/$role.iid)" \
+              -I -m runtimes.factor_execution.probe_dependencies "$role" \
+              > "var/numeric-proof/$role-dependencies.json"
+          done
+      - name: Reproduce exact installed controller wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/rd-controller-upstream"
+          git init "$source"
+          git -C "$source" fetch --depth 1 https://github.com/microsoft/RD-Agent.git 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          git -C "$source" checkout --detach FETCH_HEAD
+          test "$(git -C "$source" rev-parse HEAD)" = 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
+          python runtimes/rdagent/build_profile.py --source "$source" --output .runtime/rdagent-wheels
+          cmp .runtime/rdagent-wheels/build-report.json runtimes/rdagent/wheel-proof.json
+          python runtimes/rdagent_operational/build_profile.py --output .runtime/rdagent-operational-wheels
+          python runtimes/rdagent_operational/build_profile.py --output "$RUNNER_TEMP/controller-build-two"
+          cmp .runtime/rdagent-operational-wheels/operational-build-report.json "$RUNNER_TEMP/controller-build-two/operational-build-report.json"
+          cmp .runtime/rdagent-operational-wheels/operational-build-report.json runtimes/rdagent_operational/wheel-proof.json
+          cp .runtime/rdagent-operational-wheels/operational-build-report.json var/numeric-proof/
+          docker build --iidfile var/numeric-proof/orchestrator.iid -f runtimes/rdagent_operational/Dockerfile .
+      - name: Generate masked disposable database credentials
+        run: python script/ci_test_environment.py
+      - name: Start exact disposable PostgreSQL for composed persisted numeric gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/numeric-private
+          docker run --detach --name tradegrad-ci-postgres --cidfile "$GITHUB_WORKSPACE/var/numeric-private/postgres.cid" \
+            --label io.mineagent.ci=numeric-postgres --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
+            --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
+            --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
+            --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
+            --health-interval 2s --health-timeout 5s --health-retries 30 postgres:18.6 >/dev/null
+          for attempt in $(seq 1 90); do
+            state=$(docker inspect --format '{{.State.Health.Status}}' tradegrad-ci-postgres)
+            if [ "$state" = healthy ]; then exit 0; fi
+            if [ "$state" = unhealthy ]; then break; fi
+            sleep 1
+          done
+          echo 'Disposable PostgreSQL was not healthy' >&2
+          exit 1
+      - name: Bind streaming backup clients to the exact disposable PostgreSQL container
+        run: |
+          python - <<'PYCLIENT'
+          import os, pathlib, re, shlex, subprocess, sys
+          container = pathlib.Path("var/numeric-private/postgres.cid").read_text().strip()
+          if not re.fullmatch(r"[0-9a-f]{64}", container):
+              raise SystemExit("Invalid disposable service identity")
+          actual = subprocess.check_output(["docker", "inspect", "--format", "{{.Id}}", container], text=True, timeout=10).strip()
+          if actual != container:
+              raise SystemExit("Disposable service identity changed")
+          root = pathlib.Path("var/ci-pg").resolve()
+          root.mkdir(parents=True, mode=0o700, exist_ok=False)
+          config = root / "docker-config"
+          config.mkdir(mode=0o700)
+          (config / "config.json").write_text('{"auths":{}}')
+          script = pathlib.Path("script/ci_pg_client.py").resolve()
+          for tool in ("pg_dump", "pg_restore"):
+              executable = root / tool
+              executable.write_text(
+                  "#!/bin/sh\nGITHUB_ACTIONS=true TRADEGRAD_CI_POSTGRES_ID=" + container
+                  + " DOCKER_CONFIG=" + shlex.quote(str(config))
+                  + " exec " + shlex.quote(sys.executable) + " " + shlex.quote(str(script))
+                  + " " + tool + ' "$@"\n'
+              )
+              executable.chmod(0o700)
+              with open(os.environ["GITHUB_ENV"], "a") as stream:
+                  print(tool.upper() + "_EXECUTABLE=" + str(executable), file=stream)
+          PYCLIENT
+      - name: Require actual CoSTEER RPC source snapshot and terminal generation
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          status=0
+          python -m pytest tests/integration/test_rdagent_actual_controller.py tests/integration/test_rdagent_execution_restore.py tests/integration/test_rdagent_controller_recovery.py -q \
+            --junitxml=var/numeric-private/controller.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/controller.xml')
+          summarize(source,Path('var/numeric-proof/controller-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==3
+          assert {case.get('name') for case in cases}=={'test_actual_costeer_source_numeric_snapshot_generation','test_actual_stopped_controller_execution_snapshot_cold_restore','test_actual_controller_identity_callback_loss_retains_containment'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Confirm exact numeric units are absent without label-based removal
+        if: always()
+        run: |
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
+          test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
+      - name: Confirm exact controller units are absent
+        if: always()
+        run: |
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2)
+          test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
+      - name: Remove only exact disposable numeric PostgreSQL
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="$GITHUB_WORKSPACE/var/numeric-private/postgres.cid"
+          if [ ! -f "$file" ] || [ -L "$file" ]; then
+            ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.ci=numeric-postgres)
+            test -z "$ids"
+            exit 0
+          fi
+          id=$(cat "$file")
+          [[ "$id" =~ ^[0-9a-f]{64}$ ]]
+          actual=$(timeout 15s docker inspect --format '{{.Id}}|{{.Name}}|{{index .Config.Labels "io.mineagent.ci"}}' "$id")
+          test "$actual" = "$id|/tradegrad-ci-postgres|numeric-postgres"
+          timeout 30s docker rm --force --volumes "$id" >/dev/null
+          test -z "$(timeout 15s docker ps --all --quiet --no-trunc --filter "id=$id")"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mineagent-rd-controller-${{ github.sha }}
+          path: var/numeric-proof/
+          if-no-files-found: error

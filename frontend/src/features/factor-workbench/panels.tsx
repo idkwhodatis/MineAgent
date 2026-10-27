@@ -1,3 +1,4 @@
+import { seededPreflightHref } from "@/lib/rd-provider-inputs";
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -515,6 +516,14 @@ export function FactorEvolutionPanel({
           </li>
         ))}
       </ol>
+      <a className="text-link" href={seededPreflightHref(detail.version.id)}>
+        Use this exact factor version as a configured-model parent
+      </a>
+      <p>
+        Opens a new preflight with an explicit parent reference. It does not
+        submit, approve a proposal or change this version. Model and steer
+        choices still require explicit selection.
+      </p>
       <p className="muted">
         Lineage is the recorded parent relation, not chronological adjacency.
         Failed and unmaterialized definitions remain visible.

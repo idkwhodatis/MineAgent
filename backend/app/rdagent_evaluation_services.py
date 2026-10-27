@@ -99,8 +99,12 @@ def local_exposure_history(session, owner_id, version_id):
     )
 
 
-def open_generation_evaluation(
-    session, fence, *, start_id, source_id, calendar, settings
+def open_generation_evaluation(session, fence, **request):
+    return _open_generation_evaluation(session, fence, **request)
+
+
+def _open_generation_evaluation(
+    session, fence, *, start_id, source_id, calendar, settings, exposure_reader=None
 ):
     """Flush one logical ticket for current generated source; repeated reads reuse it.
 
@@ -240,7 +244,11 @@ def open_generation_evaluation(
         config,
         factor_version_id=version.id,
         code_sha256=source.source_sha256,
-        exposure_history=local_exposure_history(session, fence.owner_id, version.id),
+        exposure_history=(
+            exposure_reader(session, fence, version.id)
+            if exposure_reader is not None
+            else local_exposure_history(session, fence.owner_id, version.id)
+        ),
     )
     ticket = FactorEvaluationStart(
         id=uuid4(),

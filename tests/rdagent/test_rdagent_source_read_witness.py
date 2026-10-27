@@ -227,6 +227,14 @@ def setup(monkeypatch, tmp_path):
         )
         return outcome, RDChatResponse.model_validate_json(raw)
 
+    monkeypatch.setattr(
+        domain,
+        "require_research_spec",
+        lambda *a: (
+            None,
+            SimpleNamespace(schema_version="mineagent.factor-research.v1"),
+        ),
+    )
     monkeypatch.setattr(service, "require_neutral_transaction", lambda *a, **k: None)
     monkeypatch.setattr(service, "require_recorded_controller", lambda *a: launch)
     monkeypatch.setattr(service, "read_research_object", read)

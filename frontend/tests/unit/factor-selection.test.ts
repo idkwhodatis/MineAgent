@@ -101,3 +101,29 @@ describe("factor import identity and bounded status", () => {
     ).rejects.toThrow("10,000,000");
   });
 });
+
+import { selectFactorExecution } from "../../src/features/factor-workbench/selection";
+it("keeps research execution separate from legacy snapshots across URL reload and Back", () => {
+  const next = selectFactorExecution(
+    { tab: "values", snapshot, listing: "ABC", offset: 100 },
+    snapshot,
+  );
+  expect(next).toEqual({ tab: "values", execution: snapshot });
+  expect(factorSearch(next).execution).toBe(snapshot);
+  expect(factorSearch(next).snapshot).toBeUndefined();
+  expect(selectFactorSnapshot(next, snapshot)).toEqual({
+    tab: "values",
+    snapshot,
+  });
+  expect(selectFactorVersion(next)).toEqual({ tab: "values" });
+});
+it("rejects mixed snapshot families and malformed execution/comparison IDs", () => {
+  expect(factorSearch({ execution: snapshot, snapshot }).invalidExecution).toBe(
+    true,
+  );
+  expect(factorSearch({ execution: "latest" }).invalidExecution).toBe(true);
+  expect(
+    factorSearch({ execution: snapshot, compareVersion: "parent" })
+      .invalidExecution,
+  ).toBe(true);
+});

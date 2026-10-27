@@ -148,6 +148,36 @@ class NumericExtraction(Closed):
     producer_quiesced: Literal[True]
 
 
+class NumericReportExtraction(NumericExtraction):
+    schema_version: Literal["mineagent.numeric-process-extraction.v3"]
+    protocol: Literal["MANU2-report-v1"]
+    basename: Literal["values.parquet"]
+    report_basename: Literal["rows.json"]
+    report_sha256: SHA
+    report_size_bytes: int = Field(gt=0, le=MAX_OUTPUT)
+    input_manifest_sha256: SHA
+    listings_sha256: SHA
+
+    @model_validator(mode="after")
+    def combined_output_bound(self):
+        if self.size_bytes + self.report_size_bytes > MAX_OUTPUT:
+            raise ValueError("Combined numeric output exceeds profile")
+        return self
+
+
+def parse_numeric_extraction(value):
+    if isinstance(value, (NumericExtraction, NumericReportExtraction)):
+        value = value.model_dump(mode="json")
+    if type(value) is not dict:
+        raise ValueError("Numeric extraction must be a closed record")
+    model = (
+        NumericReportExtraction
+        if value.get("schema_version") == "mineagent.numeric-process-extraction.v3"
+        else NumericExtraction
+    )
+    return model.model_validate(value)
+
+
 class NumericStop(Closed):
     schema_version: Literal["mineagent.numeric-process-stop.v2"]
     launch_sha256: SHA
@@ -195,7 +225,16 @@ def validate_numeric_journal(launch, identity, stop, extraction=None):
     ):
         raise ProcessError("numeric_process_deadline_observation")
     if extraction is not None:
-        extraction = NumericExtraction.model_validate(extraction)
+        extraction = parse_numeric_extraction(extraction)
+        if isinstance(extraction, NumericReportExtraction):
+            files = {item.destination: item for item in launch.intent.inputs.files}
+            if (
+                declaration.role != "factor_normalizer"
+                or extraction.input_manifest_sha256
+                != files["/input/manifest.json"].sha256
+                or extraction.listings_sha256 != files["/input/listings.json"].sha256
+            ):
+                raise ProcessError("numeric_report_input_identity")
         name = (
             "result.h5"
             if declaration.role == "factor_cutoff_candidate"

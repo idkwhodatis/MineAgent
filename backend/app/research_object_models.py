@@ -39,7 +39,7 @@ class ResearchObject(Base):
         UniqueConstraint("owner_id", "object_kind", "sha256"),
         UniqueConstraint("storage_key"),
         CheckConstraint(
-            "object_kind IN ('model_request','model_response','process_receipt','factor_response_assembly')"
+            "object_kind IN ('model_request','model_response','process_receipt','factor_response_assembly','factor_generation_proposal','factor_generation_feedback','factor_adoption_receipt')"
         ),
         CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'"),
         CheckConstraint("size_bytes BETWEEN 1 AND 1048576"),
@@ -83,7 +83,7 @@ class ResearchObjectPublication(Base):
         ),
         CheckConstraint("generation > 0"),
         CheckConstraint(
-            "object_kind IN ('model_request','model_response','process_receipt','factor_response_assembly')"
+            "object_kind IN ('model_request','model_response','process_receipt','factor_response_assembly','factor_generation_proposal','factor_generation_feedback','factor_adoption_receipt')"
         ),
         CheckConstraint("sha256 ~ '^[0-9a-f]{64}$'"),
         CheckConstraint("size_bytes BETWEEN 1 AND 1048576"),

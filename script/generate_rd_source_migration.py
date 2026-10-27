@@ -1,6 +1,10 @@
 import hashlib
 from pathlib import Path
 
+# Historical generation is permitted only in the reviewed 018/019 metadata checkout.
+# Successor ORM must use explicit migration deltas, never rewrite this revision.
+from pathlib import Path as _GuardPath
+
 from backend.app import (
     rdagent_boundary_models,
     rdagent_input_models,
@@ -15,6 +19,14 @@ from backend.app.rdagent_persistence_ddl import closed_phase_sql, shared_upgrade
 from backend.app.rdagent_shared_semantics_sql import render_sql as shared
 from backend.app.rdagent_shared_semantics_sql import run_lock_sql
 from backend.app.rdagent_source_sql import render_sql as source
+
+if (
+    "uq_rd_boundary_execution_actor"
+    in _GuardPath("backend/app/rdagent_boundary_models.py").read_text()
+):
+    raise SystemExit(
+        "018 is frozen: regenerate only from its historical source checkout"
+    )
 
 modules = (
     rdagent_models,

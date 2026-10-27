@@ -120,10 +120,14 @@ def numeric_abi_description(config):
     )
 
 
-def normalizer_inputs(prefix, *, hdf, expected_hdf_sha256, listings):
+def normalizer_inputs(
+    prefix, *, hdf, expected_hdf_sha256, listings, primitive_report=False
+):
     """Hash-only host staging; native HDF parsing is confined to numeric child."""
     from datetime import UTC, datetime, timedelta
 
+    if type(primitive_report) is not bool:
+        raise ValueError("Exact primitive report selection required")
     prefix = PrefixManifest.model_validate_json(prefix.model_dump_json())
     if (
         type(hdf) is not bytes
@@ -145,7 +149,9 @@ def normalizer_inputs(prefix, *, hdf, expected_hdf_sha256, listings):
     ) * 1000
     manifest = canonical_bytes(
         {
-            "schema_version": "mineagent.factor-normalization.v1",
+            "schema_version": "mineagent.factor-normalization.v2"
+            if primitive_report
+            else "mineagent.factor-normalization.v1",
             "hdf_sha256": expected_hdf_sha256,
             "listings_sha256": listing_ref.sha256,
             "output_event_ns": event_ns,

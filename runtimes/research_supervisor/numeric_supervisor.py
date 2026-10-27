@@ -27,6 +27,7 @@ from packages.research_runtime.numeric_process_journal import (
     NumericIdentity,
     NumericIntent,
     NumericLaunch,
+    NumericReportExtraction,
     NumericStop,
     validate_numeric_journal,
 )
@@ -37,7 +38,11 @@ from runtimes.factor_execution.acceptance import (
     require_live_numeric_frame,
 )
 from runtimes.factor_execution.attach_stream import AttachStream
-from runtimes.factor_execution.protected_output import MAGIC, validate_export
+from runtimes.factor_execution.protected_output import (
+    MAGIC,
+    validate_export,
+    validate_report_export,
+)
 from runtimes.factor_execution.runtime_contract import (
     BASE_IMAGE,
     MASKED_PATHS,
@@ -146,7 +151,11 @@ def check_input_bytes(intent, inputs):
                 "max_bytes",
             }
             or canonical(manifest) != inputs["/input/manifest.json"]
-            or manifest["schema_version"] != "mineagent.factor-normalization.v1"
+            or manifest["schema_version"]
+            not in (
+                "mineagent.factor-normalization.v1",
+                "mineagent.factor-normalization.v2",
+            )
             or manifest["hdf_sha256"] != expected["/input/result.h5"].sha256
             or manifest["listings_sha256"] != expected["/input/listings.json"].sha256
             or any(
@@ -388,7 +397,7 @@ class NumericSupervisor:
         )
         return state
 
-    def execute(self, root, authority, *, on_identity):
+    def execute(self, root, authority, *, on_identity, before_submission=None):
         if type(authority) is not NumericAuthority:
             raise ProcessError("numeric_process_authority")
         inventory = authority.consume()
@@ -438,6 +447,12 @@ class NumericSupervisor:
                     inputs[destination] = str(path)
                 if time.monotonic() >= authority.deadline:
                     raise ProcessError("numeric_process_deadline")
+            if before_submission is not None:
+                before_submission()
+            with process_fence(root):
+                self._verify_staged_launch(root, operation, launch)
+                if time.monotonic() >= authority.deadline:
+                    raise ProcessError("numeric_process_deadline")
                 args = self._create_args(launch, inputs)
                 _, raw = self.client._command(args)
                 cid = raw.decode("ascii").strip()
@@ -445,6 +460,11 @@ class NumericSupervisor:
                     raise ProcessError("numeric_process_runtime_identity")
                 self._verify(self.client._inspect(cid), launch, inputs, inventory)
                 reader = AttachStream.connect(cid, deadline=authority.deadline)
+            if before_submission is not None:
+                before_submission()
+            with process_fence(root):
+                self._verify_staged_launch(root, operation, launch)
+                self._verify(self.client._inspect(cid), launch, inputs, inventory)
                 if (
                     time.monotonic() >= authority.deadline
                     or datetime.now(UTC) >= intent.not_after
@@ -464,14 +484,35 @@ class NumericSupervisor:
             require_live_numeric_frame(
                 self.client._inspect(cid), time.monotonic(), authority.deadline
             )
-            if kind != 2:
-                raise ProcessError("numeric_process_output_rejected")
             basename = (
                 "result.h5"
                 if admission.role == "factor_cutoff_candidate"
                 else "values.parquet"
             )
-            content = validate_export(payload, expected_basename=basename)
+            wants_report = (
+                admission.role == "factor_normalizer"
+                and json.loads(authority.inputs["/input/manifest.json"])[
+                    "schema_version"
+                ]
+                == "mineagent.factor-normalization.v2"
+            )
+            report = None
+            if wants_report:
+                if kind != 4:
+                    raise ProcessError("numeric_process_report_required")
+                from runtimes.factor_normalizer.primitive_report import validate_report
+
+                content, report = validate_report_export(payload)
+                validate_report(
+                    report,
+                    parquet=content,
+                    manifest=authority.inputs["/input/manifest.json"],
+                    listings=authority.inputs["/input/listings.json"],
+                )
+            else:
+                if kind != 2:
+                    raise ProcessError("numeric_process_output_rejected")
+                content = validate_export(payload, expected_basename=basename)
             # Do not persist any successful extraction until the channel reaches
             # EOF with no trailing/duplicate bytes under the original unit deadline.
             require_complete_numeric_stream(reader, authority.deadline + 1)
@@ -495,8 +536,26 @@ class NumericSupervisor:
                 protected_frame_complete=True,
                 producer_quiesced=True,
             )
+            if report is not None:
+                payload = extraction.model_dump(mode="json")
+                payload.update(
+                    schema_version="mineagent.numeric-process-extraction.v3",
+                    protocol="MANU2-report-v1",
+                    report_basename="rows.json",
+                    report_sha256=hashlib.sha256(report).hexdigest(),
+                    report_size_bytes=len(report),
+                    input_manifest_sha256=hashlib.sha256(
+                        authority.inputs["/input/manifest.json"]
+                    ).hexdigest(),
+                    listings_sha256=hashlib.sha256(
+                        authority.inputs["/input/listings.json"]
+                    ).hexdigest(),
+                )
+                extraction = NumericReportExtraction.model_validate(payload)
             with process_fence(root):
                 _write_bytes(operation / "output" / basename, content, 0o600)
+                if report is not None:
+                    _write_bytes(operation / "output" / "rows.json", report, 0o600)
                 write_record(
                     control / "extraction.json", extraction.model_dump(mode="json")
                 )
@@ -527,6 +586,18 @@ class NumericSupervisor:
                     "Numeric physical containment unconfirmed: "
                     + type(containment_error).__name__
                 )
+
+    def _verify_staged_launch(self, root, operation, launch):
+        if self._launch(operation) != launch:
+            raise ProcessError("numeric_process_journal_identity")
+        fd = _directory(root)
+        try:
+            info = os.fstat(fd)
+            if (info.st_dev, info.st_ino) != (launch.root_device, launch.root_inode):
+                raise ProcessError("numeric_process_root_identity")
+        finally:
+            os.close(fd)
+        self._remove_inputs(operation, launch, verify_only=True)
 
     def _create_args(self, launch, inputs):
         seccomp = (

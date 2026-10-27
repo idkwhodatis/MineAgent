@@ -11,10 +11,11 @@ import stat
 
 from packages.research_runtime.numeric_process_journal import (
     MAX_OUTPUT,
-    NumericExtraction,
     NumericIdentity,
     NumericLaunch,
+    NumericReportExtraction,
     NumericStop,
+    parse_numeric_extraction,
     validate_numeric_journal,
 )
 from packages.research_runtime.process_contracts import ProcessError, canonical
@@ -104,8 +105,8 @@ def read_numeric_journal(root, admission, *, require_output=False):
     )
     extraction = None
     if require_output:
-        extraction = NumericExtraction.model_validate_json(
-            canonical(read_numeric_record(path / "control" / "extraction.json"))
+        extraction = parse_numeric_extraction(
+            read_numeric_record(path / "control" / "extraction.json")
         )
     if launch.intent.admission != admission:
         raise ProcessError("numeric_process_journal_identity")
@@ -121,12 +122,36 @@ def read_numeric_journal(root, admission, *, require_output=False):
 
 def read_opaque_output(root, admission, extraction):
     """Not an authority API: service must resolve DB/physical receipts first."""
-    extraction = NumericExtraction.model_validate(extraction)
+    extraction = parse_numeric_extraction(extraction)
+    return _read_output(
+        root, admission, extraction.basename, extraction.size_bytes, extraction.sha256
+    )
+
+
+def read_primitive_report(root, admission, extraction):
+    extraction = parse_numeric_extraction(extraction)
+    if not isinstance(extraction, NumericReportExtraction):
+        raise ProcessError("numeric_report_required")
+    return _read_output(
+        root,
+        admission,
+        extraction.report_basename,
+        extraction.report_size_bytes,
+        extraction.report_sha256,
+    )
+
+
+def _read_output(root, admission, basename, size_bytes, sha256):
+    if (
+        basename not in ("result.h5", "values.parquet", "rows.json")
+        or not 0 < size_bytes <= MAX_OUTPUT
+    ):
+        raise ProcessError("numeric_process_output_identity")
     directory = _directory(operation_path(root, admission) / "output")
     fd = None
     try:
         fd = os.open(
-            extraction.basename,
+            basename,
             os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
             dir_fd=directory,
         )
@@ -136,11 +161,11 @@ def read_opaque_output(root, admission, extraction):
             or before.st_nlink != 1
             or before.st_uid != os.getuid()
             or stat.S_IMODE(before.st_mode) != 0o600
-            or before.st_size != extraction.size_bytes
+            or before.st_size != size_bytes
             or before.st_size > MAX_OUTPUT
         ):
             raise ProcessError("numeric_process_output_identity")
-        chunks, remaining = [], extraction.size_bytes + 1
+        chunks, remaining = [], size_bytes + 1
         while remaining:
             part = os.read(fd, min(65536, remaining))
             if not part:
@@ -150,8 +175,8 @@ def read_opaque_output(root, admission, extraction):
         value = b"".join(chunks)
         after = os.fstat(fd)
         if (
-            len(value) != extraction.size_bytes
-            or hashlib.sha256(value).hexdigest() != extraction.sha256
+            len(value) != size_bytes
+            or hashlib.sha256(value).hexdigest() != sha256
             or (
                 before.st_dev,
                 before.st_ino,

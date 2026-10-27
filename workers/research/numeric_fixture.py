@@ -113,7 +113,14 @@ def maintained_projection(config, *, factor_version_id, source_utf8, snapshot=No
 
 
 def execute_fixed_candidate_from_source(
-    factory, fence, settings, *, source_id, factor_version_id, code_object_id
+    factory,
+    fence,
+    settings,
+    *,
+    source_id,
+    factor_version_id,
+    code_object_id,
+    authorize_submission=None,
 ):
     """Real persisted candidate path; explicit fixture-only, never arbitrary code."""
     # Composed revision018 dependencies are imported only at the explicit test
@@ -224,6 +231,7 @@ def execute_fixed_candidate_from_source(
                 session,
                 fence,
                 purpose="process_unit",
+                settings=settings,
                 logical_key="numeric-fixture:" + uuid4().hex,
                 amounts=BudgetVector(
                     process_slots=1, wall_milliseconds=60000, storage_bytes=67_174_400
@@ -280,11 +288,20 @@ def execute_fixed_candidate_from_source(
             admission.id,
             input_bytes=inputs,
             inventory=inventory,
+            authorize_submission=authorize_submission,
         )
         return admission.id
 
 
-def execute_fixed_normalizer_from_native(factory, fence, settings, *, publication_id):
+def execute_fixed_normalizer_from_native(
+    factory,
+    fence,
+    settings,
+    *,
+    publication_id,
+    primitive_report=False,
+    authorize_submission=None,
+):
     """Real native consumer claim→normalizer; fixed maintained source only."""
     from backend.app.factor_native_io import native_storage_guard
     from backend.app.factor_native_services import (
@@ -301,6 +318,8 @@ def execute_fixed_normalizer_from_native(factory, fence, settings, *, publicatio
     from packages.rdagent_adapter.prefix import PrefixManifest
     from workers.research.numeric_process import _execute_claimed_numeric_unit
 
+    if type(primitive_report) is not bool:
+        raise ProcessError("numeric_fixture_report_selection")
     verify_runtime_inventory()
     fixed = (
         Path(__file__).resolve().parents[2] / "runtimes/factor_execution/abi_fixture.py"
@@ -342,6 +361,7 @@ def execute_fixed_normalizer_from_native(factory, fence, settings, *, publicatio
                 prefix,
                 hdf=raw,
                 expected_hdf_sha256=identity.object.sha256,
+                primitive_report=primitive_report,
                 listings=canonical_bytes(
                     [item.model_dump(mode="json") for item in prefix.listings]
                 ),
@@ -365,6 +385,7 @@ def execute_fixed_normalizer_from_native(factory, fence, settings, *, publicatio
                 session,
                 fence,
                 purpose="process_unit",
+                settings=settings,
                 logical_key="numeric-normalizer:" + uuid4().hex,
                 amounts=BudgetVector(
                     process_slots=1, wall_milliseconds=60000, storage_bytes=67_174_400
@@ -408,5 +429,6 @@ def execute_fixed_normalizer_from_native(factory, fence, settings, *, publicatio
             input_bytes=inputs,
             inventory=inventory,
             settings=settings,
+            authorize_submission=authorize_submission,
         )
         return admission.id

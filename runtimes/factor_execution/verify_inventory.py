@@ -32,6 +32,7 @@ FILES = (
     "runtimes/factor_normalizer/Dockerfile.dockerignore",
     "runtimes/factor_normalizer/requirements.lock",
     "runtimes/factor_normalizer/normalize.py",
+    "runtimes/factor_normalizer/primitive_report.py",
     "runtimes/factor_normalizer/entrypoint.py",
     "runtimes/factor_normalizer/protected_deadline.py",
     "packages/rdagent_adapter/assembly.py",

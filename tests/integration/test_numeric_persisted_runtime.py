@@ -264,7 +264,11 @@ def test_actual_source_candidate_native_claim_normalizer_stops(
         == publication_id
     )
     normalizer_id = execute_fixed_normalizer_from_native(
-        factory, source.fence, settings, publication_id=publication_id
+        factory,
+        source.fence,
+        settings,
+        publication_id=publication_id,
+        primitive_report=True,
     )
     assert set(_receipts(factory, normalizer_id)) == set(before)
     with neutral_transaction(
@@ -280,7 +284,61 @@ def test_actual_source_candidate_native_claim_normalizer_stops(
         assert receipt.sha256 == EXPECTED_PARQUET_SHA256
         assert receipt.inputs.source_object_id == source.codeobject.id
         assert receipt.inputs.source_sha256 == source.version.code_sha256
+    from backend.app.core.maintenance import shared_lifecycle
+    from backend.app.factor_native_io import native_storage_guard
+    from backend.app.normalized_cutoff_services import read_normalized_cutoff
+
+    with (
+        shared_lifecycle(factory.kw["bind"], settings.storage_root),
+        native_storage_guard(settings.storage_root),
+        neutral_transaction(
+            factory, source.fence, resource_scope="factor_numeric"
+        ) as session,
+    ):
+        result = read_normalized_cutoff(session, source.fence, normalizer_id, settings)
+        # Independently calculated from the fixed three prices per listing.
+        assert result.rows == (
+            (1710532800000000000, 0, 132.0 / 130.0 - 1, 0),
+            (1710532800000000000, 1, 126.0 / 120.0 - 1, 0),
+            (1710532800000000000, 2, 108.0 / 104.0 - 1, 0),
+        )
+        assert result.parquet_bytes == raw
+        assert result.parquet_sha256 == EXPECTED_PARQUET_SHA256
+        assert result.native_publication_id == publication_id
+    with (
+        shared_lifecycle(factory.kw["bind"], settings.storage_root),
+        native_storage_guard(settings.storage_root),
+        neutral_transaction(
+            factory, source.fence, resource_scope="factor_numeric"
+        ) as session,
+    ):
+        # Fresh re-resolution uses retained completed result, never another launch.
+        assert (
+            read_normalized_cutoff(session, source.fence, normalizer_id, settings)
+            == result
+        )
+    from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
+    from backend.app.execution_snapshot_services import publish_execution_snapshot
+
+    from backend.app.services import DomainError
+
+    # This maintained test executes the last cutoff of a multi-day window.
+    # Correct primitive rows for that one day must never become full evaluation
+    # success or a published complete snapshot for the unexecuted other cutoffs.
+    with pytest.raises(DomainError) as incomplete:
+        publish_execution_snapshot(
+            factory, source.fence, result.evaluation_id, settings
+        )
+    assert incomplete.value.code == "factor_evaluation_incomplete"
     with factory() as session:
+        assert (
+            session.scalar(
+                select(ExecutionSnapshotPublication).where(
+                    ExecutionSnapshotPublication.evaluation_id == result.evaluation_id
+                )
+            )
+            is None
+        )
         candidate = session.get(ResearchProcessAdmission, candidate_id)
         normalizer = session.get(ResearchProcessAdmission, normalizer_id)
         cutoff = session.get(FactorCutoffExecution, candidate.logical_operation_id)
