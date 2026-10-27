@@ -36,7 +36,7 @@ def router(monkeypatch):
 
     def submit(*args, **kwargs):
         submissions.append(kwargs)
-        kwargs["revalidate_controller"](session, args[1])
+        module.require_rd_controller(session, args[1], kwargs["controller_peer"])
         return SimpleNamespace(
             operation_id=uuid4(),
             response_bytes=kwargs["fixture_response"].model_dump_json().encode(),
@@ -150,6 +150,7 @@ def test_fixed_chat_response_matches_actual_codec(router, phase):
     else:
         assert "Actual retained complete snapshot" in response.content
     assert len(router.submissions) == 1
+    assert router.submissions[0]["controller_peer"] is router.peer
     assert (
         router.authorize.call_count == 3
     )  # Router, scoped call and physical-submit callback.

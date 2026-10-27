@@ -146,7 +146,21 @@ def test_research_notes_require_actual_postgres_without_filtered_acceptance():
     )
     assert 'TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"' in postgres
     assert 'TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"' in postgres
-    assert "--ignore" not in postgres and " -k " not in postgres
+    # Only the dedicated actual-OE module is partitioned; research/notes and
+    # every other generic PostgreSQL case remain unfiltered.
+    dedicated = "tests/integration/test_openevolve_initial_runtime.py"
+    assert re.findall(r"--ignore(?:-glob)?(?:=|\s+)(\S+)", postgres) == [dedicated]
+    assert " -k " not in postgres and " -m " not in postgres.replace(" -m pytest", "")
+    oe = (
+        Path(__file__).resolve().parents[2]
+        / ".github/workflows/mineagent-openevolve-initial.yml"
+    ).read_text()
+    assert "push:" in oe and "branches: [master]" in oe
+    assert "MINEAGENT_OE_INITIAL_REQUIRED: '1'" in oe
+    assert "RUN_BACKUP_RESTORE_DRILL: '1'" in oe
+    assert f"python -m pytest {dedicated} -q" in oe
+    assert 'test "$status" = 0' in oe
+    assert "python script/verify_openevolve_initial.py --junit" in oe
     assert "continue-on-error" not in postgres and "|| true" not in postgres
     assert "--junitxml=m1-m2-postgres-junit.xml" in postgres
 

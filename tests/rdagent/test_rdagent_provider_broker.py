@@ -50,7 +50,14 @@ def broker(monkeypatch, tmp_path):
     config = SimpleNamespace(model_binding=binding)
     session = SimpleNamespace(scalar=lambda query: None)
     state = SimpleNamespace(
-        active=False, receipts={}, calls=0, outcomes=[], files={}, fail=None
+        active=False,
+        receipts={},
+        calls=0,
+        outcomes=[],
+        files={},
+        fail=None,
+        auth_count=0,
+        fail_auth=None,
     )
     operator = SimpleNamespace(
         connection=SimpleNamespace(
@@ -126,7 +133,15 @@ def broker(monkeypatch, tmp_path):
         )
 
     monkeypatch.setattr(module, "neutral_transaction", transaction)
-    monkeypatch.setattr(module, "_authorize", lambda *a: None)
+
+    def authorize(peer, actual_session, actual_fence):
+        assert state.active and actual_session is session and actual_fence is fence
+        assert peer is args["controller_peer"]
+        state.auth_count += 1
+        if state.fail_auth == state.auth_count:
+            raise ValueError("controller changed")
+
+    monkeypatch.setattr(module, "_authorize", authorize)
     monkeypatch.setattr(module, "require_research_spec", lambda *a: (None, config))
     monkeypatch.setattr(
         module, "resolve_provider_declaration", lambda *a: (operator, binding)
@@ -149,7 +164,7 @@ def broker(monkeypatch, tmp_path):
         "protocol": request.schema_version,
         "request_bytes": canonical_bytes(request.schema_version, request),
         "settings": SimpleNamespace(rdagent_provider_python="/usr/bin/python3"),
-        "revalidate_controller": object(),
+        "controller_peer": object(),
         "original_deadline": time.monotonic() + 10,
     }
     return SimpleNamespace(state=state, args=args, fence=fence, factory=object())
@@ -159,6 +174,7 @@ def test_started_is_retained_before_request_and_stopped_before_success(broker):
     _, raw = module.submit_provider_request(broker.factory, broker.fence, **broker.args)
     assert b"actual provider text" in raw
     assert broker.state.calls == 1 and broker.state.outcomes == ["completed"]
+    assert broker.state.auth_count == 4
     assert set(broker.state.receipts) == {"intent", "started", "stopped"}
 
 
@@ -186,3 +202,56 @@ def test_expired_original_controller_deadline_never_admits_sdk(broker):
     with pytest.raises(ProviderFailure, match="original_controller_deadline"):
         module.submit_provider_request(broker.factory, broker.fence, **broker.args)
     assert not broker.state.receipts and broker.state.calls == 0
+
+
+@pytest.mark.parametrize("boundary", [1, 2, 3, 4])
+def test_every_original_sdk_boundary_reauthorizes_before_private_handoff(
+    broker, boundary
+):
+    broker.state.fail_auth = boundary
+    with pytest.raises(ValueError, match="controller changed"):
+        module.submit_provider_request(broker.factory, broker.fence, **broker.args)
+    assert broker.state.auth_count == boundary
+    assert broker.state.calls == 0 and "completed" not in broker.state.outcomes
+
+
+def test_provider_handler_passes_same_peer_to_fixed_broker_guard(monkeypatch):
+    from backend.app import rdagent_operational_handler as base_handler
+    from backend.app import rdagent_provider_handler as handler_module
+
+    authorized = []
+
+    @contextmanager
+    def transaction(*args, **kwargs):
+        yield object()
+
+    monkeypatch.setattr(base_handler, "neutral_transaction", transaction)
+    monkeypatch.setattr(
+        base_handler,
+        "require_rd_controller",
+        lambda session, fence, peer: authorized.append(peer),
+    )
+    peer = object()
+    handler = handler_module.ProviderHandler(object(), object(), object())
+    handler.original_deadline = time.monotonic() + 1
+    seen = []
+
+    def submit(*args, **kwargs):
+        seen.append(kwargs)
+        return uuid4(), b"{}"
+
+    monkeypatch.setattr(handler_module, "submit_provider_request", submit)
+    handler(
+        peer,
+        "submit_chat",
+        {
+            "exchange_id": str(uuid4()),
+            "idempotency_key": str(uuid4()),
+            "relation": "initial",
+            "protocol": "mineagent.rdagent-provider-chat.v1",
+            "request_utf8": "{}",
+        },
+    )
+    assert authorized == [peer]
+    assert seen[0]["controller_peer"] is peer
+    assert "revalidate_controller" not in seen[0]

@@ -249,3 +249,51 @@ def test_transaction_failure_precedes_reads(resolver):
         invoke(resolver)
     resolver.session.scalar.assert_not_called()
     resolver.authenticate.assert_not_called()
+
+
+def test_broker_fixed_guard_rechecks_original_binding_each_boundary(
+    resolver, monkeypatch
+):
+    from backend.app import rdagent_operational_broker as broker
+    from backend.app.rdagent_operational_broker import _authorize
+
+    monkeypatch.setattr(broker, "require_research_spec", Mock())
+    from runtimes.rdagent_operational.peer import ControllerPeer
+
+    # Concrete peer shape; kernel observation remains the explicit fixture double.
+    peer = ControllerPeer(
+        resolver.peer.admission, resolver.peer.binding, object(), object()
+    )
+    for _ in range(4):
+        _authorize(peer, resolver.session, resolver.fence)
+    assert resolver.authenticate.call_count == 4
+    assert resolver.transaction.call_count == 4
+    assert service.expected_operational_bootstrap.call_count == 4
+
+
+@pytest.mark.parametrize("change", ["revoked", "owner", "generation", "peer"])
+def test_broker_fixed_guard_rejects_drift_after_prior_success(
+    resolver, change, monkeypatch
+):
+    from backend.app import rdagent_operational_broker as broker
+    from backend.app.rdagent_operational_broker import _authorize
+
+    monkeypatch.setattr(broker, "require_research_spec", Mock())
+    from runtimes.rdagent_operational.peer import ControllerPeer
+
+    peer = ControllerPeer(
+        resolver.peer.admission, resolver.peer.binding, object(), object()
+    )
+    _authorize(peer, resolver.session, resolver.fence)
+    if change == "revoked":
+        resolver.state.status = "stopped"
+    elif change == "owner":
+        resolver.row.owner_id = uuid4()
+    elif change == "generation":
+        resolver.row.generation += 1
+    else:
+        resolver.peer.admission = resolver.peer.admission.model_copy(
+            update={"id": uuid4()}
+        )
+    with pytest.raises(ProcessError):
+        _authorize(peer, resolver.session, resolver.fence)

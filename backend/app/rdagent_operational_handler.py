@@ -254,10 +254,6 @@ class OperationalHandler:
                 raise RPCError("fixed_chat_phase")
             response = RDChatResponse(content=content, finish_reason="stop")
 
-        def revalidate(session, fence):
-            require_rd_controller(session, fence, peer)
-            return peer
-
         receipt = submit_fixture_request(
             self.factory,
             self.fence,
@@ -268,7 +264,7 @@ class OperationalHandler:
             request_bytes=raw,
             fixture_response=response,
             settings=self.settings,
-            revalidate_controller=revalidate,
+            controller_peer=peer,
         )
         return {
             "operation_id": str(receipt.operation_id),

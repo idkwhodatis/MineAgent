@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
+from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_browser import create_queued_submission_browser
 from rd_submission_fixture import body, login, profile
 from sqlalchemy import select
@@ -198,7 +199,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 queue = create_queue_app(settings)
-                with queue.open():
+                with diagnose_rd_queue(factory, run_id), queue.open():
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,
@@ -335,7 +336,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 child_queue = create_queue_app(settings)
-                with child_queue.open():
+                with diagnose_rd_queue(factory, child_run_id), child_queue.open():
                     child_queue.run_worker(
                         queues=["research"],
                         concurrency=1,

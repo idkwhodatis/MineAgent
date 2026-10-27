@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 
 from backend.app import openevolve_socket_peer as resolver
+from packages.research_runtime.fences import AttemptFence
 from runtimes.openevolve_operational import peer as peers
 from tests.openevolve.test_operational_peer import case  # noqa:F401
 
@@ -54,8 +55,15 @@ def setup(c, monkeypatch, *, delay=False):
         def scalar(self, query):
             return None
 
+    deadlines = []
+
     @contextmanager
     def transaction(*a, **k):
+        from backend.app.openevolve_lock_admission import current_window
+
+        deadlines.append(current_window(a[1]).deadline)
+        assert len(set(deadlines)) == 1  # Polling never refreshes handshake time.
+        assert deadlines[-1] <= context.deadline
         calls.append("begin")
         yield Session()
         calls.append("commit")
@@ -84,7 +92,13 @@ def setup(c, monkeypatch, *, delay=False):
 def invoke(c, channel, context):
     return resolver.authenticate_socket(
         None,
-        c.fence,
+        AttemptFence(
+            c.fence.owner_id,
+            c.fence.run_id,
+            c.fence.attempt_id,
+            c.fence.generation,
+            uuid4(),
+        ),
         channel,
         admission=c.admission,
         controller_binding=c.binding,

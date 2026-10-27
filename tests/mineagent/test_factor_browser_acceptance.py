@@ -273,9 +273,34 @@ def test_create_diagnostics_exports_only_closed_states(tmp_path):
     ]
     assert "private" not in str(response_diagnostics(path))
 
+    from script.factor_browser_acceptance import read_lifecycle_diagnostics
+
+    failure.text = (
+        "private-url private-cookie "
+        "FACTOR_READ_LIFECYCLE_V1:reason=interrupted;pending=0;failed=1 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=deadline;pending=64;failed=0 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=page_closed;pending=1;failed=0 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=private;pending=0;failed=1 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=deadline;pending=65;failed=0 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=deadline;pending=1;failed=65 "
+        "FACTOR_READ_LIFECYCLE_V1:reason=deadline;pending=1;failed=1_private"
+    )
+    ET.SubElement(
+        case, "system-out"
+    ).text = "FACTOR_READ_LIFECYCLE_V1:reason=deadline;pending=1;failed=1"
+    ET.ElementTree(root).write(path)
+    assert read_lifecycle_diagnostics(path) == [
+        {"case_index": 0, "reason": "interrupted", "pending": 0, "failed": 1},
+        {"case_index": 0, "reason": "deadline", "pending": 64, "failed": 0},
+        {"case_index": 0, "reason": "page_closed", "pending": 1, "failed": 0},
+    ]
+    assert "private" not in str(read_lifecycle_diagnostics(path))
+
     path.write_text("<!DOCTYPE x><testsuite/>")
     with pytest.raises(ValueError):
         create_diagnostics(path)
+    with pytest.raises(ValueError):
+        read_lifecycle_diagnostics(path)
 
 
 def test_factor_migration_inventory_matches_every_guard_test():

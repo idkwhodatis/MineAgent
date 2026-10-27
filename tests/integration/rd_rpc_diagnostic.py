@@ -142,3 +142,207 @@ def diagnose_rd_rpc():
                 ),
                 flush=True,
             )
+
+
+def _queue_failure(error):
+    """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
+    from sqlalchemy.exc import DBAPIError
+
+    from backend.app.services import DomainError
+    from packages.rdagent_provider.transport import ProviderFailure
+    from packages.research_runtime.process_contracts import ProcessError
+    from runtimes.rdagent_operational.rpc import RPCError
+
+    family = {
+        RPCError: "rpc",
+        ProcessError: "process",
+        ProviderFailure: "provider",
+        DomainError: "domain",
+        ValueError: "value",
+        TimeoutError: "timeout",
+    }.get(type(error), "other")
+    code = getattr(error, "code", None)
+    if type(error) is RPCError:
+        code = error.args[0] if len(error.args) == 1 else None
+    allowed = {
+        "deadline",
+        "rd_controller_daemon_identity",
+        "rd_controller_peer",
+        "rd_controller_not_running",
+        "rd_controller_launch",
+        "rd_controller_receipts",
+        "rd_controller_peer_drift",
+        "rd_controller_incomplete_generation",
+        "rd_provider_containment_unknown",
+        "original_controller_deadline",
+        "provider_secret_unavailable",
+        "provider_timeout",
+        "provider_outcome_unknown",
+        "provider_containment_unconfirmed",
+        "rd_controller_deadline",
+        "rd_controller_expired_before_create",
+        "rd_controller_expired_before_start",
+        "rd_controller_expired_peer",
+        "rd_controller_kernel_deadline_exceeded",
+        "rd_controller_original_deadline_completion_missing",
+        "rd_controller_incomplete_or_failed_reports",
+        "rd_controller_daemon_stop_uncertain",
+        "rd_controller_absence_uncertain",
+        "neutral_transaction_lost",
+        "neutral_busy",
+        "numeric_process_command_deadline",
+        "numeric_process_command_cleanup",
+    }
+    code = code if type(code) is str and code in allowed else "unknown"
+    sqlstate = "none"
+    if isinstance(error, DBAPIError):
+        family = "database"
+        value = getattr(error.orig, "sqlstate", None)
+        sqlstate = (
+            value
+            if type(value) is str
+            and value in {"23503", "23505", "23514", "40001", "55P03", "57014"}
+            else "other"
+        )
+    stages = {
+        ("workers.research.rdagent_queue", "execute"): "queue",
+        ("workers.research.rdagent_operational", "_execute_controller"): "controller",
+        ("runtimes.rdagent_operational.supervisor", "start"): "controller_start",
+        (
+            "runtimes.rdagent_operational.supervisor",
+            "accept_controller",
+        ): "controller_accept",
+        ("runtimes.rdagent_operational.supervisor", "finish"): "controller_finish",
+        ("runtimes.rdagent_operational.rpc", "receive"): "rpc_read",
+        ("runtimes.rdagent_operational.rpc", "send"): "rpc_send",
+        ("runtimes.rdagent_operational.peer", "_revalidate"): "peer",
+        ("runtimes.rdagent_operational.daemon_identity", "_observe"): "observer",
+        ("backend.app.rdagent_provider_broker", "submit_provider_request"): "provider",
+        (
+            "backend.app.rdagent_configured_evaluation",
+            "execute_configured_evaluation",
+        ): "evaluation",
+        ("backend.app.research_lifecycle", "neutral_transaction"): "transaction",
+    }
+    stage, trace = "unknown", error.__traceback__
+    while trace is not None:
+        key = (trace.tb_frame.f_globals.get("__name__"), trace.tb_frame.f_code.co_name)
+        stage = stages.get(key, stage)
+        trace = trace.tb_next
+    return {"family": family, "code": code, "stage": stage, "sqlstate": sqlstate}
+
+
+def _queue_state(factory, run_id):
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from backend.app.models import ExecutionAttempt, ResearchRun
+    from backend.app.research_process_models import (
+        ResearchProcessAdmission,
+        ResearchProcessState,
+    )
+
+    statuses = {
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "interrupted",
+        "paused",
+        "cancel_requested",
+    }
+    process_states = {"launch_intended", "uncertain", "running", "stopped"}
+    roles = {
+        "rd_orchestrator",
+        "factor_cutoff_candidate",
+        "factor_normalizer",
+        "native_evaluator",
+    }
+    identity = UUID(str(run_id))
+    with factory() as session:
+        run = session.get(ResearchRun, identity)
+        attempts = session.scalars(
+            select(ExecutionAttempt).filter_by(run_id=identity).limit(9)
+        ).all()
+        units = session.execute(
+            select(ResearchProcessAdmission.role, ResearchProcessState.status)
+            .outerjoin(
+                ResearchProcessState,
+                ResearchProcessState.admission_id == ResearchProcessAdmission.id,
+            )
+            .where(ResearchProcessAdmission.run_id == identity)
+            .limit(17)
+        ).all()
+        return {
+            "status": run.status
+            if run is not None and run.status in statuses
+            else "unknown",
+            "attempt_overflow": len(attempts) > 8,
+            "attempts": [
+                {
+                    "status": a.status if a.status in statuses else "unknown",
+                    "error": "rd_controller_execution_failed"
+                    if a.error == "rd_controller_execution_failed"
+                    else ("none" if a.error is None else "other"),
+                    "stopped": a.sandbox_stopped is True,
+                    "exit_code": a.exit_code
+                    if type(a.exit_code) is int and 0 <= a.exit_code <= 255
+                    else None,
+                }
+                for a in attempts[:8]
+            ],
+            "unit_overflow": len(units) > 16,
+            "units": sorted(
+                [
+                    {
+                        "role": role if role in roles else "other",
+                        "state": state if state in process_states else "unknown",
+                    }
+                    for role, state in units[:16]
+                ],
+                key=lambda r: (r["role"], r["state"]),
+            ),
+        }
+
+
+@contextmanager
+def diagnose_rd_queue(factory, run_id):
+    """Observe the original queue callback; retain its exception and retry policy."""
+    from workers.research import rdagent_queue
+
+    original = rdagent_queue.execute
+    failures = 0
+
+    def execute(*args, **kwargs):
+        nonlocal failures
+        try:
+            return original(*args, **kwargs)
+        except BaseException as error:
+            if failures < 8:
+                try:
+                    diagnostic = _queue_failure(error)
+                except Exception:  # noqa: BLE001 - retain the original task failure
+                    diagnostic = {
+                        "family": "other",
+                        "code": "unknown",
+                        "stage": "unknown",
+                        "sqlstate": "none",
+                    }
+                print(
+                    "RD_QUEUE_FAILURE:" + json.dumps(diagnostic, sort_keys=True),
+                    flush=True,
+                )
+                failures += 1
+            raise
+
+    try:
+        with diagnose_rd_rpc(), patch.object(rdagent_queue, "execute", execute):
+            yield
+    finally:
+        try:
+            state = _queue_state(factory, run_id)
+        except Exception:  # noqa: BLE001 - diagnostics cannot replace the failure
+            state = {"status": "diagnostic_unavailable"}
+        print("RD_QUEUE_STATE:" + json.dumps(state, sort_keys=True), flush=True)

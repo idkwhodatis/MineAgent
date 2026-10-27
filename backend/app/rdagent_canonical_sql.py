@@ -67,6 +67,9 @@ BEGIN
    IF octet_length(t)>1048576 THEN
      RAISE EXCEPTION 'RD canonical metadata byte bound exceeded' USING ERRCODE='22023';
    END IF;
+   IF t COLLATE "C" !~ '[^ -~]' AND position(chr(34) in t)=0 AND position(chr(92) in t)=0 THEN
+     result:=chr(34)||t||chr(34);
+   ELSE
    SELECT chr(34)||coalesce(string_agg(
      CASE z.p
        WHEN 8 THEN slash||'b' WHEN 9 THEN slash||'t'
@@ -84,6 +87,7 @@ BEGIN
    INTO result
    FROM (SELECT chars.c, chars.ord, ascii(chars.c) AS p
          FROM regexp_split_to_table(t,'') WITH ORDINALITY AS chars(c,ord) WHERE chars.c<>'') z;
+   END IF;
  WHEN 'number' THEN
    result:=v::text;
    IF result !~ '^(0|-?[1-9][0-9]*)$' THEN

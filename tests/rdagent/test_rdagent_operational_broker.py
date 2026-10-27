@@ -85,6 +85,8 @@ def test_noncanonical_or_wrong_protocol_rejected(protocol, raw):
 @pytest.mark.parametrize("value", [True, None, uuid4(), SimpleNamespace()])
 def test_boolean_or_uuid_callback_cannot_grant_authority(value):
     with pytest.raises(ValueError, match="authenticated controller"):
+        module._authorize(value, object(), object())
+    with pytest.raises(ValueError, match="authenticated controller"):
         module._authorize(lambda session, fence: value, object(), object())
 
 
@@ -97,6 +99,7 @@ def orchestration(monkeypatch):
         "auth_count": 0,
         "fail_auth": None,
         "fail_response": False,
+        "fail_commit": None,
     }
 
     @contextmanager
@@ -106,6 +109,8 @@ def orchestration(monkeypatch):
         events.append("begin")
         try:
             yield session
+            if state["fail_commit"] == events[-1]:
+                raise ValueError("commit rejected")
         finally:
             state["active"] = False
             events.append("end")
@@ -155,7 +160,7 @@ def orchestration(monkeypatch):
         "request_bytes": request(),
         "fixture_response": RDChatResponse(content="x", finish_reason="stop"),
         "settings": object(),
-        "revalidate_controller": lambda *a: None,
+        "controller_peer": object(),
     }
     return events, state, kwargs
 
@@ -211,3 +216,14 @@ def test_complete_replay_does_not_publish_resubmit_or_charge(
     monkeypatch.setattr(module, "_replay", lambda *a, **k: result)
     assert module.submit_fixture_request(object(), object(), **kwargs) is result
     assert events == ["begin", "auth", "end"]
+
+
+@pytest.mark.parametrize("stage", ["submitted", "settled"])
+def test_commit_failure_never_returns_receipt(orchestration, stage):
+    events, state, kwargs = orchestration
+    state["fail_commit"] = stage
+    with pytest.raises(ValueError, match="commit rejected"):
+        module.submit_fixture_request(object(), object(), **kwargs)
+    if stage == "submitted":
+        assert "model_response" not in events and "settled" not in events
+    assert state["active"] is False

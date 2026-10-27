@@ -16,12 +16,12 @@ import type {
 
 import { trackFactorReads } from "./factor-read-lifecycle";
 
-const test = base.extend<{ factorReadLifecycle: void }>({
+const test = base.extend<{ factorReadLifecycle: () => Promise<void> }>({
   factorReadLifecycle: [
     async ({ page }, use) => {
       const finishReads = trackFactorReads(page);
       try {
-        await use();
+        await use(finishReads.wait);
       } finally {
         await finishReads();
       }
@@ -77,6 +77,7 @@ test.beforeAll(async ({ request }) => {
 test("real persisted factor values, missingness and sample survive exact URL refresh and history", async ({
   page,
   request,
+  factorReadLifecycle,
 }) => {
   const auth = await token(request);
   const root = await fixture(request, auth);
@@ -97,6 +98,7 @@ test("real persisted factor values, missingness and sample survive exact URL ref
     rows.data.some((row) => row.value === null && row.missing_reason),
   ).toBe(true);
   await signIn(page);
+  await factorReadLifecycle();
   await page.goto(href(root));
   await expect(page.getByTestId("factor-values")).toContainText("AAA");
   const row = page
@@ -109,6 +111,7 @@ test("real persisted factor values, missingness and sample survive exact URL ref
       }),
     });
   await expect(row).toHaveCount(1);
+  await factorReadLifecycle();
   await row.getByRole("button", { name: "Inspect sample" }).click();
   await expect(page.getByTestId("factor-sample")).toContainText(
     "fixed_fixture_recomputed",
@@ -118,24 +121,30 @@ test("real persisted factor values, missingness and sample survive exact URL ref
   );
   await expect(page).toHaveURL(/listing=fixture/);
   const selected = page.url();
+  await factorReadLifecycle();
   await page.reload();
   await expect(page.getByTestId("factor-sample")).toContainText("momentum");
+  await factorReadLifecycle();
   await page
     .getByLabel("Exact factor version", { exact: true })
     .selectOption(child.version.id);
   await expect(page.getByLabel("Exact physical snapshot")).toHaveValue("");
   await expect(page.getByTestId("factor-values")).toHaveCount(0);
+  await factorReadLifecycle();
   await page
     .getByLabel("Exact physical snapshot")
     .selectOption(child.snapshot.id);
   await expect(page.getByTestId("factor-values")).toContainText(
     "zero_start_price_or_daily_volatility",
   );
+  await factorReadLifecycle();
   await page.goBack();
   await expect(page.getByLabel("Exact physical snapshot")).toHaveValue("");
+  await factorReadLifecycle();
   await page.goBack();
   await expect(page).toHaveURL(selected);
   await expect(page.getByTestId("factor-sample")).toContainText("momentum");
+  await factorReadLifecycle();
   await page.goForward();
   await expect(
     page.getByLabel("Exact factor version", { exact: true }),
@@ -145,13 +154,17 @@ test("real persisted factor values, missingness and sample survive exact URL ref
 test("real parent comparison keeps incompatible bilateral values and suppresses arithmetic", async ({
   page,
   request,
+  factorReadLifecycle,
 }) => {
   const auth = await token(request);
   const root = await fixture(request, auth);
   const child = await fixture(request, auth, root, "risk_adjusted_momentum");
   await signIn(page);
+  await factorReadLifecycle();
   await page.goto(href(child, "evolution"));
+  await factorReadLifecycle();
   await page.getByLabel("Left exact snapshot").selectOption(root.snapshot.id);
+  await factorReadLifecycle();
   await page.getByRole("button", { name: "Compare exact versions" }).click();
   await expect(
     page.getByRole("region", { name: "Factor comparison result" }),
@@ -162,6 +175,7 @@ test("real parent comparison keeps incompatible bilateral values and suppresses 
   await expect(page.getByTestId("factor-comparison-values")).toContainText(
     "zero_start_price_or_daily_volatility",
   );
+  await factorReadLifecycle();
   await page.getByRole("link", { name: "Strategy usage", exact: true }).click();
   await expect(
     page.getByText("Explicit host-recorded reads", { exact: true }),
@@ -169,6 +183,7 @@ test("real parent comparison keeps incompatible bilateral values and suppresses 
   await expect(
     page.getByText("No strategy usage is inferred", { exact: false }),
   ).toBeVisible();
+  await factorReadLifecycle();
   await page
     .getByRole("link", { name: "Research evaluation", exact: true })
     .click();
@@ -180,10 +195,13 @@ test("real parent comparison keeps incompatible bilateral values and suppresses 
 test("manual create and child source edits are immutable, repeat clicks are idempotent, presentation leaves source intact", async ({
   page,
   request,
+  factorReadLifecycle,
 }) => {
   const auth = await token(request);
   await signIn(page);
+  await factorReadLifecycle();
   await page.goto("/factors");
+  await factorReadLifecycle();
   await page.getByRole("button", { name: "New factor definition" }).click();
   const name = `Independent definition ${crypto.randomUUID()}`;
   const source = "def factor(close):\n    return close[-1] / close[0] - 1\n";
@@ -252,6 +270,7 @@ test("manual create and child source edits are immutable, repeat clicks are idem
     headers: authorization(auth),
   });
   expect((await history.json()).count).toBe(1);
+  await factorReadLifecycle();
   await page
     .getByRole("button", { name: "Bookmark factor", exact: true })
     .click();
@@ -261,9 +280,11 @@ test("manual create and child source edits are immutable, repeat clicks are idem
   await page
     .getByLabel("Display name", { exact: true })
     .fill(`${name} renamed`);
+  await factorReadLifecycle();
   await page
     .getByRole("button", { name: "Rename factor", exact: true })
     .click();
+  await factorReadLifecycle();
   await page
     .getByRole("link", { name: "Code & evidence", exact: true })
     .click();
@@ -275,32 +296,56 @@ test("manual create and child source edits are immutable, repeat clicks are idem
   expect((await unchanged.json()).version.definition_sha256).toBe(
     detail.version.definition_sha256,
   );
+  await factorReadLifecycle();
   await page
     .getByRole("button", { name: "Create child version", exact: true })
     .click();
   await page
     .getByLabel("Exact Python source", { exact: true })
     .fill(`${source}\n# independently retained child\n`);
-  await page
-    .getByRole("button", { name: "Save exact definition", exact: true })
-    .click();
+  await factorReadLifecycle();
+  const childRead = page.waitForResponse((response) => {
+    const path = new URL(response.url()).pathname;
+    return (
+      response.request().method() === "GET" &&
+      path.startsWith(`/api/v1/factors/${factorId}/versions/`) &&
+      path.split("/").length === 7 &&
+      !path.endsWith(`/${versionId}`)
+    );
+  });
+  const [childResponse] = await Promise.all([
+    childRead,
+    page
+      .getByRole("button", { name: "Save exact definition", exact: true })
+      .click(),
+  ]);
+  expect(childResponse.status()).toBe(200);
+  expect(await childResponse.finished()).toBeNull();
+  expect((await childResponse.json()).version.parent_version_id).toBe(
+    versionId,
+  );
   await expect(page).not.toHaveURL(new RegExp(`/versions/${versionId}`));
+  await factorReadLifecycle();
   await page.getByRole("link", { name: "Evolution", exact: true }).click();
   await expect(
     page.getByText(`parent ${versionId}`, { exact: false }),
   ).toBeVisible();
+  await factorReadLifecycle();
 });
 
 test("exact export and bundle use real API; foreign resources fail and import capability is explicit", async ({
   page,
   request,
+  factorReadLifecycle,
 }) => {
   const auth = await token(request);
   const root = await fixture(request, auth);
   await signIn(page);
+  await factorReadLifecycle();
   await page.goto(href(root, "evidence"));
   await page.getByLabel("Include selected snapshot values").check();
   const downloadPromise = page.waitForEvent("download");
+  await factorReadLifecycle();
   await page
     .getByRole("button", { name: "Export exact factor package", exact: true })
     .click();
@@ -315,6 +360,7 @@ test("exact export and bundle use real API; foreign resources fail and import ca
       new URL(response.url()).pathname === "/api/v1/factor-bundles" &&
       response.request().method() === "POST",
   );
+  await factorReadLifecycle();
   await page
     .getByRole("button", {
       name: "Save selected version as bundle",
@@ -348,6 +394,7 @@ test("exact export and bundle use real API; foreign resources fail and import ca
       new URL(response.url()).pathname === "/api/v1/factors" &&
       response.request().method() === "GET",
   );
+  await factorReadLifecycle();
   await page.goto("/factors");
   const listed = await listResponse;
   expect(listed.status()).toBe(200);
@@ -381,6 +428,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
   test("isolated package import preserves source evidence, derives exact local values and survives reload and retry", async ({
     page,
     request,
+    factorReadLifecycle,
   }) => {
     const auth = await token(request);
     const root = await fixture(request, auth);
@@ -411,6 +459,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
       buffer: await download.body(),
     };
     await signIn(page);
+    await factorReadLifecycle();
     await page.goto("/factors");
     await page
       .getByLabel("Raw factor ZIP package", { exact: true })
@@ -420,6 +469,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
         new URL(response.url()).pathname === "/api/v1/factor-packages/import" &&
         response.request().method() === "POST",
     );
+    await factorReadLifecycle();
     await page
       .getByRole("button", { name: "Import exact package", exact: true })
       .click();
@@ -431,6 +481,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     const admission = await admissionResponse.json();
     expect(admission.archive_sha256).toBe(packageRecord.archive_sha256);
     await expect(page).toHaveURL(new RegExp(`import_id=${admission.id}`));
+    await factorReadLifecycle();
     await page
       .getByRole("button", { name: "Close status view", exact: true })
       .click();
@@ -438,6 +489,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
       page.getByRole("region", { name: "Exact import status" }),
     ).toHaveCount(0);
     await expect(page).not.toHaveURL(/import_id=/);
+    await factorReadLifecycle();
     await page.goto(`/factors?import_id=${admission.id}`);
     await expect(
       page.getByRole("link", {
@@ -460,6 +512,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     );
     expect(mapped.status).toBe("derived_validated");
     expect(mapped.snapshot_id).not.toBe(root.snapshot.id);
+    await factorReadLifecycle();
     await page.reload();
     await expect(
       page.getByRole("link", {
@@ -467,6 +520,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
         exact: true,
       }),
     ).toBeVisible();
+    await factorReadLifecycle();
     await page
       .getByRole("link", {
         name: `Open derived snapshot · ${mapped.snapshot_id}`,
@@ -491,6 +545,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     expect((await original.json()).version.code_sha256).toBe(
       root.version.code_sha256,
     );
+    await factorReadLifecycle();
     await page.goto(`/factors?import_id=${admission.id}`);
     await page
       .getByLabel("Raw factor ZIP package", { exact: true })
@@ -513,6 +568,7 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     expect(admission.archive_sha256 === archiveSha).toBe(true);
     const repeatedResult = await retryFactorBusy(
       async (remainingMs) => {
+        await factorReadLifecycle();
         const [response] = await Promise.all([
           page.waitForResponse(
             (candidate) =>

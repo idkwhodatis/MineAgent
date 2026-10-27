@@ -39,6 +39,52 @@ def test_frozen_ddl_reaches_no_parameter_driver_without_reinterpretation(
         "pytest tests/integration --maxfail=1 -q"
         in (ROOT / ".github/workflows/v1-validation.yml").read_text()
     )
+    # Generic PostgreSQL has no protected OE images or explicit required flag.
+    # Partition only this dedicated module; same-head required acceptance keeps
+    # both real epoch/cold restore and owner-loss nodes with no skip allowance.
+    generic = (ROOT / ".github/workflows/v1-validation.yml").read_text()
+    dedicated = (
+        ROOT / ".github/workflows/mineagent-openevolve-initial.yml"
+    ).read_text()
+    selected = "tests/integration/test_openevolve_initial_runtime.py"
+    assert f"--ignore={selected}" in generic
+    assert f"python -m pytest {selected} -q --junitxml=" in dedicated
+    assert "MINEAGENT_OE_INITIAL_REQUIRED: '1'" in dedicated
+    assert "RUN_BACKUP_RESTORE_DRILL: '1'" in dedicated
+    assert "python script/verify_openevolve_initial.py --junit" in dedicated
+    assert 'test "$status" = 0' in dedicated
+    assert "push:" in dedicated and "branches: [master]" in dedicated
+    assert "uses: actions/checkout@" in dedicated and "ref:" not in dedicated
+    from xml.etree import ElementTree as ET
+
+    from script.verify_openevolve_initial import CASES
+
+    assert CASES == {
+        "test_actual_initial_epoch_four_saves_and_cold_restore",
+        "test_actual_initial_owner_loss_unread_original_deadline",
+    }
+    verifier = next(
+        n
+        for n in ast.parse(
+            (ROOT / "script/verify_openevolve_initial.py").read_text()
+        ).body
+        if isinstance(n, ast.FunctionDef) and n.name == "verify"
+    )
+    checks = [n for n in verifier.body if isinstance(n, ast.Assert)][:2]
+    assert len(checks) == 2
+    code = compile(
+        ast.Module(body=checks, type_ignores=[]), "<actual-required-OE-guards>", "exec"
+    )
+    valid = [ET.Element("testcase", name=name) for name in sorted(CASES)]
+    exec(code, {"cases": valid, "CASES": CASES})  # noqa: S102 - checked-in assertions only
+    invalid = [valid[:1], valid + valid[:1], [valid[0], valid[0]]]
+    for tag in ("failure", "error", "skipped"):
+        changed = [ET.Element("testcase", name=name) for name in sorted(CASES)]
+        ET.SubElement(changed[0], tag)
+        invalid.append(changed)
+    for cases in invalid:
+        with pytest.raises(AssertionError):
+            exec(code, {"cases": cases, "CASES": CASES})  # noqa: S102 - checked-in assertions only
     module = migration()
     # Exact full vector: dropping even a zero-valued dimension rejects genuine
     # reservations. Keep the same engine, purpose and scoped start-consumer guard.

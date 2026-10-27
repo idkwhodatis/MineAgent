@@ -81,6 +81,17 @@ class InitialEpochServer:
         self._last_event = "none"
 
     def _handle(self, channel, kind):
+        from backend.app.openevolve_lock_admission import acquisition_window
+
+        try:
+            with acquisition_window(self.fence, self.running.deadline):
+                return self._handle_in_window(channel, kind)
+        finally:
+            # Also close if the host-owned window itself is invalid; the inner
+            # handler retains its existing tracked-connection cleanup.
+            channel.close()
+
+    def _handle_in_window(self, channel, kind):
         with self._lock:
             self._connections.add(channel)
         try:

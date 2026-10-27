@@ -1,7 +1,7 @@
 """Closed fixture-only RD host orchestration, not a registered RPC/provider API.
 
-The host supplies an immutable maintained response schedule and a live controller
-resolver, never request-supplied authority or provider callbacks. Live authority
+The host supplies an immutable maintained response schedule and its actual peer;
+the fixed resolver checks it, never request-supplied authority or callbacks. Live authority
 is required at admission and immediately before submission. After submission,
 response persistence/accounting deliberately require only the current fence:
 controller death must not discard a true completion or release its charges.
@@ -17,6 +17,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from backend.app.rdagent_controller_services import require_rd_controller
 from backend.app.rdagent_models import FactorGenerationModelOperation
 from backend.app.rdagent_services import admit_atomic_request, require_research_spec
 from backend.app.research_broker_models import (
@@ -47,7 +48,7 @@ from packages.research_runtime.engine_broker_contracts import (
     parse_request,
     validate_response,
 )
-from runtimes.rdagent_operational.peer import ControllerPeer, require_controller_peer
+from runtimes.rdagent_operational.peer import ControllerPeer
 
 ACCOUNTING = "mineagent.rdagent-fixture-byte-units.v1"
 PROTOCOLS = {"mineagent.rdagent-chat.v1", "mineagent.rdagent-embedding.v1"}
@@ -93,15 +94,13 @@ def _scope(fence):
     }
 
 
-def _authorize(callback, session, fence):
-    # Callback must resolve persisted launch binding and return real issued peer;
-    # a boolean, caller UUID, or fabricated dataclass is never enough.
-    peer = callback(session, fence)
+def _authorize(peer, session, fence):
+    # Resolve the actual peer through the fixed persisted controller guard at
+    # every original transaction boundary. No callback may supply authority and
+    # no observation is reused across transactions or RPCs.
     if type(peer) is not ControllerPeer:
-        raise ValueError("Host resolver must return authenticated controller peer")
-    require_controller_peer(
-        peer, fence, logical_operation_id=peer.admission.logical_operation_id
-    )
+        raise ValueError("Host resolver requires authenticated controller peer")
+    require_rd_controller(session, fence, peer)
     require_research_spec(session, fence)
 
 
@@ -238,25 +237,24 @@ def submit_fixture_request(
     request_bytes,
     fixture_response,
     settings,
-    revalidate_controller,
+    controller_peer,
 ):
     """Real service/filesystem composition; caller supplies host-owned schedule.
 
-    Resolver(session,fence) must check persisted exact protected-controller binding
-    and return ControllerPeer. It is called inside each execution-authorizing
-    transaction. Internal object publication and completion are fence-only.
+    The fixed controller resolver rechecks the persisted protected binding and
+    actual kernel peer inside each original execution-authorizing transaction.
+    Internal object publication and completion are fence-only.
     """
     if (
         type(call_id) is not UUID
         or type(idempotency_key) is not UUID
         or relation not in {"initial", "continuation"}
-        or not callable(revalidate_controller)
     ):
         raise ValueError("Exact fixture invocation required")
     response, usage = fixture_usage(protocol, request_bytes, fixture_response)
     response_bytes = canonical_bytes(protocol, response)
     with neutral_transaction(factory, fence) as session:
-        _authorize(revalidate_controller, session, fence)
+        _authorize(controller_peer, session, fence)
         existing = _replay(
             session,
             fence,
@@ -276,7 +274,7 @@ def submit_fixture_request(
         factory, fence, settings, "model_request", request_bytes, key + ":request"
     )
     with neutral_transaction(factory, fence) as session:
-        _authorize(revalidate_controller, session, fence)
+        _authorize(controller_peer, session, fence)
         operation, member, transport = admit_atomic_request(
             session,
             fence,
@@ -289,7 +287,7 @@ def submit_fixture_request(
         )
         operation_id, member_id, transport_id = operation.id, member.id, transport.id
     with neutral_transaction(factory, fence) as session:
-        _authorize(revalidate_controller, session, fence)
+        _authorize(controller_peer, session, fence)
         mark_submitted(session, fence, transport_id)
     # Host-owned, deterministic fixture response is now delivered. No callback,
     # network, subprocess, source execution, or new controller grant occurs here.

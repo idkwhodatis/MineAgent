@@ -146,7 +146,7 @@ def submit_provider_request(
     protocol,
     request_bytes,
     settings,
-    revalidate_controller,
+    controller_peer,
     original_deadline,
 ):
     from backend.app.rdagent_models import FactorGenerationModelOperation
@@ -161,7 +161,7 @@ def submit_provider_request(
     if canonical_bytes(protocol, request) != request_bytes:
         raise ValueError("Exact canonical provider request required")
     with neutral_transaction(factory, fence, resource_scope="objects") as session:
-        _authorize(revalidate_controller, session, fence)
+        _authorize(controller_peer, session, fence)
         _, config = require_research_spec(session, fence)
         require_request_binding(request, config.model_binding)
         member = session.scalar(
@@ -208,7 +208,7 @@ def submit_provider_request(
     with neutral_transaction(
         factory, fence, resource_scope="factor_numeric"
     ) as session:
-        _authorize(revalidate_controller, session, fence)
+        _authorize(controller_peer, session, fence)
         operation, member, transport = admit_atomic_request(
             session,
             fence,
@@ -255,7 +255,7 @@ def submit_provider_request(
             with neutral_transaction(
                 factory, fence, resource_scope="objects"
             ) as session:
-                _authorize(revalidate_controller, session, fence)
+                _authorize(controller_peer, session, fence)
                 current, current_binding = resolve_provider_declaration(
                     settings, fence.owner_id, request.model_profile_id
                 )
@@ -276,7 +276,7 @@ def submit_provider_request(
             with neutral_transaction(
                 factory, fence, resource_scope="objects"
             ) as session:
-                _authorize(revalidate_controller, session, fence)
+                _authorize(controller_peer, session, fence)
 
     try:
         result = execute(

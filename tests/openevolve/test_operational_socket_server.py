@@ -14,6 +14,7 @@ from backend.app import openevolve_socket_server as server
 from backend.app.openevolve_broker_rpc import FixtureSchedule
 from packages.openevolve_adapter.checkpoint_native import canonical
 from packages.research_runtime.engine_broker_contracts import OEChatResponse
+from packages.research_runtime.fences import AttemptFence
 from runtimes.openevolve_operational.wire import parse_event, reply
 
 
@@ -29,7 +30,7 @@ def initial():
     )
     return server.InitialEpochServer(
         None,
-        object(),
+        AttemptFence(uuid4(), uuid4(), uuid4(), 1, uuid4()),
         running,
         object(),
         epoch_id=epoch,
@@ -70,6 +71,9 @@ def test_actual_socketpair_exact_committed_ack(monkeypatch):
     )
 
     def dispatch(*a, **k):
+        from backend.app.openevolve_lock_admission import current_window
+
+        assert current_window(unit.fence).deadline == unit.running.deadline
         assert calls == ["authenticate"]
         calls.append("commit")
         return receipt, result
@@ -81,6 +85,9 @@ def test_actual_socketpair_exact_committed_ack(monkeypatch):
     def run():
         try:
             unit._handle(host, "events")
+            from backend.app.openevolve_lock_admission import current_window
+
+            assert current_window(unit.fence) is None
         except BaseException as exc:  # noqa: BLE001 - capture thread test failure
             errors.append(exc)
 

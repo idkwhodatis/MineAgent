@@ -65,6 +65,37 @@ def authenticate_socket(
         or len(ticket_key) != 32
     ):
         raise ValueError("Fixed actual Unix controller context required")
+    from backend.app.openevolve_lock_admission import acquisition_window
+
+    placement_deadline = min(context.deadline, time.monotonic() + 5.0)
+    with acquisition_window(fence, placement_deadline):
+        return _authenticate_socket(
+            factory,
+            fence,
+            channel,
+            admission=admission,
+            controller_binding=controller_binding,
+            context=context,
+            epoch_id=epoch_id,
+            process_ticket=process_ticket,
+            ticket_key=ticket_key,
+            placement_deadline=placement_deadline,
+        )
+
+
+def _authenticate_socket(
+    factory,
+    fence,
+    channel,
+    *,
+    admission,
+    controller_binding,
+    context,
+    epoch_id,
+    process_ticket,
+    ticket_key,
+    placement_deadline,
+):
     pid, uid, gid = struct.unpack(
         "3i",
         channel.getsockopt(
@@ -86,7 +117,6 @@ def authenticate_socket(
         return peer
     # A spawned worker can connect before the controller's placement RPC has
     # committed. Only an independently observed persisted row ends this wait.
-    placement_deadline = min(context.deadline, time.monotonic() + 5.0)
     while time.monotonic() < placement_deadline:
         with neutral_transaction(factory, fence) as session:
             rows = session.scalars(

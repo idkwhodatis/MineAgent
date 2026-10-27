@@ -13,7 +13,7 @@ PINS = {
     (
         "018_rd_source_persistence.py",
         "UPGRADE_SQL",
-    ): "57047b1e2de302c2cc19e4f64cd974f89555ebc201fc9e90fc3cc727bf966715",
+    ): "4f88ee3010e5672b1e71a4d25b286ce03427b25f2aad152b23195487f711f87e",
     (
         "020_rd_controller.py",
         "UPGRADE_SQL",

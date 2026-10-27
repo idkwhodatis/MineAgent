@@ -299,6 +299,44 @@ def response_diagnostics(path: Path) -> list[dict]:
     return result[:16]
 
 
+def read_lifecycle_diagnostics(path: Path) -> list[dict]:
+    """Only fixed lifecycle reasons/counts; never request URLs or browser errors."""
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_size > MAX_REPORT_BYTES
+    ):
+        raise ValueError("Bounded browser report required")
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_REPORT_BYTES + 1)
+    if len(raw) > MAX_REPORT_BYTES or b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("Unsupported report framing")
+    count = r"(0|[1-9]|[1-5][0-9]|6[0-4])"
+    pattern = re.compile(
+        r"FACTOR_READ_LIFECYCLE_V1:reason=(deadline|interrupted|page_closed);pending="
+        + count
+        + r";failed="
+        + count
+        + r"(?![A-Za-z0-9_-])"
+    )
+    result = []
+    for index, case in enumerate(list(ET.fromstring(raw).iter("testcase"))[:512]):
+        for failure in case:
+            if failure.tag not in {"failure", "error"}:
+                continue
+            for match in list(pattern.finditer(failure.text or ""))[:4]:
+                reason, pending, failed = match.groups()
+                result.append(
+                    {
+                        "case_index": index,
+                        "reason": reason,
+                        "pending": int(pending),
+                        "failed": int(failed),
+                    }
+                )
+    return result[:16]
+
+
 def import_retry_diagnostics(path: Path) -> list[dict]:
     """Export only allowlisted retry outcome states, never server response text."""
     if (
@@ -483,6 +521,10 @@ def exercise(owner, root, source, private, node):
             print(
                 "FACTOR_RESPONSE_DIAGNOSTICS:"
                 + json.dumps(response_diagnostics(report), sort_keys=True)
+            )
+            print(
+                "FACTOR_READ_LIFECYCLE_DIAGNOSTICS:"
+                + json.dumps(read_lifecycle_diagnostics(report), sort_keys=True)
             )
             summarize(report, evidence_path(root, source))
     verify_report(report, "browser-import" if imports else "browser")

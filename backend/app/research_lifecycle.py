@@ -187,7 +187,7 @@ def require_neutral_transaction(
 
 
 @contextmanager
-def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
+def _neutral_transaction_once(factory, fence: AttemptFence, *, resource_scope="none"):
     """Own one short fenced transaction, never a transport/container lifetime.
 
     Session's global maintenance admission occurs before the first SQL. Existing
@@ -264,3 +264,51 @@ def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
                 event.remove(session, "before_commit", before_commit)
                 session.info.pop(_NEUTRAL_KEY, None)
                 _neutral_scope.reset(token)
+
+
+@contextmanager
+def neutral_transaction(factory, fence: AttemptFence, *, resource_scope="none"):
+    # Default callers retain exactly one NOWAIT attempt. Only the initial OE
+    # socket handler opts into this thread/fence-bound acquisition window.
+    import time
+    from contextlib import ExitStack
+
+    from backend.app.openevolve_lock_admission import (
+        acquisition_deadline,
+        current_window,
+    )
+    from backend.app.services import DomainError
+
+    deadline = acquisition_deadline(fence)
+    if deadline is None:
+        with _neutral_transaction_once(
+            factory, fence, resource_scope=resource_scope
+        ) as session:
+            yield session
+        return
+    while True:
+        current_window(fence)
+        if time.monotonic() >= deadline:
+            raise _neutral_error("neutral_busy")
+        stack = ExitStack()
+        try:
+            session = stack.enter_context(
+                _neutral_transaction_once(factory, fence, resource_scope=resource_scope)
+            )
+        except DomainError as exc:
+            # __enter__ failed: the original generator has already unwound
+            # Session/begin and released every lock. Never catch a body/commit
+            # exception, and never replay any dispatched helper side effect.
+            stack.close()
+            if exc.code != "neutral_busy":
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.05, remaining))
+            continue
+        with stack:
+            if time.monotonic() >= deadline:
+                raise _neutral_error("neutral_busy")
+            yield session
+        return
