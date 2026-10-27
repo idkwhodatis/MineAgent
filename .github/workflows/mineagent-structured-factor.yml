@@ -112,8 +112,8 @@ jobs:
           test "$(git -C "$source" rev-parse HEAD)" = 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
           python runtimes/rdagent/build_profile.py --source "$source" --output .runtime/rdagent-wheels
           cmp .runtime/rdagent-wheels/build-report.json runtimes/rdagent/wheel-proof.json
-          python runtimes/rdagent_operational/build_profile.py --output .runtime/rdagent-operational-wheels
-          python runtimes/rdagent_operational/build_profile.py --output "$RUNNER_TEMP/controller-build-two"
+          python -m runtimes.rdagent_operational.build_profile --output .runtime/rdagent-operational-wheels
+          python -m runtimes.rdagent_operational.build_profile --output "$RUNNER_TEMP/controller-build-two"
           cmp .runtime/rdagent-operational-wheels/operational-build-report.json "$RUNNER_TEMP/controller-build-two/operational-build-report.json"
           cmp .runtime/rdagent-operational-wheels/operational-build-report.json runtimes/rdagent_operational/wheel-proof.json
           cp .runtime/rdagent-operational-wheels/operational-build-report.json var/numeric-proof/
@@ -137,7 +137,11 @@ jobs:
           set -euo pipefail
           parent=$(cat var/numeric-proof/qlib-installed.iid)
           [[ "$parent" =~ ^sha256:[a-f0-9]{64}$ ]]
-          docker build --network none --build-arg "QLIB_IMAGE=$parent" --iidfile var/numeric-proof/analysis.iid -f runtimes/qlib/Dockerfile.direct .
+          parent_ref="mineagent-local-parent:${parent#sha256:}"
+          docker tag "$parent" "$parent_ref"
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
+          docker build --pull=false --network none --build-arg "QLIB_IMAGE=$parent_ref" --iidfile var/numeric-proof/analysis.iid -f runtimes/qlib/Dockerfile.direct .
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
       - name: Verify installed parent direct Qlib mathematics without host native imports
         shell: bash
         run: |
@@ -221,7 +225,11 @@ jobs:
           docker build --build-arg "TRADEGRAD_ENVIRONMENT_DIGEST=$digest" --iidfile var/numeric-proof/structured-parent.iid -f runtimes/portable_engine/Dockerfile .
           parent=$(cat var/numeric-proof/structured-parent.iid)
           [[ "$parent" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker build --network none --build-arg "TRUSTED_ENGINE_IMAGE=$parent" --iidfile var/numeric-proof/structured.iid -f runtimes/structured_factor_engine/Dockerfile .
+          parent_ref="mineagent-local-parent:${parent#sha256:}"
+          docker tag "$parent" "$parent_ref"
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
+          docker build --pull=false --network none --build-arg "TRUSTED_ENGINE_IMAGE=$parent_ref" --iidfile var/numeric-proof/structured.iid -f runtimes/structured_factor_engine/Dockerfile .
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
       - name: Require twenty actual units across live and independent cold restore cases
         shell: bash
         run: |

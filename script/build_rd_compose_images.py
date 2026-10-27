@@ -89,6 +89,33 @@ def verify_prepared_inputs():
     )
 
 
+def _docker(args, *, capture=False, timeout=1800):
+    return subprocess.run(
+        [
+            "docker",
+            "--config",
+            "/nonexistent",
+            "--host",
+            "unix:///var/run/docker.sock",
+            *args,
+        ],
+        cwd=ROOT,
+        check=True,
+        timeout=timeout,
+        capture_output=capture,
+        text=capture,
+        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent"},
+    )
+
+
+def _verify_parent_tag(tag, iid):
+    observed = _docker(
+        ["image", "inspect", "--format", "{{.Id}}", tag], capture=True, timeout=60
+    ).stdout.strip()
+    if observed != iid:
+        raise ValueError("Local parent tag differs from exact built image ID")
+
+
 def build(output):
     verify_prepared_inputs()
     output = output.resolve()
@@ -97,11 +124,6 @@ def build(output):
     for role, dockerfile in TARGETS:
         iid = output / (role + ".iid")
         args = [
-            "docker",
-            "--config",
-            "/nonexistent",
-            "--host",
-            "unix:///var/run/docker.sock",
             "build",
             "--iidfile",
             str(iid),
@@ -109,22 +131,23 @@ def build(output):
             dockerfile,
         ]
         if role == "analysis":
+            # Docker FROM sha256:<hex> is parsed as a registry image reference.
+            # The local tag is only a build transport alias; retained authority
+            # and the published runtime profile continue using actual image IDs.
+            parent_id = ids["qlib-installed"]
+            parent_tag = "mineagent-local-parent:" + parent_id.removeprefix("sha256:")
+            _docker(["tag", parent_id, parent_tag], timeout=60)
+            _verify_parent_tag(parent_tag, parent_id)
             args += [
+                "--pull=false",
                 "--network",
                 "none",
                 "--build-arg",
-                "QLIB_IMAGE=" + ids["qlib-installed"],
+                "QLIB_IMAGE=" + parent_tag,
             ]
-        subprocess.run(
-            args + ["."],
-            cwd=ROOT,
-            check=True,
-            timeout=1800,
-            env={
-                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                "HOME": "/nonexistent",
-            },
-        )
+        _docker(args + ["."])
+        if role == "analysis":
+            _verify_parent_tag(parent_tag, parent_id)
         ids[role] = read_iid(iid)
     profile = profile_from_ids(ids)
     verify_rd_images(profile)

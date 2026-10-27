@@ -132,8 +132,33 @@ def test_schema_identifier_closed(value):
 def test_frozen_timezones_exact_complete_local_inventory():
     assert module.TIMEZONE_NAMES == tuple(sorted(available_timezones()))
     assert module.TIMEZONE_SOURCE["version"] == "2026b"
-    data = Path(module.TIMEZONE_SOURCE["source"]).read_bytes()
-    assert hashlib.sha256(data).hexdigest() == module.TIMEZONE_SOURCE["sha256"]
+    # Source provenance belongs to the immutable generator input, not the host
+    # distribution's repackaged tzdata.zi. Host acceptance remains the exact
+    # complete inventory check above, plus ZoneInfo resolution below.
+    source = Path(__file__).parents[1] / "fixtures/rdagent/tzdata-2026b.zi"
+    data = source.read_bytes()
+
+    def verify_names(raw):
+        names = set()
+        for line in raw.decode("ascii").splitlines():
+            fields = line.split()
+            if fields and fields[0] in {"Z", "Zone"}:
+                names.add(fields[1])
+            elif fields and fields[0] in {"L", "Link"}:
+                names.add(fields[2])
+        # localtime is the original system alias, not an IANA Zone/Link record.
+        assert tuple(sorted(names | {"localtime"})) == module.TIMEZONE_NAMES
+
+    def verify_source(raw):
+        assert hashlib.sha256(raw).hexdigest() == module.TIMEZONE_SOURCE["sha256"]
+        assert raw.splitlines()[0] == b"# version 2026b"
+        verify_names(raw)
+
+    verify_source(data)
+    with pytest.raises(AssertionError):
+        verify_source(data + b"# altered packaging must not replace provenance\n")
+    with pytest.raises(AssertionError):
+        verify_names(data.replace(b"Z Africa/Abidjan", b"Z Invalid/Timezone", 1))
     for name in module.TIMEZONE_NAMES:
         assert ZoneInfo(name).key == name
 

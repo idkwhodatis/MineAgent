@@ -1,5 +1,5 @@
 # Disabled successor over an exact digest of the accepted installed-Qlib image.
-# Build caller supplies QLIB_IMAGE=sha256:<locally verified installed image ID>.
+# Build caller supplies a local reference verified against the exact image ID.
 # Never use an upstream tag or add dependency/provider installation here.
 ARG QLIB_IMAGE
 FROM ${QLIB_IMAGE}

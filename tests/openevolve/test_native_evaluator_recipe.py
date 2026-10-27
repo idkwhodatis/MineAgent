@@ -31,7 +31,16 @@ def test_actual_gate_has_exact_two_no_skip_units_and_no_result_upload():
     assert "assert len(cases)==2" in text
     assert "('failure','error','skipped')" in text
     assert "test_actual_native_owner_loss_original_deadline_without_result" in text
-    assert "docker build --network none" in text
+    for workflow in ("native", "initial"):
+        build = Path(
+            f".github/workflows/mineagent-openevolve-{workflow}.yml"
+        ).read_text()
+        assert (
+            'docker build --pull=false --network none --build-arg "NATIVE_EVALUATOR_IMAGE=$parent_ref"'
+            in build
+        )
+        assert 'docker tag "$parent" "$parent_ref"' in build
+        assert build.count("docker image inspect --format") == 2
     assert "contents: read" in text and "persist-credentials: false" in text
     assert "path: var/oe-native-proof/" in text
     assert "docker push" not in text

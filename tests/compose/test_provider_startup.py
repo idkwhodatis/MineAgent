@@ -165,9 +165,14 @@ def test_build_targets_force_local_daemon_and_do_not_inherit_provider_environmen
 
     monkeypatch.setattr(builder, "verify_prepared_inputs", lambda: None)
     monkeypatch.setattr(builder, "verify_rd_images", lambda profile: None)
-    calls = []
+    calls, tags = [], {}
+    builds = []
+    wrong_at = [None]
+    inspections = [0]
 
     def run(command, **kwargs):
+        from types import SimpleNamespace
+
         calls.append((command, kwargs))
         assert command[:5] == [
             "docker",
@@ -177,13 +182,67 @@ def test_build_targets_force_local_daemon_and_do_not_inherit_provider_environmen
             "unix:///var/run/docker.sock",
         ]
         assert set(kwargs["env"]) == {"PATH", "HOME"}
-        assert kwargs["timeout"] == 1800
-        Path(command[command.index("--iidfile") + 1]).write_text(
-            "sha256:" + str(len(calls)) * 64
-        )
+        assert kwargs["env"]["HOME"] == "/nonexistent"
+        assert kwargs["check"] is True and kwargs["cwd"] == ROOT
+        operation = command[5]
+        if operation == "build":
+            assert kwargs["timeout"] == 1800
+            builds.append(command)
+            Path(command[command.index("--iidfile") + 1]).write_text(
+                "sha256:" + str(len(builds)) * 64
+            )
+        elif operation == "tag":
+            assert kwargs["timeout"] == 60
+            assert command[6] == "sha256:" + "4" * 64
+            assert command[7] == "mineagent-local-parent:" + "4" * 64
+            tags[command[7]] = command[6]
+        else:
+            assert command[5:9] == ["image", "inspect", "--format", "{{.Id}}"]
+            assert (
+                kwargs["timeout"] == 60 and kwargs["capture_output"] and kwargs["text"]
+            )
+            inspections[0] += 1
+            observed = (
+                "sha256:" + "f" * 64
+                if inspections[0] == wrong_at[0]
+                else tags[command[9]]
+            )
+            return SimpleNamespace(stdout=observed + "\n")
+        return SimpleNamespace(stdout="")
 
     monkeypatch.setattr(builder.subprocess, "run", run)
     path = builder.build(tmp_path / "new-build")
-    assert path.is_file() and len(calls) == 5
-    assert "--network" in calls[-1][0]
-    assert "QLIB_IMAGE=sha256:" + "4" * 64 in calls[-1][0]
+    assert path.is_file() and len(builds) == 5 and len(calls) == 8
+    assert [c[0][5] for c in calls] == ["build"] * 4 + [
+        "tag",
+        "image",
+        "build",
+        "image",
+    ]
+    assert (
+        "--network" in builds[-1]
+        and builds[-1][builds[-1].index("--network") + 1] == "none"
+    )
+    assert "--pull=false" in builds[-1]
+    assert "QLIB_IMAGE=mineagent-local-parent:" + "4" * 64 in builds[-1]
+    assert "QLIB_IMAGE=sha256:" + "4" * 64 not in builds[-1]
+    profile = profile_from_ids(
+        {
+            role: "sha256:" + str(index) * 64
+            for index, (role, _) in enumerate(builder.TARGETS, 1)
+        }
+    )
+    assert path.read_text().strip() == profile.model_dump_json()
+    # Both pre-build mismatch and post-build alias replacement must fail before
+    # a runtime profile is published, retaining only truthful partial evidence.
+    for mismatch in (1, 2):
+        calls.clear()
+        builds.clear()
+        tags.clear()
+        inspections[0] = 0
+        wrong_at[0] = mismatch
+        output = tmp_path / f"wrong-parent-{mismatch}"
+        with pytest.raises(ValueError, match="Local parent tag"):
+            builder.build(output)
+        assert len(builds) == (4 if mismatch == 1 else 5)
+        assert not (output / "rd-provider-runtime-profile.json").exists()

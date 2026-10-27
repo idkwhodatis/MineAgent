@@ -13,7 +13,12 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     assert (
         "MINEAGENT_QLIB_INSTALLED_IMAGE" in text and "MINEAGENT_ANALYSIS_IMAGE" in text
     )
-    assert "docker build --network none --build-arg" in text
+    assert (
+        'docker build --pull=false --network none --build-arg "QLIB_IMAGE=$parent_ref"'
+        in text
+    )
+    assert 'docker tag "$parent" "$parent_ref"' in text
+    assert text.count("docker image inspect --format") == 2
     assert "runtimes/qlib/Dockerfile.direct" in text
     assert "54355232463878d2eebb91fe0ee5fa7fa1f5976c" in text
     assert "io.mineagent.analysis.admission" in text
@@ -111,10 +116,16 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert "python -m pytest tests/rdagent_provider -q -p no:cacheprovider" in workflow
     assert "assert len(cases)==116" in workflow
     assert "var/numeric-proof/provider-outcomes.xml" in workflow
-    assert workflow.index("Install isolated host SDK") < workflow.index(
-        "Require provider protocol and actual local SDK containment regressions"
-    ) < workflow.index("Build locked frontend")
-    assert "test_actual_identity_callback_precedes_request_and_matches_result" in workflow
+    assert (
+        workflow.index("Install isolated host SDK")
+        < workflow.index(
+            "Require provider protocol and actual local SDK containment regressions"
+        )
+        < workflow.index("Build locked frontend")
+    )
+    assert (
+        "test_actual_identity_callback_precedes_request_and_matches_result" in workflow
+    )
     assert "--require-hashes -r runtimes/rdagent_provider/requirements.lock" in workflow
     existing = set(Path("runtimes/rdagent/requirements.lock").read_text().splitlines())
     sdk = [

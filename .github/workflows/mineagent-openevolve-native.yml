@@ -50,7 +50,11 @@ jobs:
           docker build --build-arg "TRADEGRAD_ENVIRONMENT_DIGEST=$native" --iidfile var/oe-native-proof/parent.iid -f runtimes/evaluator/Dockerfile .
           parent=$(cat var/oe-native-proof/parent.iid)
           [[ "$parent" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker build --network none --build-arg "NATIVE_EVALUATOR_IMAGE=$parent" --iidfile var/oe-native-proof/protected.iid -f runtimes/openevolve_evaluator/Dockerfile .
+          parent_ref="mineagent-local-parent:${parent#sha256:}"
+          docker tag "$parent" "$parent_ref"
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
+          docker build --pull=false --network none --build-arg "NATIVE_EVALUATOR_IMAGE=$parent_ref" --iidfile var/oe-native-proof/protected.iid -f runtimes/openevolve_evaluator/Dockerfile .
+          test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
       - name: Require both actual native observation and owner-loss containment cases
         shell: bash
         run: |

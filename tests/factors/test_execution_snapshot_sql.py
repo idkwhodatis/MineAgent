@@ -50,6 +50,30 @@ def test_snapshot_closure_checks_whole_inventory_and_keeps_pending_charge():
         assert fragment in SNAPSHOT_SQL
     assert "feature_snapshots" not in SNAPSHOT_SQL
     assert "verified_source" not in SNAPSHOT_SQL
+    broken = "(obj->>'sha256')||CASE WHEN obj->>'kind'='normalized_values' THEN '.parquet' ELSE '.json' END"
+    fixed = "(obj->>'sha256')||(CASE WHEN obj->>'kind'='normalized_values' THEN '.parquet' ELSE '.json' END)"
+    assert fixed in SNAPSHOT_SQL and broken not in SNAPSHOT_SQL
+    assert _top_level_case_in_if(SNAPSHOT_SQL.replace(fixed, broken))
+    assert not _top_level_case_in_if(SNAPSHOT_SQL)
+    # Audit the complete frozen020–026 SQL literals in both directions, not only
+    # the edited source. Ordinary CHECK/SELECT/assignment CASE remains untouched.
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).parents[2] / "backend/alembic/versions"
+    for path in sorted(root.glob("02*.py")):
+        if path.name[:3] > "026":
+            continue
+        for node in ast.parse(path.read_text()).body:
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                assert not _top_level_case_in_if(node.value.value), (
+                    path.name,
+                    [getattr(t, "id", None) for t in node.targets],
+                )
 
 
 def test_storage_claim_extends_same_immediate_cross_family_registry():
@@ -102,3 +126,35 @@ def test_downgrade_classifies_all_normalizer_intents_before_restoring_v1():
         "jsonb_typeof(hdf->'size_bytes') IS DISTINCT FROM 'number'"
         in NORMALIZER_DOWNGRADE_SQL
     )
+
+
+def _top_level_case_in_if(sql):
+    """Lexical delimiter regression only, not a substitute for the hosted PG gate."""
+    import re
+
+    # Ignore SQL quoted strings/identifiers and comments, retaining function-body
+    # tokens. PL/pgSQL reads an IF expression until THEN at parenthesis depth0;
+    # an ungrouped SQL CASE's own THEN prematurely terminates that expression.
+    tokens = re.findall(
+        r"--[^\n]*|/\*[\s\S]*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|[A-Za-z_][A-Za-z_0-9]*|[();]",
+        sql,
+    )
+    active, depth, previous = False, 0, None
+    failures = []
+    for ordinal, token in enumerate(tokens):
+        if token.startswith(("'", '"', "--", "/*")):
+            continue
+        token = token.upper()
+        if token in ("IF", "ELSIF") and previous != "END":
+            active, depth = True, 0
+        elif active:
+            if token == "(":
+                depth += 1
+            elif token == ")":
+                depth -= 1
+            elif token == "CASE" and depth == 0:
+                failures.append(ordinal)
+            elif token == ";" or (token == "THEN" and depth == 0):
+                active = False
+        previous = token
+    return failures

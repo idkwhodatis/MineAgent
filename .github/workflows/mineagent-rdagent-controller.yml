@@ -96,8 +96,8 @@ jobs:
           test "$(git -C "$source" rev-parse HEAD)" = 484776c211e4fbbeef03e0ec00d6bbee7362a4f4
           python runtimes/rdagent/build_profile.py --source "$source" --output .runtime/rdagent-wheels
           cmp .runtime/rdagent-wheels/build-report.json runtimes/rdagent/wheel-proof.json
-          python runtimes/rdagent_operational/build_profile.py --output .runtime/rdagent-operational-wheels
-          python runtimes/rdagent_operational/build_profile.py --output "$RUNNER_TEMP/controller-build-two"
+          python -m runtimes.rdagent_operational.build_profile --output .runtime/rdagent-operational-wheels
+          python -m runtimes.rdagent_operational.build_profile --output "$RUNNER_TEMP/controller-build-two"
           cmp .runtime/rdagent-operational-wheels/operational-build-report.json "$RUNNER_TEMP/controller-build-two/operational-build-report.json"
           cmp .runtime/rdagent-operational-wheels/operational-build-report.json runtimes/rdagent_operational/wheel-proof.json
           cp .runtime/rdagent-operational-wheels/operational-build-report.json var/numeric-proof/

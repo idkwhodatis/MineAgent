@@ -23,9 +23,17 @@ def test_measured_unchanged_parent_and_no_network_derivative():
     assert "python -m packages.tradegrad_adapter.portable_environment" in text
     assert "-f runtimes/portable_engine/Dockerfile ." in text
     assert (
-        'docker build --network none --build-arg "TRUSTED_ENGINE_IMAGE=$parent"' in text
+        'docker build --pull=false --network none --build-arg "TRUSTED_ENGINE_IMAGE=$parent_ref"'
+        in text
     )
     assert "-f runtimes/structured_factor_engine/Dockerfile ." in text
+    assert 'docker tag "$parent" "$parent_ref"' in text
+    assert (
+        text.count(
+            'test "$(docker image inspect --format \'{{.Id}}\' "$parent_ref")" = "$parent"'
+        )
+        == 4
+    )
     assert "docker push" not in text
 
 

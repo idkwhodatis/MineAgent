@@ -244,7 +244,7 @@ BEGIN
   OR ((obj->>'size_bytes')::bigint BETWEEN 1 AND CASE WHEN obj->>'kind'='execution_manifest' THEN 1048576 ELSE 16777216 END) IS NOT TRUE
   OR (obj->>'sha256' ~ '^[a-f0-9]{64}$') IS NOT TRUE
   OR obj->>'storage_key' IS DISTINCT FROM 'factors/'||p.owner_id::text||'/objects/'||
-    (obj->>'sha256')||CASE WHEN obj->>'kind'='normalized_values' THEN '.parquet' ELSE '.json' END
+    (obj->>'sha256')||(CASE WHEN obj->>'kind'='normalized_values' THEN '.parquet' ELSE '.json' END)
   THEN RAISE EXCEPTION 'Execution snapshot object identity differs'; END IF;
  END LOOP;
  SELECT * INTO o FROM @SCHEMA@.factor_execution_snapshot_outcomes WHERE publication_id=p.id;
