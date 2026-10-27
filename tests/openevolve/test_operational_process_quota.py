@@ -8,9 +8,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.sql.elements import TextClause
 
-from backend.app.rdagent_provider_models import RDProviderTransportReceipt
-
 from backend.app import openevolve_process_quota as s
+from backend.app.rdagent_provider_models import RDProviderTransportReceipt
 from packages.research_runtime.budget_contracts import BudgetVector
 
 
@@ -65,7 +64,7 @@ def quota(monkeypatch, tmp_path, *, owner_limit=1000, global_limit=2000, files=1
             if query.column_descriptions[-1]["entity"] is RDProviderTransportReceipt:
                 # This quota fixture has no SDK transports; do not suppress the
                 # production installation-wide provider hold query.
-                return NS(all=lambda: [])
+                return NS(all=list)
             values = []
             for row in rows:
                 row.id = getattr(row, "id", uuid4())
@@ -219,3 +218,128 @@ def test_historical_capability_retains_settings_optional(monkeypatch):
         s, "require_process_capacity", lambda *a, **k: pytest.fail("historical path")
     )
     s.admit_process_capacity(session, None, BudgetVector(process_slots=1), None)
+
+
+@pytest.mark.parametrize("name", ["peer.sock", "events.sock", "broker.sock"])
+def test_fixed_socket_inode_is_counted_without_read_or_connect(
+    tmp_path, monkeypatch, name
+):
+    """Actual directories/O_PATH FD; socket type is an explicit syscall double."""
+    import stat
+
+    owner, directory = tree(tmp_path)
+    ipc = directory / "ipc"
+    ipc.mkdir()
+    target = ipc / name
+    target.write_bytes(b"")
+    real_stat, real_fstat, real_open = os.stat, os.fstat, os.open
+    inode = target.stat().st_ino
+    flags_seen = []
+
+    def socket_info(info):
+        if info.st_ino != inode:
+            return info
+        return NS(
+            **{
+                key: (stat.S_IFSOCK | 0o666) if key == "st_mode" else getattr(info, key)
+                for key in (
+                    "st_dev",
+                    "st_ino",
+                    "st_mode",
+                    "st_nlink",
+                    "st_uid",
+                    "st_gid",
+                    "st_size",
+                    "st_mtime_ns",
+                    "st_ctime_ns",
+                )
+            }
+        )
+
+    def opened(path, flags, *args, **kwargs):
+        if path == name:
+            flags_seen.append(flags)
+            assert flags == os.O_PATH | os.O_NOFOLLOW
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", lambda *a, **kw: socket_info(real_stat(*a, **kw)))
+    monkeypatch.setattr(os, "fstat", lambda fd: socket_info(real_fstat(fd)))
+    monkeypatch.setattr(os, "open", opened)
+    values = s.process_bytes(tmp_path, 10)
+    assert flags_seen == [os.O_PATH | os.O_NOFOLLOW]
+    assert len(values) == 5 and {entry[0] for entry in values} == {owner}
+    assert sum(size for _, size in values) == len(b"actual retained output")
+    with pytest.raises(ValueError, match="file count"):
+        s.process_bytes(tmp_path, 4)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "wrong_name",
+        "wrong_directory",
+        "wrong_admission",
+        "hardlink",
+        "foreign_uid",
+        "replacement",
+        "symlink_swap",
+    ],
+)
+def test_socket_allowlist_and_inode_races_fail_closed(tmp_path, monkeypatch, fault):
+    """Socket metadata double only; replacements/hardlinks/directories are real."""
+    import stat
+
+    _owner, directory = tree(tmp_path)
+    if fault == "wrong_admission":
+        replacement = directory.with_name("not-an-admission")
+        directory.rename(replacement)
+        directory = replacement
+    ipc = directory / ("output" if fault == "wrong_directory" else "ipc")
+    ipc.mkdir()
+    name = "unknown.sock" if fault == "wrong_name" else "peer.sock"
+    target = ipc / name
+    target.write_bytes(b"")
+    if fault == "hardlink":
+        os.link(target, tmp_path / "extra-link")
+    real_stat, real_fstat, real_open = os.stat, os.fstat, os.open
+    inode = target.stat().st_ino
+
+    def socket_info(info):
+        if info.st_ino != inode:
+            return info
+        values = {
+            key: getattr(info, key)
+            for key in (
+                "st_dev",
+                "st_ino",
+                "st_mode",
+                "st_nlink",
+                "st_uid",
+                "st_gid",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+        }
+        values["st_mode"] = stat.S_IFSOCK | 0o666
+        if fault == "foreign_uid":
+            values["st_uid"] += 1
+        return NS(**values)
+
+    def opened(path, flags, *args, **kwargs):
+        if path == name and flags & os.O_PATH:
+            if fault == "symlink_swap":
+                target.unlink()
+                target.symlink_to(directory / "output.bin")
+            fd = real_open(path, flags, *args, **kwargs)
+            if fault == "replacement":
+                target.unlink()
+                target.write_bytes(b"")
+            return fd
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", lambda *a, **kw: socket_info(real_stat(*a, **kw)))
+    monkeypatch.setattr(os, "fstat", lambda fd: socket_info(real_fstat(fd)))
+    monkeypatch.setattr(os, "open", opened)
+    with pytest.raises((ValueError, OSError)):
+        s.process_bytes(tmp_path, 20)

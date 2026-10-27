@@ -4,6 +4,7 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
 from sqlalchemy import PrimaryKeyConstraint, UniqueConstraint
 
 from backend.app.factor_analysis_canonical_sql import RAW_SQL
@@ -88,6 +89,61 @@ def test_frozen_analysis_sql_matches_reviewed_fragments():
     assert values["PLAN_SQL"] == PLAN_SQL
     assert values["ANALYSIS_SQL"] == ANALYSIS_SQL + CONSISTENCY_SQL
     assert values["CONTRACT_SQL"] == render_contract_sql()
+    from backend.app.rdagent_controller_revision import frozen_source_sql
+    from backend.app.rdagent_provider_revision import function
+    from backend.app.rdagent_receipt_schema_sql import (
+        NUMBER_BRANCH,
+        receipt_contract_schema,
+        receipt_schema_sql,
+    )
+    from packages.qlib_adapter.contracts import DirectResult
+    from packages.qlib_adapter.objective import DirectObjectiveMeasurement
+    from packages.research_runtime.analysis_process_journal import (
+        AnalysisExtraction,
+        AnalysisStop,
+    )
+
+    domain = receipt_schema_sql("analysis")
+    restored = (
+        domain.replace("mineagent_rd_analysis_schema", "mineagent_rd_schema")
+        .replace(NUMBER_BRANCH, "")
+        .replace(" WHEN 'boolean' THEN NULL;\n", "")
+    )
+    assert restored.replace(
+        "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1
+    ) == function(frozen_source_sql(), "mineagent_rd_schema")
+    assert "mineagent_rd_analysis_schema(v,rule" in values["CONTRACT_SQL"]
+    assert "mineagent_rd_analysis_schema(v,rule" in values["ANALYSIS_PROCESS_SQL"]
+    assert "analysis_uuid uuid" in values["ANALYSIS_SQL"]
+
+    class DamagedSchema:
+        @classmethod
+        def model_json_schema(cls):
+            return damaged
+
+    for damaged in (
+        {"type": "object", "additionalProperties": True},
+        {"type": "object", "properties": {}},
+        {"type": "string", "format": "unreviewed"},
+        {"type": "string", "unevaluatedProperties": False},
+    ):
+        with pytest.raises(ValueError, match="Unreviewed|closed records"):
+            receipt_contract_schema(DamagedSchema, "analysis")
+    with pytest.raises(ValueError, match="Exact historical"):
+        receipt_schema_sql("future")
+    assert " id uuid;" not in values["ANALYSIS_SQL"]
+    assert "WHERE id=a.logical_operation_id" in values["ANALYSIS_SQL"]
+    for cls in (
+        AnalysisStop,
+        AnalysisExtraction,
+        DirectResult,
+        DirectObjectiveMeasurement,
+    ):
+        assert receipt_contract_schema(cls, "analysis")["additionalProperties"] is False
+    assert (
+        "mineagent_rd_analysis_schema(jsonb,jsonb,jsonb,integer)"
+        in (ROOT / "backend/alembic/versions/022_factor_analysis.py").read_text()
+    )
     assert "mineagent.qlib-direct-analysis.v1" in values["PROFILE_UP"]
     assert "mineagent.qlib-direct-analysis.v1" not in values["PROFILE_DOWN"]
 

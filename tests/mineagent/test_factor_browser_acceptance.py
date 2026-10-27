@@ -242,6 +242,37 @@ def test_create_diagnostics_exports_only_closed_states(tmp_path):
         }
     ]
     assert "private" not in str(create_diagnostics(path))
+    from script.factor_browser_acceptance import response_diagnostics
+
+    failure.text = (
+        "private-token FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=database_unavailable "
+        "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=import;status=503;code=factor_storage_unavailable "
+        "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=private-token "
+        "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=factor_busy_private "
+        "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=999;code=none"
+    )
+    ET.SubElement(
+        case, "system-out"
+    ).text = (
+        "FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=503;code=factor_busy"
+    )
+    ET.ElementTree(root).write(path)
+    assert response_diagnostics(path) == [
+        {
+            "case_index": 0,
+            "operation": "create",
+            "http_status": 503,
+            "code": "database_unavailable",
+        },
+        {
+            "case_index": 0,
+            "operation": "import",
+            "http_status": 503,
+            "code": "factor_storage_unavailable",
+        },
+    ]
+    assert "private" not in str(response_diagnostics(path))
+
     path.write_text("<!DOCTYPE x><testsuite/>")
     with pytest.raises(ValueError):
         create_diagnostics(path)

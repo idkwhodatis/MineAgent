@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type KeyboardEvent } from "react";
 import {
   Background,
   Controls,
@@ -10,6 +10,36 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { StrategySpec, DecisionDetail } from "@/client/types.gen";
 import { ruleObservation } from "@/lib/workbench-evidence";
+
+/** A read-only inspection action, independent of ReactFlow's selection diff cache. */
+export function selectFocusedGraphRule(
+  event: KeyboardEvent<HTMLDivElement>,
+  rules: StrategySpec["rules"],
+  onSelect: (ruleId: string) => void,
+): void {
+  if (
+    (event.key !== "Enter" && event.key !== " ") ||
+    event.repeat ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey
+  )
+    return;
+  const target = event.target;
+  if (
+    !(target instanceof HTMLElement) ||
+    target !== event.currentTarget.ownerDocument.activeElement ||
+    !event.currentTarget.contains(target) ||
+    !target.matches(".react-flow__node")
+  )
+    return;
+  const id = target.getAttribute("data-id");
+  if (!id || !rules.some((rule) => rule.rule_id === id)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  onSelect(id);
+}
 
 export function RuleGraph({
   spec,
@@ -88,7 +118,12 @@ export function RuleGraph({
         branches ran. Only a selected recorded stage below supplies actual
         values. This graph cannot edit or execute a strategy.
       </p>
-      <div className="workbench-graph">
+      <div
+        className="workbench-graph"
+        onKeyDownCapture={(event) =>
+          selectFocusedGraphRule(event, spec.rules, onSelect)
+        }
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}

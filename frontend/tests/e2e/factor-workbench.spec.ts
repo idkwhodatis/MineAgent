@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { api, authorization, signIn, token } from "./helpers";
-import { retryFactorBusy } from "./factor-import-retry";
+import { retryFactorBusy, factorResponseCode } from "./factor-import-retry";
 import type { Token } from "../../src/client/types.gen";
 import type {
   FactorDetail,
@@ -170,6 +170,7 @@ test("manual create and child source edits are immutable, repeat clicks are idem
   await page.getByLabel("Exact Python source", { exact: true }).fill(source);
   let createRequests = 0;
   let createStatus: number | undefined;
+  let createCode = "none";
   let phase: "response" | "navigation" = "response";
   const isCreate = (url: string, method: string) =>
     new URL(url).pathname === "/api/v1/factors" && method === "POST";
@@ -194,6 +195,7 @@ test("manual create and child source edits are immutable, repeat clicks are idem
           button.click();
         }),
     ]);
+    createCode = factorResponseCode(await created.json().catch(() => null));
     expect(created.status()).toBe(201);
     phase = "navigation";
     await expect(page).toHaveURL(/\/factors\/[^/]+\/versions\//);
@@ -210,7 +212,7 @@ test("manual create and child source edits are immutable, repeat clicks are idem
         .getByRole("button", { name: "Saving…", exact: true })
         .count()) > 0;
     throw new Error(
-      `FACTOR_CREATE_DIAGNOSTIC_V1:phase=${phase};status=${createStatus ?? "none"};requests=${Math.min(createRequests, 2)};form=${valid ? "valid" : "invalid"};alert=${alert ? "yes" : "no"};saving=${saving ? "yes" : "no"}`,
+      `FACTOR_CREATE_DIAGNOSTIC_V1:phase=${phase};status=${createStatus ?? "none"};requests=${Math.min(createRequests, 2)};form=${valid ? "valid" : "invalid"};alert=${alert ? "yes" : "no"};saving=${saving ? "yes" : "no"} FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=create;status=${createStatus ?? "none"};code=${createCode}`,
     );
   }
   expect(createRequests).toBe(1);
@@ -392,7 +394,10 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
       .getByRole("button", { name: "Import exact package", exact: true })
       .click();
     const admissionResponse = await accepted;
-    expect(admissionResponse.status()).toBe(202);
+    expect(
+      admissionResponse.status(),
+      `FACTOR_RESPONSE_DIAGNOSTIC_V1:operation=import;status=${admissionResponse.status()};code=${factorResponseCode(await admissionResponse.json().catch(() => null))}`,
+    ).toBe(202);
     const admission = await admissionResponse.json();
     expect(admission.archive_sha256).toBe(packageRecord.archive_sha256);
     await expect(page).toHaveURL(new RegExp(`import_id=${admission.id}`));

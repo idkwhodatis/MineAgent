@@ -20,3 +20,31 @@ export async function retryFactorBusy<
     await pause(delay);
   }
 }
+
+/** Only these public domain codes may escape a private browser failure report. */
+export function factorResponseCode(body: unknown): string {
+  const code =
+    body !== null && typeof body === "object"
+      ? (body as Record<string, unknown>).code
+      : undefined;
+  const allowed = new Set([
+    "factor_busy",
+    "factor_import_busy",
+    "factor_capacity",
+    "factor_recovery_required",
+    "factor_storage_uncertain",
+    "factor_admission_lost",
+    "factor_admission_timeout",
+    "factor_import_unavailable",
+    "idempotency_conflict",
+    "unauthorized",
+    "maintenance_busy",
+    "factor_storage_unavailable",
+    "database_unavailable",
+  ]);
+  return typeof code === "string" && allowed.has(code)
+    ? code
+    : code === undefined
+      ? "none"
+      : "other";
+}

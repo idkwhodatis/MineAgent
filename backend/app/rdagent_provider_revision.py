@@ -17,7 +17,7 @@ PINS = {
     (
         "020_rd_controller.py",
         "UPGRADE_SQL",
-    ): "1557ba0d6c69adbb461b0d152c8fac938b51d9d97a2a70936860a6f63f447b34",
+    ): "0356ba7a550b5432fdd9dc675f1b62bf7672b546c1196dfdbc68a9d855a0d069",
     (
         "023_rd_submissions.py",
         "UPGRADE_SQL",
@@ -25,7 +25,7 @@ PINS = {
     (
         "024_openevolve_initial.py",
         "UPGRADE_SQL",
-    ): "0a8c78d30fa196887f53cbe62eb0c953752852d6d24988ee97334dddc4a9dcc5",
+    ): "521554c544e96012b9c05606f364cc80959bae93113eba5225d045d34cc3feb5",
     (
         "025_structured_factor_strategy.py",
         "UPGRADE_SQL",

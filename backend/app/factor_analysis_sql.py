@@ -90,7 +90,7 @@ def render_contract_sql():
     import json
 
     from backend.app.analysis_process_ddl import _require_serialized_keys
-    from backend.app.rdagent_controller_ddl import _schema
+    from backend.app.rdagent_receipt_schema_sql import receipt_contract_schema
     from packages.qlib_adapter.contracts import (
         DirectProtocol,
         DirectResult,
@@ -105,11 +105,17 @@ def render_contract_sql():
         ("result", DirectResult),
         ("measurement", DirectObjectiveMeasurement),
     ):
-        rule = _schema(cls)
+        rule = receipt_contract_schema(cls, "analysis")
         _require_serialized_keys(rule)
         raw = json.dumps(rule, sort_keys=True, separators=(",", ":")).replace("'", "''")
         rules.append(f"WHEN '{name}' THEN rule := '{raw}'::jsonb;")
-    return CONTRACT_SQL.replace("@RULES@", "\n".join(rules))
+    from backend.app.rdagent_receipt_schema_sql import receipt_schema_sql
+
+    return (
+        receipt_schema_sql("analysis")
+        + "\n"
+        + CONTRACT_SQL.replace("@RULES@", "\n".join(rules))
+    )
 
 
 CONTRACT_SQL = r"""
@@ -121,7 +127,7 @@ BEGIN
  @RULES@
  ELSE RETURN false;
  END CASE;
- RETURN @SCHEMA@.mineagent_rd_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
+ RETURN @SCHEMA@.mineagent_rd_analysis_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 """
@@ -233,10 +239,10 @@ CREATE FUNCTION @SCHEMA@.mineagent_direct_analysis_consistent() RETURNS trigger
 LANGUAGE plpgsql SET search_path=pg_catalog AS $$
 DECLARE a record; i @SCHEMA@.factor_direct_analysis_intents%ROWTYPE;
  p @SCHEMA@.factor_analysis_plans%ROWTYPE; li @SCHEMA@.research_process_receipts%ROWTYPE;
- id uuid; expected jsonb;
+ analysis_uuid uuid; expected jsonb;
 BEGIN
- FOR id IN SELECT t.id FROM @SCHEMA@.factor_direct_analysis_intents t LOOP
-  PERFORM @SCHEMA@.mineagent_direct_intent_check(id);
+ FOR analysis_uuid IN SELECT t.id FROM @SCHEMA@.factor_direct_analysis_intents t LOOP
+  PERFORM @SCHEMA@.mineagent_direct_intent_check(analysis_uuid);
  END LOOP;
  FOR a IN SELECT * FROM @SCHEMA@.research_process_admissions
  WHERE profile='mineagent.qlib-direct-analysis.v1' LOOP
@@ -266,8 +272,8 @@ BEGIN
     AND (b.amounts->>'wall_milliseconds')::numeric>=60000 AND (b.amounts->>'storage_bytes')::numeric>=67174400)
    THEN RAISE EXCEPTION 'Analysis process differs from exact declared intent'; END IF;
  END LOOP;
- FOR id IN SELECT analysis_id FROM @SCHEMA@.factor_direct_analysis_outcomes LOOP
-  PERFORM @SCHEMA@.mineagent_direct_result_check(id);
+ FOR analysis_uuid IN SELECT analysis_id FROM @SCHEMA@.factor_direct_analysis_outcomes LOOP
+  PERFORM @SCHEMA@.mineagent_direct_result_check(analysis_uuid);
  END LOOP;
  RETURN NEW;
 END $$;

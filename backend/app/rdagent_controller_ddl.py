@@ -14,6 +14,10 @@ import re
 from pathlib import Path
 
 from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE
+from backend.app.rdagent_receipt_schema_sql import (
+    receipt_contract_schema,
+    receipt_schema_sql,
+)
 from runtimes.rdagent_operational.process_journal import (
     ControllerChild,
     ControllerIdentity,
@@ -73,9 +77,11 @@ def render_sql(schema="public"):
         (ControllerIntent, ControllerIdentity, ControllerChild, ControllerStop),
         strict=True,
     ):
-        raw = json.dumps(_schema(cls), sort_keys=True, separators=(",", ":")).replace(
-            "'", "''"
-        )
+        raw = json.dumps(
+            receipt_contract_schema(cls, "controller"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).replace("'", "''")
         choices.append(f"WHEN '{kind}' THEN rule := '{raw}'::jsonb;")
     alterations = f"""ALTER TABLE research_process_admissions DROP CONSTRAINT ck_process_v2_unregistered,
  ADD CONSTRAINT ck_process_v2_unregistered CHECK (({CONTROLLER_PROFILE_GATE}) OR
@@ -94,7 +100,7 @@ BEGIN
  @RULES@
  ELSE RETURN false;
  END CASE;
- RETURN @S@.mineagent_rd_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
+ RETURN @S@.mineagent_rd_controller_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 CREATE FUNCTION @S@.mineagent_rd_controller_kernel(v jsonb, expected_uid integer) RETURNS boolean
@@ -257,5 +263,8 @@ END $$;
         for table in TABLES
     )
     return (
-        alterations + grammar.replace("@RULES@", "\n".join(choices)) + triggers
+        receipt_schema_sql("controller").replace("@SCHEMA@", "@S@")
+        + alterations
+        + grammar.replace("@RULES@", "\n".join(choices))
+        + triggers
     ).replace("@S@", '"' + schema + '"')

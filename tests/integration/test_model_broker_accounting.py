@@ -62,7 +62,8 @@ def broker_fixture(migrated_engine, owner, claimed_attempt, settings):
         claimed_attempt.lease_token,
     )
     settings.storage_root.mkdir(parents=True, exist_ok=True)
-    (settings.storage_root / "research-objects").mkdir(exist_ok=True)
+    for namespace in ("factors", "research-objects", "research-processes"):
+        (settings.storage_root / namespace).mkdir(exist_ok=True)
     with neutral_transaction(factory, fence) as session:
         initialize_budget(
             session,
@@ -284,12 +285,13 @@ def test_neutral_budget_survives_generation_change_without_reset(broker_fixture)
 
 @pytest.mark.parametrize("purpose", ["process_unit", "object_storage"])
 def test_neutral_nonmodel_refund_requires_domain_stop_proof(broker_fixture, purpose):
-    factory, fence, _ = broker_fixture
+    factory, fence, settings = broker_fixture
     with neutral_transaction(factory, fence) as session:
         row = reserve_budget(
             session,
             fence,
             purpose=purpose,
+            settings=settings,
             logical_key="unknown-writer",
             amounts=BudgetVector(storage_bytes=100, process_slots=1),
         )

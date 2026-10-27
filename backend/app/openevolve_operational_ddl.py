@@ -34,17 +34,16 @@ TABLES = (
 def render_sql(schema="public"):
     if type(schema) is not str or re.fullmatch(r"[a-z][a-z0-9_]{0,62}", schema) is None:
         raise ValueError("Exact SQL schema required")
+    from backend.app.analysis_process_ddl import _require_serialized_keys
+    from backend.app.openevolve_identity_sql import _expanded
+    from packages.openevolve_adapter.runtime_profile import PROFILE
     from packages.openevolve_adapter.upload_contracts import Begin
     from runtimes.openevolve_operational.bootstrap import OperationalBootstrap
     from runtimes.openevolve_operational.profile import profile_sha256
 
-    from backend.app.analysis_process_ddl import _require_serialized_keys
-    from backend.app.rdagent_controller_ddl import _schema
-    from packages.openevolve_adapter.runtime_profile import PROFILE
-
     rules = []
     for name, model in (("bootstrap", OperationalBootstrap), ("begin", Begin)):
-        rule = _schema(model)
+        rule = _expanded(model)
         _require_serialized_keys(rule)
         raw = json.dumps(rule, sort_keys=True, separators=(",", ":")).replace("'", "''")
         rules.append(f"WHEN '{name}' THEN rule:='{raw}'::jsonb;")
@@ -73,7 +72,7 @@ BEGIN
  @RULES@
  ELSE RETURN false;
  END CASE;
- RETURN @S@.mineagent_rd_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
+ RETURN @S@.mineagent_oe_shape(v,rule,0);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 

@@ -19,8 +19,26 @@ pytestmark = pytest.mark.postgres
 def test_old_precursor_cannot_receive_protected_child(source_setup):  # noqa: F811
     factory, *_ = source_setup
     saved = persist(source_setup)
+    from rd_receipt_predicate_fixture import predicate_cases
+
+    with factory() as session:
+        for function, kind, payload, expected in predicate_cases():
+            if function != "mineagent_rd_controller_payload":
+                continue
+            assert (
+                session.scalar(
+                    text(
+                        "SELECT mineagent_rd_controller_payload(:kind,CAST(:payload AS jsonb))"
+                    ),
+                    {"kind": kind, "payload": json.dumps(payload)},
+                )
+                is expected
+            )
     with (
-        pytest.raises(DBAPIError, match="Child receipt belongs only"),
+        pytest.raises(
+            DBAPIError,
+            match="Child receipt belongs only|RD child cannot extend historical process grammar",
+        ) as rejected,
         factory.begin() as session,
     ):
         session.execute(
@@ -38,6 +56,15 @@ def test_old_precursor_cannot_receive_protected_child(source_setup):  # noqa: F8
             },
         )
         session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+    # Either exact historical-child guard can reject first; unrelated DB errors
+    # must not satisfy this negative, and the transaction must retain no child.
+    assert rejected.value.orig.sqlstate == "P0001"
+    with factory() as session:
+        assert session.scalar(
+            text("""SELECT count(*) FROM research_process_receipts
+            WHERE admission_id=:admission AND kind='controller_child'"""),
+            {"admission": saved.controller_id},
+        ) == 0
 
 
 def test_unexecuted_precursor_cannot_record_adoption(source_setup):  # noqa: F811

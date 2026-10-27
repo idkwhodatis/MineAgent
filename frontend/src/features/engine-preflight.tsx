@@ -337,23 +337,22 @@ function EngineEntryForm({
                 Boolean(acceptedRun)
               }
             >
-              <label>
-                Generation mode{" "}
-                <select
-                  value={mode}
-                  onChange={(event) => {
-                    setMode(event.target.value as "fixture" | "configured");
-                    invalidatePreflight();
-                  }}
-                >
-                  <option value="fixture">
-                    Maintained fixed close-return fixture
-                  </option>
-                  <option value="configured">
-                    Configured model (server-authorized)
-                  </option>
-                </select>
-              </label>
+              <label htmlFor="engine-generation-mode">Generation mode</label>
+              <select
+                id="engine-generation-mode"
+                value={mode}
+                onChange={(event) => {
+                  setMode(event.target.value as "fixture" | "configured");
+                  invalidatePreflight();
+                }}
+              >
+                <option value="fixture">
+                  Maintained fixed close-return fixture
+                </option>
+                <option value="configured">
+                  Configured model (server-authorized)
+                </option>
+              </select>
               {mode === "configured" && (
                 <>
                   <p>
@@ -361,28 +360,29 @@ function EngineEntryForm({
                     automatically approved or verified. No provider endpoint or
                     credential is supplied by this form.
                   </p>
-                  <label>
-                    Configured model profile{" "}
-                    <select
-                      required
-                      value={modelId}
-                      onChange={(event) => {
-                        setModelId(event.target.value);
-                        invalidatePreflight();
-                      }}
-                    >
-                      <option value="">
-                        Select an explicitly configured model
-                      </option>
-                      {(profile.model_profiles ?? []).map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.id} · {option.chat_model} /{" "}
-                          {option.embedding_model}
-                          {option.synthetic ? " · synthetic transport" : ""}
-                        </option>
-                      ))}
-                    </select>
+                  <label htmlFor="engine-model-profile">
+                    Configured model profile
                   </label>
+                  <select
+                    id="engine-model-profile"
+                    required
+                    value={modelId}
+                    onChange={(event) => {
+                      setModelId(event.target.value);
+                      invalidatePreflight();
+                    }}
+                  >
+                    <option value="">
+                      Select an explicitly configured model
+                    </option>
+                    {(profile.model_profiles ?? []).map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.id} · {option.chat_model} /{" "}
+                        {option.embedding_model}
+                        {option.synthetic ? " · synthetic transport" : ""}
+                      </option>
+                    ))}
+                  </select>
                   {!profile.model_profiles?.length && (
                     <p>
                       No authorized model profiles are available.{" "}
@@ -497,32 +497,33 @@ function EngineEntryForm({
                     Boolean(acceptedRun)
                   }
                 >
-                  <label>
+                  <label htmlFor="engine-retained-dataset">
                     Retained dataset
-                    <select
-                      name="dataset"
-                      required
-                      defaultValue=""
-                      key={offset}
-                    >
-                      <option value="" disabled>
-                        Select an owned dataset
-                      </option>
-                      {datasets.data.data.map((d) => (
-                        <option
-                          key={d.id}
-                          value={d.id}
-                          disabled={d.eligibility === "unsupported"}
-                        >
-                          {d.name} · {d.market} · {d.start_date}–{d.end_date}
-                          {d.is_synthetic ? " · synthetic" : ""}
-                          {d.reason
-                            ? ` · ${d.reason.message}`
-                            : " · eligibility not yet checked"}
-                        </option>
-                      ))}
-                    </select>
                   </label>
+                  <select
+                    id="engine-retained-dataset"
+                    name="dataset"
+                    required
+                    defaultValue=""
+                    key={offset}
+                  >
+                    <option value="" disabled>
+                      Select an owned dataset
+                    </option>
+                    {datasets.data.data.map((d) => (
+                      <option
+                        key={d.id}
+                        value={d.id}
+                        disabled={d.eligibility === "unsupported"}
+                      >
+                        {d.name} · {d.market} · {d.start_date}–{d.end_date}
+                        {d.is_synthetic ? " · synthetic" : ""}
+                        {d.reason
+                          ? ` · ${d.reason.message}`
+                          : " · eligibility not yet checked"}
+                      </option>
+                    ))}
+                  </select>
                   {!datasets.data.data.length && (
                     <p>
                       No retained datasets on this page. Import a dataset before
@@ -616,25 +617,25 @@ function EngineEntryForm({
                     Factor formulation
                     <textarea name="formulation" required />
                   </label>
-                  <label>
-                    Factor kind
-                    <select name="kind" defaultValue="time_series">
-                      <option value="cross_sectional">Cross-sectional</option>
-                      <option value="time_series">Time series</option>
-                    </select>
-                  </label>
+                  <label htmlFor="engine-factor-kind">Factor kind</label>
+                  <select
+                    id="engine-factor-kind"
+                    name="kind"
+                    defaultValue="time_series"
+                  >
+                    <option value="cross_sectional">Cross-sectional</option>
+                    <option value="time_series">Time series</option>
+                  </select>
                   <label>
                     Output unit identifier
                     <input name="unit" defaultValue="return" required />
                   </label>
-                  <label>
-                    Interpretation
-                    <select name="interpretation">
-                      <option value="higher_preferred">Higher preferred</option>
-                      <option value="lower_preferred">Lower preferred</option>
-                      <option value="unsigned">Unsigned</option>
-                    </select>
-                  </label>
+                  <label htmlFor="engine-interpretation">Interpretation</label>
+                  <select id="engine-interpretation" name="interpretation">
+                    <option value="higher_preferred">Higher preferred</option>
+                    <option value="lower_preferred">Lower preferred</option>
+                    <option value="unsigned">Unsigned</option>
+                  </select>
                   <label>
                     Label horizon sessions
                     <input
@@ -646,20 +647,20 @@ function EngineEntryForm({
                       required
                     />
                   </label>
-                  <label>
+                  <label htmlFor="engine-objective-metric">
                     Objective metric
-                    <select name="metric">
-                      <option value="ic">IC</option>
-                      <option value="rank_ic">Rank IC</option>
-                    </select>
                   </label>
-                  <label>
+                  <select id="engine-objective-metric" name="metric">
+                    <option value="ic">IC</option>
+                    <option value="rank_ic">Rank IC</option>
+                  </select>
+                  <label htmlFor="engine-threshold-direction">
                     Threshold direction
-                    <select name="direction">
-                      <option value="at_least">At least</option>
-                      <option value="at_most">At most</option>
-                    </select>
                   </label>
+                  <select id="engine-threshold-direction" name="direction">
+                    <option value="at_least">At least</option>
+                    <option value="at_most">At most</option>
+                  </select>
                   <label>
                     Threshold
                     <input

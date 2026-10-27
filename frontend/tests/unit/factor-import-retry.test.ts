@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { retryFactorBusy } from "../e2e/factor-import-retry";
+import {
+  retryFactorBusy,
+  factorResponseCode,
+} from "../e2e/factor-import-retry";
 
 describe("real import acceptance busy retry bounds", () => {
   it("requires a real later response rather than treating busy as success", async () => {
+    expect(
+      factorResponseCode({ code: "database_unavailable", message: "private" }),
+    ).toBe("database_unavailable");
+    expect(factorResponseCode({ code: "factor_storage_unavailable" })).toBe(
+      "factor_storage_unavailable",
+    );
+    expect(factorResponseCode({ code: "private-token" })).toBe("other");
+    expect(factorResponseCode({ code: "factor_busy_private" })).toBe("other");
+    expect(factorResponseCode(null)).toBe("none");
     let attempts = 0;
     const result = await retryFactorBusy(
       async () => {

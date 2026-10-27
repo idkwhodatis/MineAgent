@@ -20,7 +20,9 @@ def _expanded(model):
         if not isinstance(node, dict):
             return node
         if "$ref" in node:
-            if set(node) != {"$ref"} or not node["$ref"].startswith("#/$defs/"):
+            if set(node) - {"$ref", "default", "title"} or not node["$ref"].startswith(
+                "#/$defs/"
+            ):
                 raise ValueError("unsupported source schema reference")
             return expand(original["$defs"][node["$ref"].split("/")[-1]])
         result = {
@@ -28,6 +30,11 @@ def _expanded(model):
             for key, value in node.items()
             if key not in ("$defs", "title", "default", "discriminator")
         }
+        if "prefixItems" in result:
+            items = result.pop("prefixItems")
+            if not items or any(item != items[0] for item in items):
+                raise ValueError("Nonuniform tuple requires a new SQL grammar")
+            result["items"] = items[0]
         if result.get("type") == "object":
             if result.get("additionalProperties") is not False:
                 raise ValueError("search object must be closed")
@@ -68,10 +75,13 @@ BEGIN
   RETURN false;
  END IF;
  actual:=jsonb_typeof(v); wanted:=s->>'type';
- IF wanted='integer' THEN
-  IF actual IS DISTINCT FROM 'number' OR v::text !~ '^-?(0|[1-9][0-9]*)$' THEN RETURN false; END IF;
+ IF wanted IN ('integer','number') THEN
+  IF actual IS DISTINCT FROM 'number' THEN RETURN false; END IF;
+  IF wanted='integer' AND v::text !~ '^-?(0|[1-9][0-9]*)$' THEN RETURN false; END IF;
   n:=(v::text)::numeric;
-  IF s ? 'minimum' AND n<(s->>'minimum')::numeric OR s ? 'maximum' AND n>(s->>'maximum')::numeric THEN RETURN false; END IF;
+  IF s ? 'minimum' AND n<(s->>'minimum')::numeric OR s ? 'maximum' AND n>(s->>'maximum')::numeric
+     OR s ? 'exclusiveMinimum' AND n<=(s->>'exclusiveMinimum')::numeric
+     OR s ? 'exclusiveMaximum' AND n>=(s->>'exclusiveMaximum')::numeric THEN RETURN false; END IF;
  ELSIF wanted IN ('object','array','string','boolean','null') THEN
   IF actual IS DISTINCT FROM wanted THEN RETURN false; END IF;
  ELSE RETURN false;
@@ -93,7 +103,12 @@ BEGIN
   IF length(k)<coalesce((s->>'minLength')::int,0) OR length(k)>coalesce((s->>'maxLength')::int,1048576) OR s ? 'pattern' AND k !~ (s->>'pattern') THEN RETURN false; END IF;
   IF s->>'format'='uuid' AND (k !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR (k::uuid)::text<>k) THEN RETURN false; END IF;
   IF s->>'format'='date' AND (k !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' OR to_char(k::date,'YYYY-MM-DD')<>k) THEN RETURN false; END IF;
-  IF s ? 'format' AND s->>'format' NOT IN ('uuid','date') THEN RETURN false; END IF;
+  IF s->>'format'='date-time' THEN
+   IF k !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{6})?Z$'
+      OR left(k,4)='0000' OR right(k,8)='.000000Z' THEN RETURN false; END IF;
+   IF to_char(k::timestamptz AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS')<>left(k,19) THEN RETURN false; END IF;
+  END IF;
+  IF s ? 'format' AND s->>'format' NOT IN ('uuid','date','date-time') THEN RETURN false; END IF;
  END IF;
  RETURN true;
 EXCEPTION WHEN others THEN RETURN false;

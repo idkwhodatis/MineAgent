@@ -132,8 +132,25 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
     # All integration process-unit admissions pass the real fixture Settings,
     # including historical revision-specific cases; no guard bypass via None.
     reservations = []
-    for path in Path("tests/integration").glob("*.py"):
-        for call in ast.walk(ast.parse(path.read_text())):
+    paths = [
+        path
+        for root in ("backend/app", "workers/research", "tests")
+        for path in Path(root).rglob("*.py")
+    ]
+    for path in paths:
+        tree = ast.parse(path.read_text())
+        aliases = {"reserve_budget"}
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "backend.app.research_broker_services"
+            ):
+                aliases.update(
+                    item.asname or item.name
+                    for item in node.names
+                    if item.name == "reserve_budget"
+                )
+        for call in ast.walk(tree):
             if not isinstance(call, ast.Call):
                 continue
             if (
@@ -147,15 +164,19 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
                     for k in call.keywords
                 ), path
             if not (
-                isinstance(call.func, ast.Name) and call.func.id == "reserve_budget"
+                (isinstance(call.func, ast.Name) and call.func.id in aliases)
+                or (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "reserve_budget"
+                )
             ):
                 continue
-            if not any(
-                k.arg == "purpose"
-                and isinstance(k.value, ast.Constant)
-                and k.value.value == "process_unit"
-                for k in call.keywords
-            ):
+            purposes = [k.value for k in call.keywords if k.arg == "purpose"]
+            assert len(purposes) == 1, (path, call.lineno)
+            purpose = purposes[0]
+            # Variable/parameterized purposes can include process_unit. Never
+            # infer their safety from only literal-purpose call sites.
+            if isinstance(purpose, ast.Constant) and purpose.value != "process_unit":
                 continue
             reservations.append((path.name, call.lineno))
             assert any(
@@ -164,7 +185,8 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
                 and k.value.id == "settings"
                 for k in call.keywords
             ), path
-    assert len(reservations) == 7
+    assert len(reservations) >= 16
+    assert any(name == "test_model_broker_accounting.py" for name, _ in reservations)
     path = Path("tests/integration/test_research_process_recovery.py")
     node = next(
         n

@@ -7,7 +7,7 @@ execution. Fresh protected file reads remain mandatory for result use.
 import json
 import re
 
-from backend.app.rdagent_controller_ddl import _schema
+from backend.app.rdagent_receipt_schema_sql import receipt_contract_schema
 from packages.research_runtime.analysis_process_journal import (
     AnalysisExtraction,
     AnalysisIdentity,
@@ -30,7 +30,7 @@ def render_sql(schema="public"):
         ("stop", AnalysisStop),
         ("extraction", AnalysisExtraction),
     ):
-        rule = _schema(cls)
+        rule = receipt_contract_schema(cls, "analysis")
         _require_serialized_keys(rule)
         raw = json.dumps(rule, sort_keys=True, separators=(",", ":")).replace("'", "''")
         rules.append(f"WHEN '{kind}' THEN rule := '{raw}'::jsonb;")
@@ -59,7 +59,7 @@ BEGIN
  @RULES@
  ELSE RETURN false;
  END CASE;
- RETURN @S@.mineagent_rd_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
+ RETURN @S@.mineagent_rd_analysis_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 CREATE FUNCTION @S@.mineagent_analysis_stopped(aid uuid, require_result boolean) RETURNS boolean

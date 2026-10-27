@@ -97,6 +97,41 @@ def test_downgrade_rejects_even_preexecution_analysis_plan(declared_plan):
 
 
 def test_022_installs_frozen_semantic_and_immutable_triggers(migrated_engine):
+    import json
+
+    from rd_receipt_predicate_fixture import predicate_cases
+
+    from packages.factors.contracts import canonical_bytes, digest
+
+    with migrated_engine.connect() as connection:
+        for function, kind, payload, expected in predicate_cases():
+            if function == "mineagent_rd_controller_payload":
+                continue
+            assert function in {
+                "mineagent_analysis_payload",
+                "mineagent_direct_contract",
+            }
+            assert (
+                connection.scalar(
+                    text(f"SELECT {function}(:kind,CAST(:payload AS jsonb))"),
+                    {"kind": kind, "payload": json.dumps(payload)},
+                )
+                is expected
+            )
+            if function == "mineagent_direct_contract" and expected:
+                assert (
+                    connection.scalar(
+                        text(
+                            "SELECT mineagent_analysis_raw_commitment(:raw,CAST(:payload AS jsonb),:sha,1048576)"
+                        ),
+                        {
+                            "raw": canonical_bytes(payload).decode(),
+                            "payload": json.dumps(payload),
+                            "sha": digest(payload),
+                        },
+                    )
+                    is True
+                )
     with migrated_engine.connect() as connection:
         names = set(
             connection.execute(

@@ -43,6 +43,7 @@ def test_preserves_historical_profile_gate_and_no_function_replacement():
     assert CONTROLLER_PROFILE_GATE in sql
     created = set(re.findall(r'CREATE FUNCTION "public"\.(\w+)', sql))
     assert created == {
+        "mineagent_rd_controller_schema",
         "mineagent_rd_controller_payload",
         "mineagent_rd_controller_kernel",
         "mineagent_rd_controller_receipt_order",

@@ -8,7 +8,7 @@ import json
 import re
 
 from backend.app.analysis_process_ddl import _require_serialized_keys
-from backend.app.rdagent_controller_ddl import _schema
+from backend.app.openevolve_identity_sql import _expanded
 from runtimes.openevolve_evaluator import journal as native
 from runtimes.openevolve_operational import process_journal as controller
 from runtimes.openevolve_operational.profile import STORAGE_FLOOR
@@ -39,7 +39,7 @@ def render_sql(schema="public"):
         ),
     ):
         for kind, model in models.items():
-            rule = _schema(model)
+            rule = _expanded(model)
             _require_serialized_keys(rule)
             raw = json.dumps(rule, sort_keys=True, separators=(",", ":")).replace(
                 "'", "''"
@@ -82,7 +82,7 @@ BEGIN
  @RULES@
  ELSE RETURN false;
  END CASE;
- RETURN @S@.mineagent_rd_schema(v,rule,coalesce(rule->'$defs','{}'::jsonb),0);
+ RETURN @S@.mineagent_oe_shape(v,rule,0);
 EXCEPTION WHEN OTHERS THEN RETURN false;
 END $$;
 

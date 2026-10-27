@@ -37,6 +37,25 @@ def test_static_explicit_composition():
         "LANGUAGE plpgsql SET search_path=@SCHEMA@,pg_catalog AS $$",
     )
     assert fixed["UPGRADE_SQL"] == expected
+    from backend.app.rdagent_provider_revision import function
+    from backend.app.rdagent_receipt_schema_sql import receipt_schema_sql
+
+    domain = receipt_schema_sql("controller")
+    restored = domain.replace(
+        "mineagent_rd_controller_schema", "mineagent_rd_schema"
+    ).replace(" WHEN 'boolean' THEN NULL;\n", "")
+    assert restored.replace(
+        "CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1
+    ) == function(frozen_source_sql(), "mineagent_rd_schema")
+    assert "mineagent_rd_controller_schema(v,rule" in fixed["UPGRADE_SQL"]
+    assert (
+        "DROP FUNCTION @SCHEMA@.mineagent_rd_controller_schema(jsonb,jsonb,jsonb,integer)"
+        in fixed["DOWNGRADE_SQL"]
+    )
+    assert (
+        "CREATE OR REPLACE FUNCTION @SCHEMA@.mineagent_rd_schema("
+        not in fixed["UPGRADE_SQL"]
+    )
     for name in ("mineagent_rd_shared_consistent", "mineagent_rd_source_violation"):
         assert _function(frozen_source_sql(), name) in fixed["DOWNGRADE_SQL"]
     for name in ("UPGRADE_SQL", "DOWNGRADE_SQL"):

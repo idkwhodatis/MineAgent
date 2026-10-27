@@ -36,7 +36,7 @@ def process_bytes(root, maximum_files):
     result = []
     count = 0
 
-    def walk(fd, owner=None, depth=0):
+    def walk(fd, owner=None, depth=0, parts=()):
         nonlocal count
         if depth > 5:
             raise ValueError("Process storage depth")
@@ -50,6 +50,45 @@ def process_bytes(root, maximum_files):
                 actual_owner = UUID(name)
                 if str(actual_owner) != name:
                     raise ValueError("Process storage owner")
+            entry = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISSOCK(entry.st_mode):
+                # Only the fixed host-created IPC listeners are accountable.
+                # O_PATH pins their inode without opening/connecting the socket.
+                if (
+                    len(parts) != 3
+                    or parts[2] != "ipc"
+                    or name not in {"peer.sock", "events.sock", "broker.sock"}
+                    or str(UUID(parts[1])) != parts[1]
+                    or entry.st_nlink != 1
+                    or entry.st_uid != os.getuid()
+                ):
+                    raise ValueError("Unaccountable process socket entry")
+                child = os.open(name, os.O_PATH | os.O_NOFOLLOW, dir_fd=fd)
+                try:
+                    info = os.fstat(child)
+                    final = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    fields = (
+                        "st_dev",
+                        "st_ino",
+                        "st_mode",
+                        "st_nlink",
+                        "st_uid",
+                        "st_gid",
+                        "st_size",
+                        "st_mtime_ns",
+                        "st_ctime_ns",
+                    )
+                    signature = lambda item, fields=fields: tuple(
+                        getattr(item, key) for key in fields
+                    )
+                    if signature(entry) != signature(info) or signature(
+                        info
+                    ) != signature(final):
+                        raise ValueError("Concurrent process socket change")
+                    result.append((actual_owner, info.st_size))
+                finally:
+                    os.close(child)
+                continue
             child = os.open(
                 name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd
             )
@@ -57,7 +96,7 @@ def process_bytes(root, maximum_files):
                 info = os.fstat(child)
                 if stat.S_ISDIR(info.st_mode):
                     result.append((actual_owner, 0))
-                    walk(child, actual_owner, depth + 1)
+                    walk(child, actual_owner, depth + 1, (*parts, name))
                 elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
                     result.append((actual_owner, info.st_size))
                 else:
