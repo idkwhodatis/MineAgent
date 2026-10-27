@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
+from backend.app.core.atomic_storage import provision_directory
 from backend.app.core.maintenance import shared_lifecycle
 from backend.app.models import ExecutionAttempt, utcnow
 from backend.app.openevolve_broker_rpc import FixtureSchedule
@@ -82,6 +83,13 @@ def run_initial_epoch(factory, fence, *, runtime, schedule, settings):
             # sufficient bounded lease before the independent600s unit starts.
             if attempt.lease_expires_at < utcnow() + timedelta(seconds=690):
                 raise ValueError("Maintained controller needs prior690s current lease")
+        # Quota admission locks these namespaces before the first object exists.
+        # Keep the existing lifecycle fence and durable no-follow provisioning;
+        # never relax object_storage_guard for an uninitialized installation.
+        for directory in ("factors", "research-objects", "research-processes"):
+            provision_directory(
+                settings.storage_root / directory, durable_parent=settings.storage_root
+            )
         image_inventory = _image_inventory(spec.runtime_image)
         supervisor = ControllerSupervisor(spec.runtime_image, image_inventory)
         ticket, ticket_key = secrets.token_hex(32), secrets.token_bytes(32)

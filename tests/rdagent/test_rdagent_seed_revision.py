@@ -83,6 +83,19 @@ def test_frozen026_contains_both_independent_bootstrap_replacements():
     from backend.app.rdagent_provider_revision import function
 
     frozen = revision._literal("026_rd_seeded_submissions.py", "UPGRADE_SQL")
+    from backend.app.rdagent_steer_sql import UPGRADE as steer_sql
+
+    # NEW is a different row type on the two real trigger tables. A SQL CASE
+    # still resolves both field references; only a PL/pgSQL IF is safe here.
+    steer = function(frozen, "mineagent_steer_graph_check")
+    assert steer == function(steer_sql, "mineagent_steer_graph_check")
+    assert (
+        "IF TG_TABLE_NAME='rd_steers' THEN\n  sid:=NEW.id;\n ELSE\n  sid:=NEW.steer_id;\n END IF;"
+        in steer
+    )
+    assert "sid:=CASE" not in steer
+    assert "head.current_version_id IS DISTINCT FROM vid" in steer
+    assert "n<>hi" in steer and "head.revision<hi" in steer
     actual = function(frozen, "mineagent_rd_controller_consistent")
     assert actual == revision.controller_bootstrap_delta_sql()
     shared = function(frozen, "mineagent_rd_shared_consistent")

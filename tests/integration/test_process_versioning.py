@@ -35,11 +35,11 @@ def migrate(engine, revision, *, downgrade=False):
 
 
 @pytest.fixture
-def admission(migrated_engine, process_fence_fixture, monkeypatch):
+def admission(migrated_engine, process_fence_fixture, monkeypatch, settings):
     # Synthetic configured identity only: admission has NOT been physically launched.
     image = "sha256:" + "1" * 64
     monkeypatch.setenv("MINEAGENT_RESEARCH_SUPERVISOR_IMAGE", image)
-    return _admit_fixture_process(*process_fence_fixture, image)[0]
+    return _admit_fixture_process(*process_fence_fixture, image, settings=settings)[0]
 
 
 def test_real_versioned_upgrade_backfills_old_admission_without_commitment_drift(

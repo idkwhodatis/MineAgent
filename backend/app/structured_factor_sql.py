@@ -6,8 +6,8 @@ not replace fresh retained-byte reads or claim a database row proves execution.
 
 import json
 
-from backend.app.rdagent_controller_ddl import _schema
 from backend.app.structured_process_ddl import _require_serialized_keys
+from backend.app.structured_schema_sql import structured_schema as _schema
 from packages.structured_factor_strategy.contracts import (
     StructuredEngineInput,
     StructuredProgram,

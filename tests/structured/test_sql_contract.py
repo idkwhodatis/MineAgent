@@ -107,6 +107,31 @@ def test_all_closed_contracts_are_registered_with_serialized_defaults():
     assert "closed_operator_trusted_engine" in sql
     assert "hold_without_factor_read" in sql
     assert "additionalProperties" in sql
+    from backend.app.structured_schema_sql import schema_sql, structured_schema
+    from packages.structured_factor_strategy.contracts import StructuredProgram
+    from packages.structured_factor_strategy.operator import DecisionRecord
+
+    rule = structured_schema(StructuredProgram)
+    assert rule["properties"]["maximum_weight"]["exclusiveMinimum"] == 0
+    assert "minimum" not in rule["properties"]["maximum_weight"]
+    assert structured_schema(DecisionRecord)["properties"]["event_seq"]["maximum"] == 7
+    parser = schema_sql()
+    for keyword in ("exclusiveMinimum", "exclusiveMaximum", "minimum", "maximum"):
+        assert "rule ? '" + keyword + "'" in parser
+    assert "number' THEN" in parser and "boolean' THEN" in parser
+    assert "AND NOT (rule ? 'properties')" in parser
+    assert "mineagent_structured_json_value(v,depth)" in parser
+    from types import SimpleNamespace
+
+    import pytest
+
+    for bad in (
+        {"type": "number", "multipleOf": 0.1},
+        {"type": "future"},
+        {"type": "object", "additionalProperties": {"type": "number"}},
+    ):
+        with pytest.raises(ValueError, match="Unreviewed"):
+            structured_schema(SimpleNamespace(model_json_schema=lambda bad=bad: bad))
 
 
 def test_raw_result_binds_full_receipt_and_actual_record_inventories():

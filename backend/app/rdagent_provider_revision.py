@@ -26,6 +26,10 @@ PINS = {
         "024_openevolve_initial.py",
         "UPGRADE_SQL",
     ): "0a8c78d30fa196887f53cbe62eb0c953752852d6d24988ee97334dddc4a9dcc5",
+    (
+        "025_structured_factor_strategy.py",
+        "UPGRADE_SQL",
+    ): "45fa55c439f829f3d7fadbbd7b4920148b3e5b647a4964014cd92150b71115d3",
 }
 
 
@@ -69,13 +73,8 @@ def changed(sql, old, new):
 
 
 def schema_boolean_sql():
-    """026 adds strict JSON booleans; every other018 parser byte is preserved."""
-    original = function(literal("018_rd_source_persistence.py"), "mineagent_rd_schema")
-    return changed(
-        original,
-        " WHEN 'null' THEN NULL;",
-        " WHEN 'boolean' THEN NULL; -- Exact jsonb_typeof check above remains mandatory.\n WHEN 'null' THEN NULL;",
-    )
+    """026 retains exact025 numeric/boolean schema support; no duplicate branch."""
+    return function(literal("025_structured_factor_strategy.py"), "mineagent_rd_schema")
 
 
 def request_config_sql():
@@ -275,7 +274,9 @@ DO $$ BEGIN
  THEN RAISE EXCEPTION 'Configured provider or steer declarations prevent downgrade'; END IF;
 END $$;
 """,
-            function(literal("018_rd_source_persistence.py"), "mineagent_rd_schema"),
+            function(
+                literal("025_structured_factor_strategy.py"), "mineagent_rd_schema"
+            ),
             function(
                 literal("018_rd_source_persistence.py"), "mineagent_rd_source_config"
             ),

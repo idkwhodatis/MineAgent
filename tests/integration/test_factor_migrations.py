@@ -69,6 +69,7 @@ def refusal(engine, target, match):
 def test_empty_factor_import_migration_round_trip_preserves_core(
     migrated_engine, owner
 ):
+    original_revision = revision(migrated_engine)
     factor_id = uuid4()
     with Session(migrated_engine) as session:
         session.add(
@@ -104,7 +105,7 @@ def test_empty_factor_import_migration_round_trip_preserves_core(
             .one()
             == before
         )
-    assert revision(migrated_engine) == "021_execution_snapshots"
+    assert revision(migrated_engine) == original_revision
 
 
 def test_empty_factor_library_migration_round_trip_preserves_legacy(

@@ -15,6 +15,11 @@ from backend.app.structured_factor_sql import (
     render_contract_sql,
 )
 from backend.app.structured_process_ddl import PROFILE_GATE, render_sql
+from backend.app.structured_schema_sql import (
+    JSON_VALUE_SQL,
+    previous_schema_sql,
+    schema_sql,
+)
 
 SHARED = (
     "research_runs",
@@ -83,6 +88,8 @@ def upgrade_sql():
     return "\n".join(
         (
             TABLE_SQL,
+            JSON_VALUE_SQL,
+            schema_sql(),
             RAW_SQL,
             render_contract_sql(),
             render_sql("structured025_installation").replace(
@@ -116,6 +123,7 @@ def downgrade_sql():
         )
     out.append(_function(old, "mineagent_rd_source_run_lock"))
     out.append("DROP TABLE " + ",".join("@SCHEMA@." + n for n in TABLES) + " RESTRICT;")
+    out.append(previous_schema_sql())
     functions = re.findall(
         r"CREATE FUNCTION @SCHEMA@\.(mineagent_structured_\w+)\(([^)]*)\)",
         upgrade_sql(),

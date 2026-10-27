@@ -44,7 +44,7 @@ pytestmark = pytest.mark.postgres
 
 
 @pytest.fixture
-def numeric_obligation(migrated_engine, process_fence_fixture):
+def numeric_obligation(migrated_engine, process_fence_fixture, settings):
     # This historical schema gate is revision017-specific even after later
     # composed source/native migrations become the default head. No RD rows
     # exist in this neutral obligation fixture, so guarded downgrade is genuine.
@@ -75,6 +75,7 @@ def numeric_obligation(migrated_engine, process_fence_fixture):
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="numeric-obligation",
             amounts=amount,
         )

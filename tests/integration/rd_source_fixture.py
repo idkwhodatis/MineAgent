@@ -241,7 +241,7 @@ def persist_maintained_source(
     if not 1 <= len(chunks) <= 6:
         raise ValueError("Fixture response exceeds six bounded continuation parts")
     config = _config(dataset, runtime=runtime, budget=budget, window=window)
-    for directory in ("factors", "research-objects"):
+    for directory in ("factors", "research-objects", "research-processes"):
         provision_directory(
             settings.storage_root / directory, durable_parent=settings.storage_root
         )
@@ -308,6 +308,7 @@ def persist_maintained_source(
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="controlled-controller:" + binding.id.hex,
             amounts=BudgetVector(
                 process_slots=1, wall_milliseconds=60000, storage_bytes=1179648

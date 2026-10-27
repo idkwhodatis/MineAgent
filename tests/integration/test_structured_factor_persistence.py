@@ -92,6 +92,57 @@ def test_structured_version_immutable_and_not_legacy_strategy_actual_pg(
     migrated_engine,
 ):
     program = fixture()[0].program
+    # Exercise the actual versioned interpreter, not just its rendered tokens.
+    number_rule = {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1}
+    cases = [
+        ("0.5", number_rule, True),
+        ("5e-324", number_rule, True),
+        ("0.0", number_rule, False),
+        ("-0.0", number_rule, False),
+        ("1.0", number_rule, False),
+        ("true", number_rule, False),
+        ('"0.5"', number_rule, False),
+        ("1e9999", {"type": "number"}, False),
+        ("1e-9999", {"type": "number"}, False),
+        ("true", {"type": "boolean"}, True),
+        ("1", {"type": "boolean"}, False),
+        ("1.0", {"type": "integer", "minimum": 0}, False),
+        ('{"x":[0.5,true]}', {"type": "object", "additionalProperties": True}, True),
+        ('{"x":1e9999}', {"type": "object", "additionalProperties": True}, False),
+        ('{"x":1e-9999}', {"type": "object", "additionalProperties": True}, False),
+    ]
+    for rule in (
+        {"type": "object"},
+        {"type": "object", "additionalProperties": False},
+        {"type": "object", "additionalProperties": True, "properties": {}},
+    ):
+        cases.append(('{"x":0.5}', rule, False))
+    deep = {}
+    for _ in range(26):
+        deep = {"x": deep}
+    cases.append(
+        (json.dumps(deep), {"type": "object", "additionalProperties": True}, False)
+    )
+    with migrated_engine.begin() as connection:
+        for raw, rule, expected in cases:
+            actual = connection.scalar(
+                text(
+                    "SELECT mineagent_rd_schema(CAST(:raw AS jsonb),CAST(:rule AS jsonb),'{}'::jsonb,0)"
+                ),
+                {"raw": raw, "rule": json.dumps(rule)},
+            )
+            assert actual is expected, (raw, rule)
+        for weight in (0.0, -0.0, -0.5, 1.1, True, "0.5"):
+            invalid = {**program.model_dump(mode="json"), "maximum_weight": weight}
+            assert (
+                connection.scalar(
+                    text(
+                        "SELECT mineagent_structured_contract('program',CAST(:value AS jsonb))"
+                    ),
+                    {"value": json.dumps(invalid)},
+                )
+                is False
+            )
     owner_id, version_id = uuid4(), uuid4()
     with Session(migrated_engine) as session:
         session.add(

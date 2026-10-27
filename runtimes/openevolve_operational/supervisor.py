@@ -139,6 +139,27 @@ def verify_image_inventory(base, image):
     }
 
 
+def _exact_controller_ulimits(values):
+    """Docker CLI sorts this set by name; order is not a resource grant."""
+    expected = {"nofile": 256, "fsize": 8388608}
+    if type(values) is not list or len(values) != len(expected):
+        return False
+    seen = set()
+    for value in values:
+        if type(value) is not dict or set(value) != {"Name", "Hard", "Soft"}:
+            return False
+        name = value["Name"]
+        if type(name) is not str or name not in expected or name in seen:
+            return False
+        if any(
+            type(value[key]) is not int or value[key] != expected[name]
+            for key in ("Hard", "Soft")
+        ):
+            return False
+        seen.add(name)
+    return seen == set(expected)
+
+
 def verify_container(document, launch, operation, inventory, *, container_id=None):
     a = launch.intent.admission
     host, config = document["HostConfig"], document["Config"]
@@ -195,13 +216,10 @@ def verify_container(document, launch, operation, inventory, *, container_id=Non
         or host.get("Binds")
         or host.get("VolumesFrom")
         or host.get("Links")
-        or host.get("Ulimits")
-        != [
-            {"Name": "nofile", "Hard": 256, "Soft": 256},
-            {"Name": "fsize", "Hard": 8388608, "Soft": 8388608},
-        ]
     ):
         raise ValueError("Controller implicit mount/process/limit drift")
+    if not _exact_controller_ulimits(host.get("Ulimits")):
+        raise ValueError("Controller ulimit drift")
     if (
         inventory["base_ref"] != BASE_IMAGE
         or inventory["image_id"] != a.image_id

@@ -82,13 +82,17 @@ def test_downgrade_rejects_even_preexecution_analysis_plan(declared_plan):
     root = Path(__file__).resolve().parents[2]
     config = Config(str(root / "backend/alembic.ini"))
     config.set_main_option("script_location", str(root / "backend/alembic"))
+    with factory() as session:
+        entry_revision = session.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
     with pytest.raises(DBAPIError), factory.kw["bind"].begin() as connection:
         config.attributes["connection"] = connection
         command.downgrade(config, "021_execution_snapshots")
     with factory() as session:
         assert (
             session.scalar(text("SELECT version_num FROM alembic_version"))
-            == "022_factor_analysis"
+            == entry_revision
         )
 
 

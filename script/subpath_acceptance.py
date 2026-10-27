@@ -58,6 +58,52 @@ def verify_report(path: Path) -> None:
         raise ValueError("Every real subpath browser case must pass without skips")
 
 
+def browser_failure_outcome(path: Path) -> dict:
+    """Expose only bounded counters and source coordinates, never browser values."""
+    unavailable = {"report": "unavailable"}
+    try:
+        if path.is_symlink() or not path.is_file():
+            return unavailable
+        with path.open("rb") as stream:
+            content = stream.read(20_000_001)
+        if (
+            len(content) > 20_000_000
+            or b"<!DOCTYPE" in content
+            or b"<!ENTITY" in content
+        ):
+            return unavailable
+        cases = list(ElementTree.fromstring(content).iter("testcase"))
+        lines = len(
+            (ROOT / "frontend/tests/subpath/reverse-proxy.spec.ts")
+            .read_text()
+            .splitlines()
+        )
+    except (OSError, ElementTree.ParseError):
+        return unavailable
+    if len(cases) > 8:
+        return unavailable
+    outcomes = []
+    for index, case in enumerate(cases):
+        bad = [case.find(tag) for tag in ("failure", "error", "skipped")]
+        present = [item for item in bad if item is not None]
+        frames = set()
+        for item in present:
+            for line, column in re.findall(
+                r"(?:frontend/)?tests/subpath/reverse-proxy\.spec\.ts:(\d{1,5}):(\d{1,5})",
+                "".join(item.itertext()),
+            ):
+                if 1 <= int(line) <= lines and 1 <= int(column) <= 10000:
+                    frames.add((int(line), int(column)))
+        outcomes.append(
+            {
+                "case": index + 1,
+                "passed": not present,
+                "source_frames": sorted(frames)[:8],
+            }
+        )
+    return {"report": "bounded", "cases": outcomes}
+
+
 def main() -> None:
     if (
         os.environ.get("GITHUB_ACTIONS") != "true"
@@ -366,14 +412,24 @@ def main() -> None:
                 "E2E_SUBPATH_ORIGIN": "http://127.0.0.1:19080",
                 "E2E_SUBPATH_REPORT": str(folder / f"browser-{ordinal}.xml"),
             }
-            command(
-                "frontend/node_modules/.bin/playwright",
-                "test",
-                "--config",
-                "frontend/playwright.subpath.config.ts",
-                timeout=240,
-                extra_env=browser_env,
-            )
+            try:
+                command(
+                    "frontend/node_modules/.bin/playwright",
+                    "test",
+                    "--config",
+                    "frontend/playwright.subpath.config.ts",
+                    timeout=240,
+                    extra_env=browser_env,
+                )
+            except (RuntimeError, subprocess.TimeoutExpired):
+                print(
+                    "SUBPATH_OUTCOMES:"
+                    + json.dumps(
+                        browser_failure_outcome(Path(browser_env["E2E_SUBPATH_REPORT"]))
+                    ),
+                    flush=True,
+                )
+                raise
             verify_report(Path(browser_env["E2E_SUBPATH_REPORT"]))
             report["prefixes"].append(
                 {"prefix": prefix, "browser_cases": CASES, "success": True}

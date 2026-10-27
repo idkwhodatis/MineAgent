@@ -159,6 +159,42 @@ def test_exact_controller_container_contract(contract):
         document, launch, operation, inventory, container_id="d" * 64
     )
 
+    # Docker CLI UlimitOpt.GetList sorts names, regardless of CLI argument order.
+    limits = document["HostConfig"]["Ulimits"]
+    document["HostConfig"]["Ulimits"] = list(reversed(limits))
+    module.verify_container(document, launch, operation, inventory)
+    import copy
+
+    bad_values = [
+        None,
+        {},
+        limits[:1],
+        limits + [limits[0]],
+        [limits[0]] * 2,
+        [None, limits[1]],
+        [{}, limits[1]],
+    ]
+    for field, bad in (
+        ("Soft", 0),
+        ("Hard", -1),
+        ("Soft", True),
+        ("Soft", "256"),
+        ("Soft", None),
+        ("Name", []),
+        ("Hard", 256.0),
+        ("Name", "nproc"),
+    ):
+        changed = copy.deepcopy(limits)
+        changed[0][field] = bad
+        bad_values.append(changed)
+    extra = copy.deepcopy(limits)
+    extra[0]["Unknown"] = 1
+    bad_values.append(extra)
+    for bad in bad_values:
+        document["HostConfig"]["Ulimits"] = bad
+        with pytest.raises(ValueError, match="Controller ulimit drift"):
+            module.verify_container(document, launch, operation, inventory)
+
 
 @pytest.mark.parametrize(
     "section,key,value",

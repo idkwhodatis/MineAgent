@@ -94,3 +94,41 @@ def test_caddy_file_capability_removed_without_adding_runtime_caps():
     source = (Path(__file__).parents[2] / "script/subpath_acceptance.py").read_text()
     assert '"--cap-add"' not in source
     assert '"no-new-privileges"' in source
+
+
+def test_browser_failure_outcome_never_releases_values(tmp_path):
+    import json
+    from script.subpath_acceptance import browser_failure_outcome
+
+    path = tmp_path / "report.xml"
+    path.write_text(
+        '<testsuite><testcase name="private-user-token"><failure message="secret">'
+        "private-response-secret at frontend/tests/subpath/reverse-proxy.spec.ts:41:7"
+        "</failure></testcase><testcase/></testsuite>"
+    )
+    result = browser_failure_outcome(path)
+    assert result == {
+        "report": "bounded",
+        "cases": [
+            {"case": 1, "passed": False, "source_frames": [(41, 7)]},
+            {"case": 2, "passed": True, "source_frames": []},
+        ],
+    }
+    assert "private" not in json.dumps(result) and "secret" not in json.dumps(result)
+    path.write_text("<not-xml")
+    assert browser_failure_outcome(path) == {"report": "unavailable"}
+    path.write_text("<testsuite>" + "<testcase/>" * 9 + "</testsuite>")
+    assert browser_failure_outcome(path) == {"report": "unavailable"}
+
+    path.write_bytes(b'<!DOCTYPE testsuite [<!ENTITY x "private-secret">]><testsuite/>')
+    assert browser_failure_outcome(path) == {"report": "unavailable"}
+    path.write_bytes(b"x" * 20_000_001)
+    assert browser_failure_outcome(path) == {"report": "unavailable"}
+    path.write_text(
+        "<testsuite><testcase><failure>"
+        "tests/subpath/reverse-proxy.spec.ts:0:1 "
+        "tests/subpath/reverse-proxy.spec.ts:99999:1 "
+        "tests/subpath/reverse-proxy.spec.ts:41:0 "
+        "</failure></testcase></testsuite>"
+    )
+    assert browser_failure_outcome(path)["cases"][0]["source_frames"] == []

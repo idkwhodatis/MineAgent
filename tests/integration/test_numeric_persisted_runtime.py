@@ -319,7 +319,6 @@ def test_actual_source_candidate_native_claim_normalizer_stops(
         )
     from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
     from backend.app.execution_snapshot_services import publish_execution_snapshot
-
     from backend.app.services import DomainError
 
     # This maintained test executes the last cutoff of a multi-day window.
@@ -398,6 +397,7 @@ def _assert_second_native_consumer_rejected(
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="numeric-duplicate:" + uuid4().hex,
             amounts=BudgetVector(
                 process_slots=1, wall_milliseconds=60000, storage_bytes=67_174_400

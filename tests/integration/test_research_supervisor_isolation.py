@@ -38,7 +38,9 @@ pytestmark = pytest.mark.postgres
 @pytest.fixture
 def real_unit(process_fence_fixture, settings):
     factory, fence = process_fence_fixture
-    admission, ticket = _admit_fixture_process(factory, fence, _required_image())
+    admission, ticket = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     return factory, fence, settings.storage_root, admission, ticket
 
 
@@ -251,7 +253,7 @@ def test_real_live_peer_cannot_submit_after_process_projection_uncertain(
         )
     operation_id, _, request, _ = seed_operation(factory, fence, settings)
     admission, ticket = _admit_fixture_process(
-        factory, fence, _required_image(), logical_id=operation_id
+        factory, fence, _required_image(), logical_id=operation_id, settings=settings
     )
     with run_unit(factory, fence, settings.storage_root, admission.id, ticket) as unit:
         peer = accept_fixture_peer(settings.storage_root, admission, unit.identity)

@@ -1,0 +1,183 @@
+"""Actual storage initialization; explicit SQL/lifecycle doubles, not PG proof."""
+
+import ast
+from contextlib import contextmanager
+from datetime import timedelta
+from pathlib import Path
+from types import SimpleNamespace as NS
+from uuid import uuid4
+
+import pytest
+
+from backend.app.models import utcnow
+from backend.app.research_object_services import object_storage_guard
+from packages.research_runtime.engine_broker_contracts import OEChatResponse
+from tests.openevolve.test_contracts import complete_spec
+from workers.openevolve import operational as worker
+
+
+@pytest.mark.parametrize("fault", [None, "symlink", "file"])
+def test_initial_worker_provisions_before_image_or_capacity(
+    monkeypatch, tmp_path, fault
+):
+    spec = complete_spec()
+    fence = NS(owner_id=uuid4(), run_id=uuid4(), attempt_id=uuid4())
+    row = NS(owner_id=fence.owner_id, spec=spec.model_dump(mode="json"))
+    session = NS(
+        get=lambda cls, key: (
+            row
+            if key == fence.run_id
+            else NS(lease_expires_at=utcnow() + timedelta(seconds=1200))
+        )
+    )
+    active = []
+
+    @contextmanager
+    def lifecycle(*args):
+        active.append(True)
+        try:
+            yield
+        finally:
+            active.pop()
+
+    @contextmanager
+    def transaction(*args, **kwargs):
+        assert active
+        yield session
+
+    monkeypatch.setattr(worker, "shared_lifecycle", lifecycle)
+    monkeypatch.setattr(worker, "neutral_transaction", transaction)
+    original = worker.provision_directory
+
+    def provision(*args, **kwargs):
+        assert active
+        original(*args, **kwargs)
+
+    monkeypatch.setattr(worker, "provision_directory", provision)
+    if fault == "symlink":
+        (tmp_path / "elsewhere").mkdir()
+        (tmp_path / "research-objects").symlink_to(tmp_path / "elsewhere")
+    elif fault == "file":
+        (tmp_path / "research-objects").write_bytes(b"must not replace")
+    images = []
+
+    def image(_):
+        images.append(True)
+        assert active
+        assert all(
+            (tmp_path / name).is_dir()
+            for name in ("factors", "research-objects", "research-processes")
+        )
+        with object_storage_guard(tmp_path):
+            pass
+        raise RuntimeError("stop before any Docker or capacity request")
+
+    monkeypatch.setattr(worker, "_image_inventory", image)
+    schedule = worker.FixtureSchedule(
+        tuple(
+            OEChatResponse(content="fixed") for _ in range(spec.maximum_mutation_slots)
+        )
+    )
+    with pytest.raises(OSError if fault else RuntimeError):
+        worker.run_initial_epoch(
+            NS(kw={"bind": object()}),
+            fence,
+            runtime=None,
+            schedule=schedule,
+            settings=NS(storage_root=tmp_path),
+        )
+    assert images == ([] if fault else [True])
+    if fault == "file":
+        assert (tmp_path / "research-objects").read_bytes() == b"must not replace"
+
+
+def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch):
+    from alembic import command
+
+    path = Path("tests/integration/test_openevolve_initial_runtime.py")
+    node = next(
+        n
+        for n in ast.parse(path.read_text()).body
+        if isinstance(n, ast.FunctionDef) and n.name == "migrated_engine"
+    )
+    assert [a.arg for a in node.args.args] == ["postgres_engine"]
+    scope = {
+        "pytest": pytest,
+        "Path": Path,
+        "__file__": str(path.absolute()),
+        "REVISION": "024_openevolve_initial",
+    }
+    # Compile only the checked-in fixture to exercise its actual connection dispatch.
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), scope)  # noqa: S102
+    observed = []
+    monkeypatch.setattr(
+        command,
+        "upgrade",
+        lambda config, target: observed.append(
+            (config.attributes["connection"], target)
+        ),
+    )
+    for _ in range(2):
+        connection = object()
+
+        @contextmanager
+        def begin(connection=connection):
+            yield connection
+
+        engine = NS(begin=begin)
+        assert scope["migrated_engine"].__wrapped__(engine) is engine
+        assert observed[-1] == (connection, "024_openevolve_initial")
+    assert observed[0][0] is not observed[1][0]
+
+    # All integration process-unit admissions pass the real fixture Settings,
+    # including historical revision-specific cases; no guard bypass via None.
+    reservations = []
+    for path in Path("tests/integration").glob("*.py"):
+        for call in ast.walk(ast.parse(path.read_text())):
+            if not isinstance(call, ast.Call):
+                continue
+            if (
+                isinstance(call.func, ast.Name)
+                and call.func.id == "_admit_fixture_process"
+            ):
+                assert any(
+                    k.arg == "settings"
+                    and isinstance(k.value, ast.Name)
+                    and k.value.id == "settings"
+                    for k in call.keywords
+                ), path
+            if not (
+                isinstance(call.func, ast.Name) and call.func.id == "reserve_budget"
+            ):
+                continue
+            if not any(
+                k.arg == "purpose"
+                and isinstance(k.value, ast.Constant)
+                and k.value.value == "process_unit"
+                for k in call.keywords
+            ):
+                continue
+            reservations.append((path.name, call.lineno))
+            assert any(
+                k.arg == "settings"
+                and isinstance(k.value, ast.Name)
+                and k.value.id == "settings"
+                for k in call.keywords
+            ), path
+    assert len(reservations) == 7
+    path = Path("tests/integration/test_research_process_recovery.py")
+    node = next(
+        n
+        for n in ast.parse(path.read_text()).body
+        if isinstance(n, ast.FunctionDef) and n.name == "_provision_process_storage"
+    )
+    local = {}
+    exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), local)  # noqa: S102
+    # This helper uses the production durable/no-follow provisioner, not mkdir.
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        local["_provision_process_storage"](NS(storage_root=root))
+        with object_storage_guard(root):
+            assert (root / "research-processes").is_dir()

@@ -26,6 +26,25 @@ from tests.integration.openevolve_initial_fixture import (
 pytestmark = pytest.mark.postgres
 
 
+@pytest.fixture
+def migrated_engine(postgres_engine):
+    """Each owner-loss case owns a fresh schema at the actual024 contract.
+
+    The generic conftest fixture upgrades to HEAD, which is026 and is not this
+    initial-epoch protocol. Do not downgrade or reset another test's database.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    root = Path(__file__).resolve().parents[2]
+    config = Config(str(root / "backend" / "alembic.ini"))
+    config.set_main_option("script_location", str(root / "backend" / "alembic"))
+    with postgres_engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, REVISION)
+    return postgres_engine
+
+
 def _owner(engine):
     from backend.app.core.security import get_password_hash
     from backend.app.models import User

@@ -32,6 +32,16 @@ def test_frozen025_is_exact_assembler_and_predecessor():
     assert literal("DOWNGRADE_SQL") == downgrade_sql()
     assert literal("TABLES") == TABLES
     assert literal("SHARED") == SHARED
+    from backend.app.structured_schema_sql import previous_schema_sql, schema_sql
+
+    assert schema_sql() in upgrade_sql()
+    assert previous_schema_sql() in downgrade_sql()
+    assert "WHEN 'number'" not in previous_schema_sql()
+    assert "WHEN 'boolean'" not in previous_schema_sql()
+    assert (
+        "DROP FUNCTION @SCHEMA@.mineagent_structured_json_value(jsonb,integer)"
+        in downgrade_sql()
+    )
 
 
 def test_all024_check_branches_are_preserved_verbatim():

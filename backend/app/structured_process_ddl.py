@@ -7,7 +7,7 @@ execution. Fresh protected file reads remain mandatory for result use.
 import json
 import re
 
-from backend.app.rdagent_controller_ddl import _schema
+from backend.app.structured_schema_sql import structured_schema as _schema
 from runtimes.structured_factor_engine.journal import (
     StructuredExtraction,
     StructuredIdentity,

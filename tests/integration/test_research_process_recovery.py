@@ -39,7 +39,8 @@ PROCESS_AMOUNTS = profile_for("neutral_fixture.v1", "neutral_fixture").reservati
 
 
 @pytest.fixture
-def process_fence_fixture(migrated_engine, claimed_attempt, owner):
+def process_fence_fixture(migrated_engine, claimed_attempt, owner, settings):
+    _provision_process_storage(settings)
     # Extend only this fixture's real lease to cover container startup; no stale
     # lease exception or mocked database authority is accepted.
     with Session(migrated_engine) as session:
@@ -56,7 +57,17 @@ def process_fence_fixture(migrated_engine, claimed_attempt, owner):
     return sessionmaker(migrated_engine, expire_on_commit=False), fence
 
 
-def _admit_fixture_process(factory, fence, image_id, *, logical_id=None):
+def _provision_process_storage(settings):
+    from backend.app.core.atomic_storage import provision_directory
+
+    for name in ("factors", "research-objects", "research-processes"):
+        provision_directory(
+            settings.storage_root / name, durable_parent=settings.storage_root
+        )
+
+
+def _admit_fixture_process(factory, fence, image_id, *, settings, logical_id=None):
+    _provision_process_storage(settings)
     ticket = secrets.token_hex(32)
     with neutral_transaction(factory, fence, resource_scope="processes") as session:
         if (
@@ -80,6 +91,7 @@ def _admit_fixture_process(factory, fence, image_id, *, logical_id=None):
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="process:" + uuid4().hex,
             amounts=PROCESS_AMOUNTS,
         )
@@ -102,7 +114,9 @@ def _seed_stopped_process(factory, fence, settings, image_id):
     """Shared cold-restore fixture: actual commit→Docker→immutable stop receipts."""
     from workers.research.process_recovery import run_unit
 
-    admission, ticket = _admit_fixture_process(factory, fence, image_id)
+    admission, ticket = _admit_fixture_process(
+        factory, fence, image_id, settings=settings
+    )
     with run_unit(factory, fence, settings.storage_root, admission.id, ticket):
         pass
     return admission
@@ -118,9 +132,11 @@ def _required_image():
 
 
 @pytest.mark.parametrize("field", ["owner_id", "run_id", "attempt_id", "generation"])
-def test_process_admission_rejects_wrong_scope(process_fence_fixture, field):
+def test_process_admission_rejects_wrong_scope(process_fence_fixture, field, settings):
     factory, fence = process_fence_fixture
-    admission, _ = _admit_fixture_process(factory, fence, _required_image())
+    admission, _ = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     with factory() as session:
         original = session.get(ResearchProcessAdmission, admission.id)
         assert original is not None
@@ -140,9 +156,12 @@ def test_process_admission_rejects_wrong_scope(process_fence_fixture, field):
 
 def test_process_unknown_stop_blocks_terminal_and_keeps_reservation(
     process_fence_fixture,
+    settings,
 ):
     factory, fence = process_fence_fixture
-    admission, _ = _admit_fixture_process(factory, fence, _required_image())
+    admission, _ = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     with neutral_transaction(factory, fence, resource_scope="processes") as session:
         mark_uncertain(session, fence, admission)
         assert not reconcile_attempt_units(
@@ -163,9 +182,13 @@ def test_process_unknown_stop_blocks_terminal_and_keeps_reservation(
         )
 
 
-def test_process_cannot_reuse_launch_or_wrong_reservation(process_fence_fixture):
+def test_process_cannot_reuse_launch_or_wrong_reservation(
+    process_fence_fixture, settings
+):
     factory, fence = process_fence_fixture
-    admission, _ = _admit_fixture_process(factory, fence, _required_image())
+    admission, _ = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     arguments = {
         k: v
         for k, v in admission.__dict__.items()
@@ -192,7 +215,7 @@ def test_real_process_stop_after_lease_loss_is_containment_only(
     image = _required_image()
     from workers.research.process_recovery import run_unit
 
-    admission, ticket = _admit_fixture_process(factory, fence, image)
+    admission, ticket = _admit_fixture_process(factory, fence, image, settings=settings)
     with run_unit(factory, fence, settings.storage_root, admission.id, ticket):
         with factory() as session:
             attempt = session.get(ExecutionAttempt, fence.attempt_id)
@@ -258,7 +281,9 @@ def test_process_insert_enforces_composite_scope(
     process_fence_fixture, submit_run, other, settings, field
 ):
     factory, fence = process_fence_fixture
-    admission, _ = _admit_fixture_process(factory, fence, _required_image())
+    admission, _ = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     response = submit_run()
     assert response.status_code in (201, 202)
     from backend.app.services import claim_attempt
@@ -279,6 +304,7 @@ def test_process_insert_enforces_composite_scope(
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="scope:" + uuid4().hex,
             amounts=PROCESS_AMOUNTS,
         )
@@ -306,9 +332,11 @@ def test_process_insert_enforces_composite_scope(
         session.rollback()
 
 
-def test_process_database_terminal_and_generation_fail_closed(process_fence_fixture):
+def test_process_database_terminal_and_generation_fail_closed(
+    process_fence_fixture, settings
+):
     factory, fence = process_fence_fixture
-    _admit_fixture_process(factory, fence, _required_image())
+    _admit_fixture_process(factory, fence, _required_image(), settings=settings)
     for statement in (
         "UPDATE research_runs SET status='cancelled' WHERE id=:run",
         "UPDATE research_runs SET generation=generation+1 WHERE id=:run",
@@ -334,7 +362,7 @@ def actual_peer(factory, fence, settings, image_id, logical_operation_id):
     from workers.research.process_recovery import run_unit
 
     admission, ticket = _admit_fixture_process(
-        factory, fence, image_id, logical_id=logical_operation_id
+        factory, fence, image_id, logical_id=logical_operation_id, settings=settings
     )
     with run_unit(factory, fence, settings.storage_root, admission.id, ticket) as unit:
         yield accept_fixture_peer(settings.storage_root, admission, unit.identity)
@@ -343,7 +371,9 @@ def actual_peer(factory, fence, settings, image_id, logical_operation_id):
 @pytest.mark.parametrize(
     "dimension", ["process_slots", "wall_milliseconds", "storage_bytes"]
 )
-def test_process_profile_requires_every_reserved_peak(process_fence_fixture, dimension):
+def test_process_profile_requires_every_reserved_peak(
+    process_fence_fixture, dimension, settings
+):
     from packages.research_runtime.control import BrokerAbort
 
     factory, fence = process_fence_fixture
@@ -354,6 +384,7 @@ def test_process_profile_requires_every_reserved_peak(process_fence_fixture, dim
             session,
             fence,
             purpose="process_unit",
+            settings=settings,
             logical_key="insufficient",
             amounts=amounts,
         )
@@ -382,7 +413,9 @@ def test_process_launch_requires_committed_current_one_use_authority(
     from workers.research.process_recovery import run_unit
 
     factory, fence = process_fence_fixture
-    admission, ticket = _admit_fixture_process(factory, fence, _required_image())
+    admission, ticket = _admit_fixture_process(
+        factory, fence, _required_image(), settings=settings
+    )
     target = admission.id
     if invalid == "absent":
         target = uuid4()
@@ -399,6 +432,7 @@ def test_process_launch_requires_committed_current_one_use_authority(
                     session,
                     fence,
                     purpose="process_unit",
+                    settings=settings,
                     logical_key="rollback",
                     amounts=PROCESS_AMOUNTS,
                 )

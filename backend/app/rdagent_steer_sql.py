@@ -46,7 +46,11 @@ CREATE TRIGGER rd_steer_head_update BEFORE UPDATE OR DELETE ON rd_steers
 CREATE FUNCTION mineagent_steer_graph_check() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE sid uuid; head rd_steers%ROWTYPE; n integer; lo integer; hi integer; vid uuid;
 BEGIN
- sid:=CASE WHEN TG_TABLE_NAME='rd_steers' THEN NEW.id ELSE NEW.steer_id END;
+ IF TG_TABLE_NAME='rd_steers' THEN
+  sid:=NEW.id;
+ ELSE
+  sid:=NEW.steer_id;
+ END IF;
  SELECT * INTO head FROM rd_steers WHERE id=sid;
  SELECT count(*),min(ordinal),max(ordinal) INTO n,lo,hi FROM rd_steer_versions WHERE steer_id=sid AND owner_id=head.owner_id;
  SELECT id INTO vid FROM rd_steer_versions WHERE steer_id=sid AND ordinal=hi AND owner_id=head.owner_id;

@@ -67,6 +67,10 @@ def test_neutral_zero_argument_immutability_trigger_rejects_changed_values(
     ["users", "research_runs", "execution_attempts", "research_budget_controls"],
 )
 def test_neutral_downgrade_prelocks_every_parent_without_wait(migrated_engine, parent):
+    with migrated_engine.connect() as connection:
+        entry_revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
     with migrated_engine.begin() as reader:
         reader.execute(text(f"LOCK TABLE {parent} IN ACCESS SHARE MODE"))
         with (
@@ -78,13 +82,17 @@ def test_neutral_downgrade_prelocks_every_parent_without_wait(migrated_engine, p
     with migrated_engine.connect() as connection:
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "021_execution_snapshots"
+            == entry_revision
         )
 
 
 def test_neutral_downgrade_rejects_stale_snapshot_and_preserves_new_evidence(
     migrated_engine, owner, queued_run, claimed_attempt
 ):
+    with migrated_engine.connect() as connection:
+        entry_revision = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).scalar_one()
     fence = AttemptFence(
         owner.user.id,
         UUID(queued_run["id"]),
@@ -108,7 +116,7 @@ def test_neutral_downgrade_rejects_stale_snapshot_and_preserves_new_evidence(
         )
         assert (
             connection.scalar(text("SELECT version_num FROM alembic_version"))
-            == "021_execution_snapshots"
+            == entry_revision
         )
     with (
         pytest.raises(DBAPIError, match="Neutral evidence prevents"),

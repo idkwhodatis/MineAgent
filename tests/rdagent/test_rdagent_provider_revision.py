@@ -71,19 +71,17 @@ def test_frozen_migration_is_exact_and_has_separated_table_statements():
         for n in module.body
         if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
     }
-    # Boolean support is an explicit026 successor, not a changed018 interpreter.
-    original = revision.function(
-        revision.literal("018_rd_source_persistence.py"), "mineagent_rd_schema"
-    )
-    boolean = revision.schema_boolean_sql()
-    addition = " WHEN 'boolean' THEN NULL; -- Exact jsonb_typeof check above remains mandatory.\n"
-    assert original.count(" WHEN 'null' THEN NULL;") == 1
-    assert " WHEN 'boolean'" not in original
-    assert boolean.count(addition) == 1
-    assert boolean.replace(addition, "", 1) == original
-    assert "IF jsonb_typeof(v) IS DISTINCT FROM" in boolean
-    assert original in values["DOWNGRADE_SQL"]
-    assert boolean in values["UPGRADE_SQL"]
+    # 025 first needs numbers/booleans;026 retains its exact versioned parser.
+    from backend.app.structured_schema_sql import previous_schema_sql, schema_sql
+
+    original = previous_schema_sql()
+    current = revision.schema_boolean_sql()
+    assert " WHEN 'boolean'" not in original and " WHEN 'number'" not in original
+    assert current == schema_sql()
+    assert current.count(" WHEN 'boolean'") == 1
+    assert "IF jsonb_typeof(v) IS DISTINCT FROM" in current
+    assert current in values["DOWNGRADE_SQL"]
+    assert current in values["UPGRADE_SQL"]
     table = values["TABLE_SQL"]
     assert table.count("CREATE TABLE ") == 4
     assert ");\n\nCREATE TABLE" in table
