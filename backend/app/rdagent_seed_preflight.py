@@ -124,10 +124,11 @@ def seeded_preflight(session, owner_id, request, settings):
         if session.scalars(text("SELECT version_num FROM alembic_version")).all() in (
             [REVISION],
             ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
         ) and (
             profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
-            == ["027_rd_controller_v3"]
+            in (["027_rd_controller_v3"], ["027a_contract_repairs"])
         ):
             available = True
         else:

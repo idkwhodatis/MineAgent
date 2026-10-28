@@ -107,7 +107,7 @@ class FactorGenerationStart(AttemptEvidence, Base):
         scope_key(),
         UniqueConstraint("mutation_reservation_id"),
         CheckConstraint(
-            "logical_step=0 AND parent_factor_version_id IS NULL",
+            "logical_step=0",
             name="ck_rd_source_initial_step",
         ),
         UniqueConstraint(

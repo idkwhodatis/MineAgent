@@ -50,7 +50,7 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
 
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "027_rd_controller_v3")
+        legacy._upgrade(engine, "027a_contract_repairs")
         storage = tmp_path / "rd-user-flow"
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(engine, storage).model_copy(
@@ -210,7 +210,7 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
         target = tmp_path / "restored-user-flow"
         manifest = _roundtrip(drill_databases, tmp_path, engine, storage, target)
         assert (
-            manifest["schema_revision"] == "027_rd_controller_v3"
+            manifest["schema_revision"] == "027a_contract_repairs"
             and _files(target) == files
         )
         after = PostgresDatabase(

@@ -48,6 +48,7 @@ def require_configured_revision(session):
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         raise ProcessError("configured_numeric_schema_closed")
 

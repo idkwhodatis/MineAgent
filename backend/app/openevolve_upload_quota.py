@@ -5,10 +5,85 @@ The hold is removed only by a separately verified conservative settlement after
 containment. Every object writer includes these holds, not only upload begins.
 """
 
+import threading
+from contextlib import contextmanager, nullcontext
+from contextvars import ContextVar
+from pathlib import Path
+
 from sqlalchemy import select, text
 
 from backend.app.research_broker_models import ResearchBudgetReservation
+from backend.app.research_lifecycle import neutral_transaction
 from packages.research_runtime.budget_contracts import BudgetVector
+from packages.research_runtime.fences import AttemptFence
+
+_admission = ContextVar("oe_upload_capacity_admission", default=None)
+
+
+@contextmanager
+def upload_transaction(factory, fence, settings):
+    """Only acquisition may wait; one fresh transaction stays under the FS fence."""
+    from backend.app.openevolve_lock_admission import (
+        acquisition_deadline,
+        acquisition_window,
+        publication_storage_admission,
+    )
+
+    root = Path(settings.storage_root).absolute()
+    if type(fence) is not AttemptFence or _admission.get() is not None:
+        raise ValueError("Exact non-nested upload admission required")
+    deadline = acquisition_deadline(fence)
+    with (
+        acquisition_window(fence, deadline) if deadline is not None else nullcontext(),
+        publication_storage_admission(root, fence) as descriptors,
+        neutral_transaction(factory, fence, resource_scope="objects") as session,
+    ):
+        transaction = session.get_transaction()
+        token = _admission.set(
+            (root, fence, threading.get_ident(), session, transaction, descriptors)
+        )
+        try:
+            _require_held(session, root, fence)
+            yield session
+        finally:
+            _admission.reset(token)
+
+
+def _require_held(session, root, fence):
+    import os
+
+    from backend.app.core.atomic_storage import _open_directory
+
+    held = _admission.get()
+    if held is None or (
+        held[:3] != (Path(root).absolute(), fence, threading.get_ident())
+        or held[3] is not session
+        or held[4] is not session.get_transaction()
+        or not held[4].is_active
+    ):
+        raise ValueError("Upload capacity admission scope differs")
+    for path, fd in zip(
+        (Path(root).absolute(), Path(root).absolute() / "research-objects"),
+        held[5],
+        strict=True,
+    ):
+        pinned = os.fstat(fd)
+        current_fd = _open_directory(path)
+        try:
+            current = os.fstat(current_fd)
+            if (current.st_dev, current.st_ino) != (pinned.st_dev, pinned.st_ino):
+                raise ValueError("Upload capacity locked directory changed")
+        finally:
+            os.close(current_fd)
+
+
+def _capacity_guard(session, root, fence):
+    from backend.app.research_object_services import object_storage_guard
+
+    if _admission.get() is None:
+        return object_storage_guard(root)
+    _require_held(session, root, fence)
+    return nullcontext()
 
 
 def upload_holds(session):
@@ -17,6 +92,7 @@ def upload_holds(session):
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload
@@ -56,11 +132,10 @@ def require_upload_capacity(session, fence, begin, settings):
         ResearchObjectPublication,
     )
     from backend.app.research_object_services import (
-        object_storage_guard,
         physical_inventory,
     )
 
-    with object_storage_guard(settings.storage_root):
+    with _capacity_guard(session, settings.storage_root, fence):
         inventory = physical_inventory(
             settings.storage_root, max_files=settings.neutral_object_max_files
         )

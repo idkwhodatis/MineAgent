@@ -62,7 +62,9 @@ def _current(session, epoch_id, intent):
 
 def begin_upload(factory, fence, peer, *, epoch_id, payload, settings):
     begin = parse(Begin, payload)
-    with neutral_transaction(factory, fence, resource_scope="objects") as session:
+    from backend.app.openevolve_upload_quota import upload_transaction
+
+    with upload_transaction(factory, fence, settings) as session:
         intent, previous = _upload(session, fence, peer, epoch_id, begin.token)
         value = begin.model_dump(mode="json")
         if previous is not None:

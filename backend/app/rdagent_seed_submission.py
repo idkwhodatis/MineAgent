@@ -229,6 +229,7 @@ def submit_seeded_run(session, owner_id, submitted, idempotency_key, settings):
     if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
         [REVISION],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

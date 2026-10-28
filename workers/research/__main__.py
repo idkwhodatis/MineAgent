@@ -169,6 +169,7 @@ def main():
                         ["025_structured_factor_strategy"],
                         ["026_rd_seeded_submissions"],
                         ["027_rd_controller_v3"],
+                        ["027a_contract_repairs"],
                     ):
                         recover_stalled_jobs(session, rd=True)
             for attempt_id in rd_ids:

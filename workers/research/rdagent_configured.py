@@ -97,8 +97,10 @@ def require_controller_revision(session, config):
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ) or (
-        config.controller_profile is not None and revisions != ["027_rd_controller_v3"]
+        config.controller_profile is not None
+        and revisions not in (["027_rd_controller_v3"], ["027a_contract_repairs"])
     ):
         raise ProcessError("rd_controller_revision")
 

@@ -438,6 +438,7 @@ def test_resolved_report_api_returns_exact_immutable_context_with_authority_doub
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
+        "027a_contract_repairs",
     ],
 )
 def test_report_capability_inherits_only_installed_exact_successor_pairs(revision):

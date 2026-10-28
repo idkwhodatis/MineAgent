@@ -51,7 +51,11 @@ def _versioned_identity(session, owner, kind, content):
 
         if session.scalars(
             text("SELECT version_num FROM alembic_version")
-        ).all() not in (["026_rd_seeded_submissions"], ["027_rd_controller_v3"]):
+        ).all() not in (
+            ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
+        ):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
         if type(content) is not bytes or not 1 <= len(content) <= 65536:
@@ -78,6 +82,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["025_structured_factor_strategy"],
                 ["026_rd_seeded_submissions"],
                 ["027_rd_controller_v3"],
+                ["027a_contract_repairs"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -198,7 +203,7 @@ def physical_inventory(
 def object_storage_guard(root):
     """Filesystem fence retained across transaction loss and publication cleanup."""
     root = Path(root).absolute()
-    with storage_guard(root):
+    with storage_guard(root) as root_fd:
         fd = _open_directory(root / "research-objects")
         try:
             try:
@@ -209,7 +214,7 @@ def object_storage_guard(root):
             pinned = os.fstat(fd)
             if (current.st_dev, current.st_ino) != (pinned.st_dev, pinned.st_ino):
                 raise _error()
-            yield
+            yield (root_fd, fd)
         finally:
             os.close(fd)
 
@@ -355,6 +360,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
             ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -365,6 +371,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
             ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
         document = parse_document(kind, content)
@@ -393,6 +400,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
             ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

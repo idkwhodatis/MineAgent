@@ -35,8 +35,14 @@ SOURCE_PINS = {
 }
 
 # 027 widens only its explicit admission profile gate. The historical018
-# renderer remains byte-identical; this exact successor source is reviewed.
+# renderer remains byte-identical; these exact successor sources are reviewed.
+# 027a removes only the obsolete NULL-parent CHECK; historical projection below
+# remains explicit and does not accept arbitrary ORM source changes.
 SUCCESSOR_SOURCE_PINS = {
+    (
+        "backend/app/rdagent_models.py",
+        "8c329f76ca273d8f3610ef8a57432a381dfbecdea89d976083f946cd5d15e78e",
+    ): "40ad9bea6be7644b943cdaf60f00d8d5bdc80e896427a26e2d742bdf41ac6fd8",
     (
         "backend/app/research_process_models.py",
         "da0a3e80abaac7d5b4099debeedfabe9bb3ac4cf1817a91909f24d00265fa65d",

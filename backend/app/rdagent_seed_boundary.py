@@ -13,7 +13,11 @@ from backend.app.rdagent_seed_submission import validate_saved_seed_binding
 
 
 def seeded_boundary_id(session, run, revisions):
-    if revisions not in (["026_rd_seeded_submissions"], ["027_rd_controller_v3"]):
+    if revisions not in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
+    ):
         return None
     row = session.scalar(
         select(FactorSeededSubmission).filter_by(owner_id=run.owner_id, run_id=run.id)

@@ -130,6 +130,7 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed

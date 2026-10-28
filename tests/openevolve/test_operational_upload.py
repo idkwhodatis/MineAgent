@@ -88,6 +88,7 @@ def setup(monkeypatch, tmp_path):
         return raw
 
     monkeypatch.setattr(s, "neutral_transaction", transaction)
+    monkeypatch.setattr(quota, "upload_transaction", transaction)
     monkeypatch.setattr(s, "require_search_controller", authority)
     monkeypatch.setattr(s, "_owned_row", owned)
     monkeypatch.setattr(s, "_latest_control", lambda *_: NS(id=control))
@@ -104,7 +105,14 @@ def setup(monkeypatch, tmp_path):
             "checkpoint_upload_chunk": s.accept_chunk,
             "checkpoint_upload_finish": s.finish_upload,
         }[kind]
-        return fn(None, fence, object(), epoch_id=epoch, payload=payload, settings=None)
+        return fn(
+            None,
+            fence,
+            object(),
+            epoch_id=epoch,
+            payload=payload,
+            settings=NS(storage_root=tmp_path),
+        )
 
     files = tuple(
         sorted(

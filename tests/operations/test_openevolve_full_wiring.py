@@ -92,6 +92,7 @@ def composed_snapshot(revision):
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
+        "027a_contract_repairs",
     ],
 )
 def test_full_empty_cold_dispatch_preserves_exact_registered_tuples(tmp_path, revision):
@@ -132,6 +133,7 @@ def test_full024_rejects_unknown_or_historical_mixed_tuple(tmp_path, field, sche
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
+        "027a_contract_repairs",
     ],
 )
 def test_actual_source_snapshot_envelope_survives_full_cold_validation(
@@ -174,6 +176,16 @@ def test_actual_source_snapshot_envelope_survives_full_cold_validation(
 @pytest.mark.parametrize(
     "revision,field,schema",
     [
+        (
+            "027a_contract_repairs",
+            "research_closure",
+            "mineagent.research-restore-closure.v10",
+        ),
+        (
+            "027a_contract_repairs",
+            "rd_source_closure",
+            "mineagent.rd-source-restore-closure.v5",
+        ),
         (
             "027_rd_controller_v3",
             "research_closure",

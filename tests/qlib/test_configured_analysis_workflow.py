@@ -7,7 +7,7 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     text = Path(".github/workflows/mineagent-configured-analysis.yml").read_text()
     assert "contents: read" in text and "persist-credentials: false" in text
     assert "timeout-minutes: 120" in text
-    assert "assert len(cases)==20" in text
+    assert "assert len(cases)==23" in text
     assert "test_actual_configured_source_snapshot_direct_analysis_generation" in text
     assert "('failure','error','skipped')" in text
     assert (
@@ -82,7 +82,7 @@ def test_genuine_browser_reuses_pinned_node_and_keeps_required_runtime_cases():
     ):
         assert required in text and required in original
     assert 'MINEAGENT_CONFIGURED_BROWSER_REQUIRED: "1"' in text
-    assert "assert len(cases)==20" in text
+    assert "assert len(cases)==23" in text
     assert "path: var/numeric-proof/" in text
     assert "frontend/test-results" not in text
     assert (

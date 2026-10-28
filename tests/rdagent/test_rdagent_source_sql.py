@@ -33,9 +33,19 @@ def test_schema_identifier_is_not_arbitrary_sql(schema):
 
 
 def test_source_pin_drift_is_fail_closed(monkeypatch):
-    monkeypatch.setattr(sql, "SOURCE_PINS", {"backend/app/rdagent_models.py": "0" * 64})
-    with pytest.raises(ValueError, match="source-pin drift"):
-        sql.render_sql()
+    name = "backend/app/rdagent_models.py"
+    original = sql.SOURCE_PINS[name]
+    # Registering one exact reviewed successor never accepts a changed pin or
+    # another purported successor hash, including the known historic source.
+    with monkeypatch.context() as patch:
+        patch.setattr(sql, "SOURCE_PINS", {name: "0" * 64})
+        with pytest.raises(ValueError, match="source-pin drift"):
+            sql.render_sql()
+    with monkeypatch.context() as patch:
+        patch.setitem(sql.SUCCESSOR_SOURCE_PINS, (name, original), "0" * 64)
+        with pytest.raises(ValueError, match="source-pin drift"):
+            sql.render_sql()
+    assert sql.render_sql()
 
 
 def test_all_mutation_participants_have_deferred_triggers():

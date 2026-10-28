@@ -21,6 +21,7 @@ def provider_process_holds(session):
     if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         return ()
     rows = session.execute(

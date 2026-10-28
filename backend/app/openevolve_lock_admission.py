@@ -105,7 +105,7 @@ def publication_storage_admission(root, fence):
 
     def acquire():
         try:
-            stack.enter_context(object_storage_guard(root))
+            return stack.enter_context(object_storage_guard(root))
         except DomainError as exc:
             stack.close()
             if exc.code != "neutral_object_busy":
@@ -113,8 +113,8 @@ def publication_storage_admission(root, fence):
             raise Busy from exc
 
     try:
-        retry_acquisition(acquire, fence, Busy)
-        yield
+        descriptors = retry_acquisition(acquire, fence, Busy)
+        yield descriptors
     except Busy as exc:
         raise exc.__cause__ from None
     finally:

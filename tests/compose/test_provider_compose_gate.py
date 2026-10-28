@@ -37,8 +37,9 @@ def test_new_compose_phase_follows_all_existing_actual_proofs_and_old_pg_cleanup
         == "Require provider protocol and actual local SDK containment regressions"
     )
     actual = steps[prior]["run"]
-    assert "assert len(cases)==20" in actual
+    assert "assert len(cases)==23" in actual
     for path in (
+        "test_seed_parent_contract_migration.py",
         "test_rdagent_provider_user_flow.py",
         "test_configured_analysis_restore.py",
         "test_rdagent_user_flow.py",

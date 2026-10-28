@@ -17,7 +17,11 @@ from backend.app.services import DomainError
 
 
 def seeded_row(session, run, revisions):
-    if revisions not in (["026_rd_seeded_submissions"], ["027_rd_controller_v3"]):
+    if revisions not in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
+    ):
         return None
     return session.scalar(
         select(FactorSeededSubmission).filter_by(owner_id=run.owner_id, run_id=run.id)

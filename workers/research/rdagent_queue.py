@@ -57,6 +57,7 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409
@@ -216,6 +217,7 @@ def require_dispatch_binding(session, run, event, settings):
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409

@@ -77,7 +77,10 @@ def test_frozen_revision_and_exact_domain_inventory():
     assert len(DOMAIN_TABLES) == 24
     assert tuple(domain()["domain_tables"]) == DOMAIN_TABLES
     created = set(
-        re.findall(r"CREATE TABLE (?:IF NOT EXISTS )?(?:@SCHEMA@\.)?(\w+)\s*\(", fixed["UPGRADE_SQL"])
+        re.findall(
+            r"CREATE TABLE (?:IF NOT EXISTS )?(?:@SCHEMA@\.)?(\w+)\s*\(",
+            fixed["UPGRADE_SQL"],
+        )
     )
     assert created == set(DOMAIN_TABLES) | {"engine_object_reservation_consumers"}
 
@@ -92,6 +95,15 @@ def test_upgrade_equals_explicit_historical_projection_of_successor_metadata():
     successor = ", \n\tCONSTRAINT uq_rd_boundary_execution_actor UNIQUE (owner_id, run_id, attempt_id, generation, id, controller_launch_id, start_id)"
     assert rendered.count(successor) == 1
     rendered = rendered.replace(successor, "")
+    # 027a enables the already-declared seeded parent under the existing FK/
+    # deferred receipt guards. Reconstruct018's obsolete CHECK only here.
+    repaired = "CONSTRAINT ck_rd_source_initial_step CHECK (logical_step=0)"
+    assert rendered.count(repaired) == 1
+    rendered = rendered.replace(
+        repaired,
+        "CONSTRAINT ck_rd_source_initial_step CHECK "
+        "(logical_step=0 AND parent_factor_version_id IS NULL)",
+    )
     expected = substitute(
         "\n".join(
             [

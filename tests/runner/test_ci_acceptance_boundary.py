@@ -246,7 +246,19 @@ def _assert_actual_runtime_partition():
             environment = {}
             names = set(required)
             if file == "mineagent-configured-analysis.yml":
-                # The same gate also retains sixteen PostgreSQL-only cases.
+                # The same gate also retains nineteen PostgreSQL-only cases.
+                repair = (
+                    root / "tests/integration/test_seed_parent_contract_migration.py"
+                )
+                assert str(repair.relative_to(root)) in command
+                repair_names = {
+                    n.name
+                    for n in ast.parse(repair.read_text()).body
+                    if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+                }
+                assert len(repair_names) == 3
+                required |= repair_names
+                names |= repair_names
                 names |= {
                     "test_http_submission_is_queued_without_synthetic_attempt_and_replays_after_disable",
                     "test_actual_first_claim_and_duplicate_are_distinct_from_queued_counter",

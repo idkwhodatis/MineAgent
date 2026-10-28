@@ -286,7 +286,8 @@ jobs:
           python -m pytest tests/integration/test_rdagent_configured_analysis.py \
             tests/integration/test_configured_analysis_restore.py \
             tests/integration/test_rdagent_submission_postgres.py tests/integration/test_rdagent_user_flow.py \
-            tests/integration/test_rdagent_provider_user_flow.py tests/integration/test_rd_provider_predicates.py -q \
+            tests/integration/test_rdagent_provider_user_flow.py tests/integration/test_rd_provider_predicates.py \
+            tests/integration/test_seed_parent_contract_migration.py -q \
             --junitxml=var/numeric-private/controller.xml || status=$?
           python - <<'PYRESULT'
           from pathlib import Path
@@ -295,9 +296,9 @@ jobs:
           source=Path('var/numeric-private/controller.xml')
           summarize(source,Path('var/numeric-proof/controller-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==20
+          assert len(cases)==23
           names={case.get('name') for case in cases}
-          required={'test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units','test_actual_configured_source_snapshot_direct_analysis_generation','test_actual_configured_analysis_cold_restore_historical_read','test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay','test_http_submission_is_queued_without_synthetic_attempt_and_replays_after_disable','test_actual_first_claim_and_duplicate_are_distinct_from_queued_counter','test_queued_cancel_is_authenticated_and_cannot_create_attempt','test_claimed_cancel_without_any_physical_admission_revokes_real_fence'}
+          required={'test_installed_seed_parent_check_accepts_nonnull_only_at_initial_step','test_repair_downgrade_refuses_retained_parent_and_restores_empty_contract','test_installed_authoring_contract_matches_real_canonical_producer','test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units','test_actual_configured_source_snapshot_direct_analysis_generation','test_actual_configured_analysis_cold_restore_historical_read','test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay','test_http_submission_is_queued_without_synthetic_attempt_and_replays_after_disable','test_actual_first_claim_and_duplicate_are_distinct_from_queued_counter','test_queued_cancel_is_authenticated_and_cannot_create_attempt','test_claimed_cancel_without_any_physical_admission_revokes_real_fence'}
           assert required <= names
           assert len([n for n in names if n.startswith('test_direct_sql_cannot_sever_immutable_submission_graph[')])==4
           assert len([n for n in names if n.startswith('test_provider_request_and_conservative_amount_match_python[')])==8

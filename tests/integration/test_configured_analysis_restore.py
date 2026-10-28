@@ -58,7 +58,7 @@ def test_actual_configured_analysis_cold_restore_historical_read(
         tmp_path / "configured-restored-storage",
     )
     try:
-        legacy._upgrade(source, "027_rd_controller_v3")
+        legacy._upgrade(source, "027a_contract_repairs")
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(source, storage).model_copy(
             update={"lease_seconds": 3600}
@@ -131,7 +131,7 @@ def test_actual_configured_analysis_cold_restore_historical_read(
         )
         files = _files(storage)
         manifest = _roundtrip(drill_databases, tmp_path, source, storage, target)
-        assert manifest["schema_revision"] == "027_rd_controller_v3"
+        assert manifest["schema_revision"] == "027a_contract_repairs"
         assert storage.stat().st_ino != target.stat().st_ino
         assert not (target / ".restore-incomplete").exists()
         assert _files(target) == files

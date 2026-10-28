@@ -7,6 +7,7 @@ and predeclared objective. A relocated inode never becomes a launch grant.
 """
 
 import hashlib
+import re
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -107,7 +108,16 @@ def indexes(closure, maximum_rows):
             if type(row) is not dict or set(row) != set(fields.split()):
                 raise ValueError("Direct analysis columns differ")
             for key, value in row.items():
-                if key == "id" or key.endswith("_id"):
+                if name == "factor_analysis_plans" and key in {
+                    "qlib_image_id",
+                    "qlib_installed_parent_image_id",
+                }:
+                    if (
+                        type(value) is not str
+                        or re.fullmatch(r"sha256:[a-f0-9]{64}", value) is None
+                    ):
+                        raise ValueError("Direct analysis image identity grammar")
+                elif key == "id" or key.endswith("_id"):
                     if (
                         name == "data_usage_exposures"
                         and key

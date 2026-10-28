@@ -55,13 +55,19 @@ def provider_config_in_session(session):
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
+        "027a_contract_repairs",
     }:
         raise ValueError("Unsupported historical snapshot revision")
-    return revisions in (["026_rd_seeded_submissions"], ["027_rd_controller_v3"])
+    return revisions in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
+    )
 
 
 def composed_controller_in_session(session):
     provider_config_in_session(session)  # Reject every unrecognized revision.
-    return session.scalars(text("SELECT version_num FROM alembic_version")).all() == [
-        "027_rd_controller_v3"
-    ]
+    return session.scalars(text("SELECT version_num FROM alembic_version")).all() in (
+        ["027_rd_controller_v3"],
+        ["027a_contract_repairs"],
+    )
