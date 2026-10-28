@@ -405,7 +405,9 @@ def validate_closure(
             )
         ):
             raise ValueError("Structured full stopped scope differs")
-        intent = StructuredIntent.model_validate(by_kind["launch_intent"]["payload"])
+        intent = StructuredIntent.model_validate_json(
+            canonical_bytes(by_kind["launch_intent"]["payload"])
+        )
         if (
             intent.inputs.execution_id != UUID(execution["id"])
             or intent.inputs.strategy_input_sha256 != execution["strategy_input_sha256"]
@@ -526,7 +528,9 @@ def validate_closure(
             intents = [r for r in chain if r["kind"] == "launch_intent"]
             if len(intents) != 1:
                 raise ValueError("Structured exact launch intent missing")
-            intent = StructuredIntent.model_validate(intents[0]["payload"])
+            intent = StructuredIntent.model_validate_json(
+                canonical_bytes(intents[0]["payload"])
+            )
             expected = {
                 key: admission[key]
                 for key in (

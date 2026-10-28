@@ -222,3 +222,89 @@ def test_missing_intent_rejected(claim):
     claim.receipts.clear()
     with pytest.raises(ProcessError, match="intent"):
         issue(claim)
+
+
+@pytest.mark.parametrize(
+    "profile,seconds",
+    [
+        ("mineagent.rdagent-orchestrator.v2", 60),
+        ("mineagent.rdagent-orchestrator.v3", 120),
+    ],
+)
+@pytest.mark.parametrize(
+    "drift", [None, "expired", "container", "start_ticks", "during_read"]
+)
+def test_claim_uses_persisted_profile_with_full_fresh_observer(
+    monkeypatch, profile, seconds, drift
+):
+    from datetime import UTC, datetime
+
+    from runtimes.rdagent_operational import daemon_identity as daemon
+
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    admission = SimpleNamespace(profile=profile)
+    state = SimpleNamespace(status="uncertain")
+    intent = SimpleNamespace(issued_at=now, not_after=now + timedelta(seconds=seconds))
+    cid, image = "d" * 64, "sha256:" + "b" * 64
+    host = (100, 1000, "0::/unit\n", 1, (0,) * 4, (0,) * 4)
+    from runtimes.rdagent_operational.peer import KernelIdentity
+
+    leader = KernelIdentity(100, 1000, "pid:[42]", "0::/unit\n", 1, (0,) * 4, (0,) * 4)
+    identity = SimpleNamespace(container_id=cid, image_id=image, leader=leader)
+    document = {
+        "Id": cid,
+        "Image": image,
+        "State": {"Running": True, "Status": "running", "Pid": 100},
+    }
+    cli = SimpleNamespace(
+        _inspect=Mock(return_value=document),
+        _command=Mock(
+            return_value=(0, b"PID UID PPID PIDNS COMMAND\n100 0 1 42 python\n")
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "_persisted",
+        lambda *args: (admission, state, {"launch_intent": object()}),
+    )
+    monkeypatch.setattr(module, "_intent", lambda *args: intent)
+    monkeypatch.setattr(
+        module,
+        "read_controller_journal",
+        lambda *args: (SimpleNamespace(intent=intent), identity, None, None),
+    )
+    monkeypatch.setattr(module, "utcnow", lambda: now + timedelta(seconds=1))
+    monkeypatch.setattr(daemon.time, "monotonic", lambda: 10.0)
+    monkeypatch.setattr(daemon, "DockerSupervisor", lambda _: cli)
+    hosts = Mock(return_value=host)
+    monkeypatch.setattr(daemon, "_host_snapshot", hosts)
+    persist = Mock(return_value=admission)
+    monkeypatch.setattr(module, "record_controller_identity", persist)
+    if drift == "expired":
+        monkeypatch.setattr(module, "utcnow", lambda: intent.not_after)
+    elif drift == "container":
+        document["Id"] = "e" * 64
+    elif drift == "start_ticks":
+        hosts.return_value = (100, 1001, *host[2:])
+    elif drift == "during_read":
+        hosts.side_effect = [host, (100, 1001, *host[2:])]
+    session = Mock()
+    if drift is None:
+        assert (
+            module.record_claimed_controller_identity(
+                session, object(), object(), storage_root="unused"
+            )
+            is admission
+        )
+        assert state.status == "running"
+        assert cli._inspect.call_count == 2
+        assert hosts.call_count == 2
+        persist.assert_called_once()
+    else:
+        with pytest.raises(ProcessError):
+            module.record_claimed_controller_identity(
+                session, object(), object(), storage_root="unused"
+            )
+        assert state.status == "uncertain"
+        persist.assert_not_called()
+        session.flush.assert_not_called()

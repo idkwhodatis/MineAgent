@@ -163,6 +163,7 @@ def test_controller_requires_actual_peer_and_rejects_unrelated_pid(monkeypatch):
     class Context:
         def __init__(self, *args):
             assert args[:3] == (identity.container_id, identity.image_id, 101)
+            assert args[4] == "mineagent.rdagent-orchestrator.v2"
 
         def observe_pair(self, pid):
             assert pid == 102
@@ -174,18 +175,24 @@ def test_controller_requires_actual_peer_and_rejects_unrelated_pid(monkeypatch):
 
     monkeypatch.setattr(daemon_identity, "DaemonIdentityContext", Context)
     assert proof.controller(
-        "/retained", object(), {"launch_identity": 1, "controller_child": 2}
+        "/retained",
+        NS(profile="mineagent.rdagent-orchestrator.v2"),
+        {"launch_identity": 1, "controller_child": 2},
     )
     assert matched == [(identity, 1), (child, 2)]
     monkeypatch.setattr(Context, "observe", lambda self, pid: child_kernel)
     with pytest.raises(ValueError, match="Unrelated"):
         proof.controller(
-            "/retained", object(), {"launch_identity": 1, "controller_child": 2}
+            "/retained",
+            NS(profile="mineagent.rdagent-orchestrator.v2"),
+            {"launch_identity": 1, "controller_child": 2},
         )
     child.peer_uid = 0
     with pytest.raises(ValueError, match="kernel peer"):
         proof.controller(
-            "/retained", object(), {"launch_identity": 1, "controller_child": 2}
+            "/retained",
+            NS(profile="mineagent.rdagent-orchestrator.v2"),
+            {"launch_identity": 1, "controller_child": 2},
         )
 
 

@@ -388,7 +388,9 @@ def validate_closure(
                 str(part.native_publication_id)
             ]
             same_scope(native_row, row)
-            candidate = NativePublicationIntent.model_validate(native_row["intent"])
+            candidate = NativePublicationIntent.model_validate_json(
+                canonical_bytes(native_row["intent"])
+            )
             if (
                 str(candidate.admission.id) != str(part.candidate_admission_id)
                 or native_row["cutoff_id"] != str(part.cutoff_id)

@@ -29,7 +29,7 @@ from backend.app.structured_process_services import (
     as_structured_admission,
     require_structured_capability,
 )
-from packages.factors.contracts import FactorDefinition
+from packages.factors.contracts import FactorDefinition, canonical_bytes
 from packages.structured_factor_strategy.wire import (
     StructuredResult,
     read_result,
@@ -106,7 +106,9 @@ def read_historical_structured_execution(factory, owner_id, execution_id, settin
                 program,
                 settings,
             )
-            publication = session.get(ExecutionSnapshotPublication, execution.snapshot_id)
+            publication = session.get(
+                ExecutionSnapshotPublication, execution.snapshot_id
+            )
             if (
                 publication is None
                 or publication.owner_id != owner_id
@@ -151,7 +153,9 @@ def read_historical_structured_execution(factory, owner_id, execution_id, settin
                 session, outcome, outcome.admission_id
             )
             admission = as_structured_admission(admission)
-            intent = StructuredIntent.model_validate(receipts["launch_intent"].payload)
+            intent = StructuredIntent.model_validate_json(
+                canonical_bytes(receipts["launch_intent"].payload)
+            )
             if (
                 intent.admission != admission
                 or intent.inputs.execution_id != execution_id

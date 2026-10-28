@@ -83,6 +83,7 @@ def record_claimed_controller_identity(session, fence, admission_id, *, storage_
         identity.image_id,
         identity.leader.host_pid,
         time.monotonic() + (intent.not_after - utcnow()).total_seconds(),
+        admission.profile,
     )
     if (
         launch.intent != intent

@@ -186,6 +186,36 @@ def _receipts(factory, admission_id):
         return {row.kind: (row.id, row.payload_sha256) for row in rows}
 
 
+def _assert_persisted_oracle_inputs(
+    config, factor_version_id, actual_inputs, expected_inputs
+):
+    """Full manifest equality plus independent fixed market/source bytes."""
+    for path in (
+        "/input/source.py",
+        "/input/observations.json",
+        "/input/listings.json",
+    ):
+        assert actual_inputs[path] == expected_inputs[path]
+    actual_manifest = json.loads(actual_inputs["/input/manifest.json"])
+    expected_manifest = json.loads(expected_inputs["/input/manifest.json"])
+    # The independent primitive oracle keeps its original tight limits. Bind only
+    # declaration-dependent fields to the actual immutable persisted config;
+    # never derive expectations from the production projection under test.
+    from packages.factors.contracts import ExposureHistory, digest
+    from packages.rdagent_adapter.host_evidence import research_snapshot_input
+
+    snapshot = research_snapshot_input(
+        config,
+        factor_version_id=factor_version_id,
+        code_sha256=hashlib.sha256(expected_inputs["/input/source.py"]).hexdigest(),
+        exposure_history=ExposureHistory(),
+    )
+    expected_manifest["snapshot_input_sha256"] = digest(snapshot)
+    expected_manifest["max_output_rows"] = config.max_output_rows_per_cutoff
+    expected_manifest["max_output_bytes"] = config.max_output_bytes_per_cutoff
+    assert actual_manifest == expected_manifest
+
+
 def test_actual_source_candidate_native_claim_normalizer_stops(
     numeric_source, monkeypatch
 ):
@@ -212,17 +242,9 @@ def test_actual_source_candidate_native_claim_normalizer_stops(
         factor_version_id=source.version.id,
         source_utf8=expected_inputs["/input/source.py"],
     )
-    for path in (
-        "/input/source.py",
-        "/input/observations.json",
-        "/input/listings.json",
-    ):
-        assert actual_inputs[path] == expected_inputs[path]
-    actual_manifest = json.loads(actual_inputs["/input/manifest.json"])
-    expected_manifest = json.loads(expected_inputs["/input/manifest.json"])
-    actual_manifest.pop("snapshot_input_sha256")
-    expected_manifest.pop("snapshot_input_sha256")
-    assert actual_manifest == expected_manifest
+    _assert_persisted_oracle_inputs(
+        config, source.version.id, actual_inputs, expected_inputs
+    )
     candidate_id = _candidate(factory, settings, source)
     before = _receipts(factory, candidate_id)
     assert set(before) == {"launch_intent", "launch_identity", "stop", "extraction"}

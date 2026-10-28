@@ -101,6 +101,7 @@ def controller(root, admission, receipts):
         identity.image_id,
         identity.leader.host_pid,
         original_deadline(launch.intent.not_after),
+        admission.profile,
     )
     leader, observed = context.observe_pair(child.peer_pid)
     if (

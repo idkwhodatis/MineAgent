@@ -48,3 +48,63 @@ def test_unrelated_dataset_or_fixture_input_digest_cannot_launch(field):
     target[field] = "f" * 64
     with pytest.raises(ProcessError, match="fixture_dataset_identity"):
         project(raw)
+
+
+def _persisted_assertion():
+    # Load the exact assertion used by the Docker/PG gate without executing it.
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "integration/test_numeric_persisted_runtime.py"
+    spec = importlib.util.spec_from_file_location("numeric_persisted_oracle_gate", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module._assert_persisted_oracle_inputs
+
+
+def _bound_oracle():
+    raw = research_dict()
+    raw["max_output_rows_per_cutoff"] = 10000
+    raw["max_output_bytes_per_cutoff"] = 16777216
+    raw["input"]["dataset"]["dataset_version_id"] = str(uuid4())
+    config = FactorResearchConfig.model_validate(raw)
+    version_id = uuid4()
+    _, expected, _ = frozen_inputs(
+        config.runtime.candidate_image, config.runtime.normalizer_image
+    )
+    _, actual = maintained_projection(
+        config, factor_version_id=version_id, source_utf8=expected["/input/source.py"]
+    )
+    return config, version_id, actual, expected
+
+
+def test_persisted_oracle_binds_exact_config_without_changing_primitive_defaults():
+    config, version, actual, expected = _bound_oracle()
+    before = dict(expected)
+    primitive = json.loads(expected["/input/manifest.json"])
+    assert (primitive["max_output_rows"], primitive["max_output_bytes"]) == (3, 10000)
+    _persisted_assertion()(config, version, actual, expected)
+    assert expected == before
+    assert (
+        json.loads(actual["/input/manifest.json"])["snapshot_input_sha256"]
+        != primitive["snapshot_input_sha256"]
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("max_output_rows", 3),
+        ("max_output_bytes", 10000),
+        ("snapshot_input_sha256", "f" * 64),
+        ("observation_count", 8),
+        ("unexpected", "not ignored"),
+    ],
+)
+def test_persisted_oracle_rejects_manifest_drift(field, value):
+    config, version, actual, expected = _bound_oracle()
+    manifest = json.loads(actual["/input/manifest.json"])
+    manifest[field] = value
+    actual["/input/manifest.json"] = json.dumps(manifest).encode()
+    with pytest.raises(AssertionError):
+        _persisted_assertion()(config, version, actual, expected)
