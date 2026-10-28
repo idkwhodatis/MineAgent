@@ -75,6 +75,66 @@ def wheel(output, name, files, dependencies):
     }
 
 
+def build_adapters(root, output):
+    """Build the exact runner/native adapters; shared by real builds and regressions."""
+    profile = root / "runtimes/qlib"
+    # Explicit frozen runtime imports only; never package active domain drafts.
+    adapter_files = (
+        "packages/rdagent_adapter/__init__.py",
+        "packages/rdagent_adapter/contracts.py",
+        "packages/rdagent_adapter/controller_profile.py",
+        "packages/rdagent_adapter/controller_limits.py",
+        "packages/rdagent_adapter/prefix.py",
+        "packages/rdagent_adapter/broker_bridge.py",
+        "packages/rdagent_adapter/upstream.py",
+        "runtimes/rdagent/bootstrap.py",
+        "packages/qlib_adapter/__init__.py",
+        "packages/qlib_adapter/contracts.py",
+        "packages/qlib_adapter/direct.py",
+        "packages/qlib_adapter/selection.py",
+        "runtimes/qlib/verify_native.py",
+        "runtimes/qlib/verify_direct.py",
+        "runtimes/qlib/verify_rd_runner.py",
+        "runtimes/qlib/probe_container.py",
+        "packages/factors/__init__.py",
+        "packages/factors/contracts.py",
+        "packages/research_runtime/__init__.py",
+        "packages/research_runtime/control.py",
+        "packages/research_runtime/budget_contracts.py",
+    )
+    adapter = {path: (root / path).read_bytes() for path in adapter_files}
+    adapter_wheel = wheel(
+        output,
+        "mineagent_qlib_runner_adapter_profile",
+        adapter,
+        ["mineagent-qlib-runner-upstream-profile==0.1.0"],
+    )
+    native_files = {
+        path: data
+        for path, data in adapter.items()
+        if path.startswith("packages/qlib_adapter/")
+        or path
+        in (
+            "packages/factors/__init__.py",
+            "packages/factors/contracts.py",
+            "runtimes/qlib/verify_native.py",
+            "runtimes/qlib/verify_direct.py",
+        )
+    }
+    native_dependencies = ["pyqlib==0.9.8"] + [
+        line.split()[0]
+        for line in (profile / "requirements.lock").read_text().splitlines()
+        if line and not line.startswith("#")
+    ]
+    native_wheel = wheel(
+        output,
+        "mineagent_qlib_native_adapter_profile",
+        native_files,
+        native_dependencies,
+    )
+    return adapter_wheel, native_wheel
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", type=Path, required=True)
@@ -135,58 +195,7 @@ def main():
     upstream = wheel(
         args.output, "mineagent_qlib_runner_upstream_profile", files, dependencies
     )
-    # Explicit frozen runtime imports only; never package active domain drafts.
-    adapter_files = (
-        "packages/rdagent_adapter/__init__.py",
-        "packages/rdagent_adapter/contracts.py",
-        "packages/rdagent_adapter/prefix.py",
-        "packages/rdagent_adapter/broker_bridge.py",
-        "packages/rdagent_adapter/upstream.py",
-        "runtimes/rdagent/bootstrap.py",
-        "packages/qlib_adapter/__init__.py",
-        "packages/qlib_adapter/contracts.py",
-        "packages/qlib_adapter/direct.py",
-        "packages/qlib_adapter/selection.py",
-        "runtimes/qlib/verify_native.py",
-        "runtimes/qlib/verify_direct.py",
-        "runtimes/qlib/verify_rd_runner.py",
-        "runtimes/qlib/probe_container.py",
-        "packages/factors/__init__.py",
-        "packages/factors/contracts.py",
-        "packages/research_runtime/__init__.py",
-        "packages/research_runtime/control.py",
-        "packages/research_runtime/budget_contracts.py",
-    )
-    adapter = {path: (root / path).read_bytes() for path in adapter_files}
-    adapter_wheel = wheel(
-        args.output,
-        "mineagent_qlib_runner_adapter_profile",
-        adapter,
-        ["mineagent-qlib-runner-upstream-profile==0.1.0"],
-    )
-    native_files = {
-        path: data
-        for path, data in adapter.items()
-        if path.startswith("packages/qlib_adapter/")
-        or path
-        in (
-            "packages/factors/__init__.py",
-            "packages/factors/contracts.py",
-            "runtimes/qlib/verify_native.py",
-            "runtimes/qlib/verify_direct.py",
-        )
-    }
-    native_dependencies = ["pyqlib==0.9.8"] + [
-        line.split()[0]
-        for line in (profile / "requirements.lock").read_text().splitlines()
-        if line and not line.startswith("#")
-    ]
-    native_wheel = wheel(
-        args.output,
-        "mineagent_qlib_native_adapter_profile",
-        native_files,
-        native_dependencies,
-    )
+    adapter_wheel, native_wheel = build_adapters(root, args.output)
     report = {
         "schema": "mineagent.qlib-runner-wheel-build.v1",
         "commit": inventory["commit"],

@@ -3,7 +3,7 @@
     "filename": "mineagent_qlib_runner_adapter_profile-0.1.0-py3-none-any.whl",
     "files": {
       "mineagent_qlib_runner_adapter_profile-0.1.0.dist-info/METADATA": "20bba570667475211319563d03410e73c68e7c5f4bde79239acc237a39818bba",
-      "mineagent_qlib_runner_adapter_profile-0.1.0.dist-info/RECORD": "aa7d70a5e3d4d8495844947bcb3841486f2a70eafcdfaf935ee3052eed406d53",
+      "mineagent_qlib_runner_adapter_profile-0.1.0.dist-info/RECORD": "481151422198b388eff71a615f55263c72279916943a1e71ef24421d7731eeb7",
       "mineagent_qlib_runner_adapter_profile-0.1.0.dist-info/WHEEL": "45b761468dfa526077fbe2cd363ba5be540d04801e63a8fced51dbb9a3344961",
       "packages/factors/__init__.py": "b4c5f7b592b93322efd2b1d0f6f7397b9079e52644c53216f4f19cdb7e90cd2d",
       "packages/factors/contracts.py": "be87b1ccbfad092d469e69b4ed2d214cf7030b7d35033e9ce103b3c58e6e22f6",
@@ -13,7 +13,9 @@
       "packages/qlib_adapter/selection.py": "647b0be7caac55027a7ab52ac4609f04204a8f706059c88d111c15029a44c67a",
       "packages/rdagent_adapter/__init__.py": "e96d5b81279cdbb6f46b6daddb95986936339f28daeb8b85dd51ce5c5a064e28",
       "packages/rdagent_adapter/broker_bridge.py": "2cbb93793cfa4556f1bb6fc6672cf802c0074685cfd717becce31740c9c32715",
-      "packages/rdagent_adapter/contracts.py": "6ae2b4b5490f36ff170401cdfee76af2e9492a57ccf9dccfa656a7abfdef690c",
+      "packages/rdagent_adapter/contracts.py": "3e67946e368857c87dc47fc5faff9efef01765250a70444b1d0d7dde00648759",
+      "packages/rdagent_adapter/controller_limits.py": "650654dff49c8871d3a5ad8d724e1cac0d909b85983795cc260ffe4601a9815d",
+      "packages/rdagent_adapter/controller_profile.py": "cdf548022edd004f96a3f9b91619a9a6c3687cb6246e3206b5fe21454c900bd8",
       "packages/rdagent_adapter/prefix.py": "0db734262af13cc1be40a397bd46fbe7d623a8562aa6b0d7de6af901919563cd",
       "packages/rdagent_adapter/upstream.py": "c31e3afe1582e7e4ce98a0be9ffc71ef6f6c4647860d87bcb7bb2b70ef73b414",
       "packages/research_runtime/__init__.py": "2153d00c47107ef7618e56ed19891ac5bf33de6f712a813747158e56ccc723c2",
@@ -25,7 +27,7 @@
       "runtimes/qlib/verify_rd_runner.py": "84facedae83dfb820dc2628a1c48dac71b2f709367ed5d817049ddd5f6ca8428",
       "runtimes/rdagent/bootstrap.py": "e36fda7ebabc15776a67fa01d5f775619939b9d4afb39f9797f5a5a5e48261ac"
     },
-    "sha256": "759192370d5a5efb62ed9e31c5289086e3bd9437f7e465771dbf968ef8fbc118"
+    "sha256": "a22e25703617ae8a7dfc221495d3267b4cd689b803390157b631df8b21c07af8"
   },
   "commit": "484776c211e4fbbeef03e0ec00d6bbee7362a4f4",
   "dependency_lock_sha256": "d83a170a4e1e31f061fd290404dff564f2f6276c36e0901c5ee931736e1c4a5c",
@@ -46,7 +48,7 @@
     },
     "sha256": "c63be002cd9b939767bf143535f855c8636feed2552fdb4b863c6b5afb748337"
   },
-  "recipe_sha256": "ce812eb37556a0bdb8e2438e562fb37d241ee470657f618fd377165f10980227",
+  "recipe_sha256": "591daa5b547de2eb11aebb8cb068d9aa2ffacf00fdefbc80701b68e5358f10c2",
   "schema": "mineagent.qlib-runner-wheel-build.v1",
   "upstream": {
     "filename": "mineagent_qlib_runner_upstream_profile-0.1.0-py3-none-any.whl",

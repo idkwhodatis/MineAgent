@@ -99,8 +99,8 @@ def maintained_projection(config, *, factor_version_id, source_utf8, snapshot=No
         candidate_image=config.runtime.candidate_image,
         normalizer_image=config.runtime.normalizer_image,
         lag_available_at=day.close_time,
-        max_output_rows=3,
-        max_output_bytes=10000,
+        max_output_rows=config.max_output_rows_per_cutoff,
+        max_output_bytes=config.max_output_bytes_per_cutoff,
     )
     _, inputs, _ = candidate_inputs(
         prefix,
