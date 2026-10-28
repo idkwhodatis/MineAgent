@@ -36,11 +36,34 @@ def test_predecessor_pin_fails_closed(monkeypatch):
         repair.render_upgrade_sql()
 
 
-def test_real_assembly_and_explicit_authoring_match_canonical_matrix():
+def test_real_assembly_and_explicit_authoring_match_canonical_matrix(monkeypatch):
     cases = authoring_cases()
     assert len(cases) == 14
     assert "authoring" not in cases[0][1]["engine"]["manifest"]
-    assert len(authoring_statements()) == 15
+    statements = authoring_statements()
+    assert len(statements) == 15
+
+    # Exercise the hosted entry point: literal JSON must reach the DBAPI intact,
+    # never be parsed as SQLAlchemy named binds (e.g. :10000 or :false).
+    from unittest.mock import MagicMock
+
+    from sqlalchemy import text
+
+    from tests.integration import structured_authoring_fixture as fixture
+    from tests.integration.test_seed_parent_contract_migration import (
+        test_installed_authoring_contract_matches_real_canonical_producer as run,
+    )
+
+    assert text(statements[0]).compile().params
+    monkeypatch.setattr(fixture, "authoring_statements", lambda: statements)
+    engine = MagicMock()
+    connection = engine.begin.return_value.__enter__.return_value
+    connection.scalar.return_value = "test_schema"
+    run(engine)
+    connection.execute.assert_not_called()
+    assert [call.args for call in connection.exec_driver_sql.call_args_list] == [
+        (statement.replace("@SCHEMA@", '"test_schema"'),) for statement in statements
+    ]
 
 
 def test_valid_portable_authoring_remains_forbidden_in_closed_structured_engine():

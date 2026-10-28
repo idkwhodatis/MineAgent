@@ -12,8 +12,19 @@ import pytest
 def assert_engine_oracle(result, *, listing_id, quantity, closing_price):
     """Independent fixed-fixture arithmetic, not expected values read from output."""
     assert result.result_trust == "closed_operator_trusted_engine"
-    assert len(result.decisions) == 2
-    signal, hold = result.decisions
+    # stage_market retains exactly one prior session for state-only warmup.
+    # The closed exchange records it; it is not a trading decision or factor read.
+    assert len(result.decisions) == 3
+    warmup, signal, hold = result.decisions
+    assert [record.event_seq for record in result.decisions] == [0, 1, 2]
+    assert warmup.observation.session_date == date(2024, 3, 12)
+    assert warmup.observation.warmup is True
+    assert warmup.reply.decision.action == "no_decision"
+    assert warmup.reads == warmup.eligible == warmup.ranking == warmup.targets == ()
+    assert signal.observation.warmup is False
+    assert signal.reply.decision.action == "rebalance"
+    assert hold.observation.warmup is False
+    assert hold.reply.decision.action == "hold"
     assert signal.observation.session_date == date(2024, 3, 13)
     assert len(signal.reads) == 3
     assert len(signal.targets) == 1

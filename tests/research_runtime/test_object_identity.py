@@ -48,6 +48,17 @@ def test_equal_bytes_are_kind_qualified_and_owner_qualified():
         b"\xff",
         b"{}" + b" " * MAX_OBJECT_BYTES,
     ],
+    ids=[
+        "trailing-newline",
+        "unordered-keys",
+        "duplicate-key",
+        "array",
+        "null",
+        "nan",
+        "overflow-number",
+        "invalid-utf8",
+        "oversized",
+    ],
 )
 def test_noncanonical_or_unsafe_bytes_rejected(content):
     with pytest.raises(ValueError):

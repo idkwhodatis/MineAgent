@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from backend.app.factor_native_io import require_native_storage_guard
+from backend.app.historical_process_files import (
+    read_historical_output,
+    read_historical_record,
+)
 from packages.research_runtime.analysis_process_journal import (
     AnalysisExtraction,
     AnalysisIdentity,
@@ -20,8 +24,6 @@ from packages.research_runtime.analysis_process_journal import (
     validate_analysis_journal,
 )
 from packages.research_runtime.process_contracts import ProcessError, canonical
-from runtimes.research_supervisor.analysis_journal import read_opaque_output
-from runtimes.research_supervisor.numeric_journal import read_numeric_record
 from runtimes.research_supervisor.supervisor import operation_path
 
 
@@ -56,7 +58,8 @@ def read_historical_analysis_bytes(root, *, intent, identity, stop, extraction):
     admission = intent.admission
     operation = operation_path(root, admission)
     launch = _decode(
-        AnalysisLaunch, read_numeric_record(operation / "control" / "launch.json")
+        AnalysisLaunch,
+        read_historical_record(root, operation / "control" / "launch.json"),
     )
     if launch.intent != intent:
         raise ProcessError("analysis_history_intent")
@@ -65,12 +68,19 @@ def read_historical_analysis_bytes(root, *, intent, identity, stop, extraction):
         ("stop", stop),
         ("extraction", extraction),
     ):
-        if read_numeric_record(
-            operation / "control" / (name + ".json")
+        if read_historical_record(
+            root, operation / "control" / (name + ".json")
         ) != expected.model_dump(mode="json"):
             raise ProcessError("analysis_history_receipt")
     validate_analysis_journal(launch, identity, stop, extraction)
-    raw = read_opaque_output(root, admission, extraction)
+    raw = read_historical_output(
+        root,
+        admission,
+        kind="analysis",
+        basename=extraction.basename,
+        size_bytes=extraction.size_bytes,
+        sha256=extraction.sha256,
+    )
     require_native_storage_guard(root)
     return HistoricalAnalysisBytes(
         intent.inputs.analysis_id,

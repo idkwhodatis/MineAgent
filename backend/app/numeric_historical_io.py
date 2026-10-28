@@ -9,6 +9,10 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from backend.app.factor_native_io import require_native_storage_guard
+from backend.app.historical_process_files import (
+    read_historical_output,
+    read_historical_record,
+)
 from packages.research_runtime.numeric_process_journal import (
     NumericIdentity,
     NumericIntent,
@@ -19,11 +23,6 @@ from packages.research_runtime.numeric_process_journal import (
     validate_numeric_journal,
 )
 from packages.research_runtime.process_contracts import ProcessError, canonical
-from runtimes.research_supervisor.numeric_journal import (
-    read_numeric_record,
-    read_opaque_output,
-    read_primitive_report,
-)
 from runtimes.research_supervisor.supervisor import operation_path
 
 
@@ -52,7 +51,8 @@ def read_historical_numeric_bytes(root, *, intent, identity, stop, extraction):
     extraction = parse_numeric_extraction(extraction)
     operation = operation_path(root, intent.admission)
     launch = _decode(
-        NumericLaunch, read_numeric_record(operation / "control" / "launch.json")
+        NumericLaunch,
+        read_historical_record(root, operation / "control" / "launch.json"),
     )
     if launch.intent != intent or not stop.deadline_bound_met:
         raise ProcessError("numeric_history_intent")
@@ -61,14 +61,28 @@ def read_historical_numeric_bytes(root, *, intent, identity, stop, extraction):
         ("stop", stop),
         ("extraction", extraction),
     ):
-        if read_numeric_record(
-            operation / "control" / (name + ".json")
+        if read_historical_record(
+            root, operation / "control" / (name + ".json")
         ) != expected.model_dump(mode="json"):
             raise ProcessError("numeric_history_receipt")
     validate_numeric_journal(launch, identity, stop, extraction)
-    raw = read_opaque_output(root, intent.admission, extraction)
+    raw = read_historical_output(
+        root,
+        intent.admission,
+        kind="numeric",
+        basename=extraction.basename,
+        size_bytes=extraction.size_bytes,
+        sha256=extraction.sha256,
+    )
     report = (
-        read_primitive_report(root, intent.admission, extraction)
+        read_historical_output(
+            root,
+            intent.admission,
+            kind="numeric",
+            basename=extraction.report_basename,
+            size_bytes=extraction.report_size_bytes,
+            sha256=extraction.report_sha256,
+        )
         if isinstance(extraction, NumericReportExtraction)
         else None
     )

@@ -40,7 +40,13 @@ def test_actual_configured_analysis_cold_restore_historical_read(
         FactorDirectAnalysisOutcome,
     )
     from backend.app.models import ExecutionAttempt, ResearchRun, User
-    from backend.app.operations_backup import BackupLimits, PostgresDatabase
+    from backend.app.operations_backup import (
+        BackupLimits,
+        PgTools,
+        PostgresDatabase,
+        create_backup,
+        verify_backup,
+    )
     from backend.app.research_process_models import (
         ResearchProcessAdmission,
         ResearchProcessState,
@@ -205,6 +211,31 @@ def test_actual_configured_analysis_cold_restore_historical_read(
                 == admission_ids
             )
         assert _files(target) == files
+        # Re-back up the actual restored0400 storage without starting another
+        # research unit. Original create_backup still requires the complete DB
+        # settlement/physical closure, not only the stopped inventory checker.
+        rebackup_path = tmp_path / "configured-restored-rebackup"
+        rebackup = create_backup(
+            database=restored_db,
+            storage_root=target,
+            destination=rebackup_path,
+            durable_parent=tmp_path,
+            application_ref=legacy.APPLICATION_REF,
+            quiesced=True,
+            tools=PgTools(
+                pg_dump=(drill_databases.pg_dump,),
+                pg_restore=(drill_databases.pg_restore,),
+            ),
+            limits=BackupLimits(),
+        )
+        assert (
+            verify_backup(rebackup_path, application_ref=legacy.APPLICATION_REF)
+            == rebackup
+        )
+        assert rebackup["schema_revision"] == manifest["schema_revision"]
+        assert _files(rebackup_path / "storage") == files
+        assert _files(target) == files
+        assert restored_db.source_snapshot(BackupLimits()) == after
     finally:
         source.dispose()
         restored.dispose()

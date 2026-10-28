@@ -15,6 +15,18 @@ IMAGE = "sha256:" + "a" * 64
 PID = 12345
 
 
+@pytest.fixture
+def controlled_clock(monkeypatch):
+    # Install before constructing the client/deadline. Freezing a sampled host
+    # float near a binary exponent boundary can round (now + 5) - now above 5,
+    # making the strict observer correctly refuse before the intended command.
+    # Exact fixture seconds isolate the overrun being tested; production clock
+    # checks and the original unit/observation budgets remain unchanged.
+    clock = [1000.0]
+    monkeypatch.setattr(m.time, "monotonic", lambda: clock[0])
+    return clock
+
+
 def host_files():
     fields = ["S", "100"] + ["0"] * 17 + ["123456"]
     return {
@@ -147,18 +159,22 @@ def test_top_missing_duplicate_or_mismatched_pid_is_not_authority(monkeypatch, r
         m.observe_leader(cli, CID, IMAGE, PID)
 
 
-def test_original_deadline_never_renews_or_spawns_after_expiry(monkeypatch):
+def test_original_deadline_never_renews_or_spawns_after_expiry(
+    monkeypatch, controlled_clock
+):
     cli, inspections, commands = client(monkeypatch)
-    cli.deadline = time.monotonic() - 1
+    cli.deadline = controlled_clock[0] - 1
     with pytest.raises(ProcessError):
         m.observe_leader(cli, CID, IMAGE, PID)
     assert inspections == commands == []
 
 
-def test_longer_unit_budget_is_preserved_but_observation_is_locally_capped(monkeypatch):
+def test_longer_unit_budget_is_preserved_but_observation_is_locally_capped(
+    monkeypatch, controlled_clock
+):
     cli, _, _ = client(monkeypatch)
-    original = cli.deadline = time.monotonic() + 60
-    before = time.monotonic()
+    original = cli.deadline = controlled_clock[0] + 60
+    before = controlled_clock[0]
     command = cli._command
 
     def bounded(args):
@@ -171,11 +187,12 @@ def test_longer_unit_budget_is_preserved_but_observation_is_locally_capped(monke
     assert cli.deadline == original
 
 
-def test_observation_overrun_is_rejected_without_extending_unit_budget(monkeypatch):
+def test_observation_overrun_is_rejected_without_extending_unit_budget(
+    monkeypatch, controlled_clock
+):
     cli, _, commands = client(monkeypatch)
-    original = cli.deadline = time.monotonic() + 60
-    clock = [time.monotonic()]
-    monkeypatch.setattr(m.time, "monotonic", lambda: clock[0])
+    clock = controlled_clock
+    original = cli.deadline = clock[0] + 60
     command = cli._command
 
     def overdue(args):

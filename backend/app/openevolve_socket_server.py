@@ -15,6 +15,7 @@ import threading
 import time
 
 from backend.app.openevolve_broker_rpc import FixtureSchedule, dispatch_broker
+from backend.app.openevolve_checkpoint_boundary import CheckpointBoundary
 from backend.app.openevolve_checkpoint_publication import final_checkpoint_committed
 from backend.app.openevolve_operational_router import dispatch_event
 from backend.app.openevolve_socket_peer import authenticate_socket
@@ -73,6 +74,7 @@ class InitialEpochServer:
             settings,
         )
         self._final = threading.Event()
+        self._checkpoint_boundary = CheckpointBoundary()
         self._lock = threading.Lock()
         self._connections = set()
         self._used = False
@@ -129,57 +131,63 @@ class InitialEpochServer:
             with self._lock:
                 self._last_event = event.kind if event is not None else "broker"
             phase = "dispatch"
-            if event is not None:
-                if event.epoch_id != self.epoch_id:
-                    raise ValueError("Event epoch differs from host-owned unit")
-                receipt, result = dispatch_event(
-                    self.factory,
-                    self.fence,
-                    peer,
-                    event=event,
-                    ticket_key=self.key,
-                    settings=self.settings,
-                )
-                final = (
-                    event.kind == "checkpoint_publish"
-                    and result.get("published") is True
-                    and type(result.get("frontier")) is int
-                    and result["frontier"] == self.frontier
-                    and final_checkpoint_committed(
+            with self._checkpoint_boundary.enter(
+                checkpoint=event is not None and event.kind == "checkpoint_publish",
+                deadline=self.running.deadline,
+            ):
+                if event is not None:
+                    if event.epoch_id != self.epoch_id:
+                        raise ValueError("Event epoch differs from host-owned unit")
+                    receipt, result = dispatch_event(
                         self.factory,
                         self.fence,
                         peer,
                         event=event,
-                        receipt_id=receipt,
-                        frontier=self.frontier,
+                        ticket_key=self.key,
+                        settings=self.settings,
                     )
-                )
-                phase = "reply"
-                write_reply(channel, event, receipt, result, self.running.deadline)
-                with self._lock:
-                    self._acknowledgements += 1
-                if final:
-                    self._final.set()
-            else:
-                response = dispatch_broker(
-                    self.factory,
-                    self.fence,
-                    peer,
-                    raw=raw,
-                    ticket_key=self.key,
-                    schedule=self.schedule,
-                    settings=self.settings,
-                )
-                if (
-                    not 0 < len(response) <= MAX_REPLY
-                    or time.monotonic() >= self.running.deadline
-                ):
-                    raise ValueError("Late or oversized committed model reply")
-                phase = "reply"
-                channel.settimeout(min(65, self.running.deadline - time.monotonic()))
-                channel.sendall(struct.pack("!I", len(response)) + response)
-                with self._lock:
-                    self._acknowledgements += 1
+                    final = (
+                        event.kind == "checkpoint_publish"
+                        and result.get("published") is True
+                        and type(result.get("frontier")) is int
+                        and result["frontier"] == self.frontier
+                        and final_checkpoint_committed(
+                            self.factory,
+                            self.fence,
+                            peer,
+                            event=event,
+                            receipt_id=receipt,
+                            frontier=self.frontier,
+                        )
+                    )
+                    phase = "reply"
+                    write_reply(channel, event, receipt, result, self.running.deadline)
+                    with self._lock:
+                        self._acknowledgements += 1
+                    if final:
+                        self._final.set()
+                else:
+                    response = dispatch_broker(
+                        self.factory,
+                        self.fence,
+                        peer,
+                        raw=raw,
+                        ticket_key=self.key,
+                        schedule=self.schedule,
+                        settings=self.settings,
+                    )
+                    if (
+                        not 0 < len(response) <= MAX_REPLY
+                        or time.monotonic() >= self.running.deadline
+                    ):
+                        raise ValueError("Late or oversized committed model reply")
+                    phase = "reply"
+                    channel.settimeout(
+                        min(65, self.running.deadline - time.monotonic())
+                    )
+                    channel.sendall(struct.pack("!I", len(response)) + response)
+                    with self._lock:
+                        self._acknowledgements += 1
         except BaseException as error:
             try:
                 from backend.app.openevolve_failure_diagnostic import (
@@ -240,6 +248,7 @@ class InitialEpochServer:
 
     def disconnect(self):
         """Only closes readers; never fabricates process stop, settlement or ACK."""
+        self._checkpoint_boundary.close()
         with self._lock:
             for channel in tuple(self._connections):
                 try:

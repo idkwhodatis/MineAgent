@@ -1111,7 +1111,7 @@ def _checkpoint_snapshot(session, fence, command, settings, *, require_existing)
         ) or set(getattr(closure, name)) != {row.id for row in rows[name]}:
             raise DomainError(
                 "search_checkpoint",
-                "Checkpoint omits or substitutes durable epoch evidence",
+                "Checkpoint omits or substitutes durable epoch evidence: " + name,
                 409,
             )
     _validate_control_chain(

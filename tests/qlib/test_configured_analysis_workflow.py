@@ -69,6 +69,26 @@ def test_real_cold_restore_case_is_required_not_relocation_only():
     assert "PG_DUMP_EXECUTABLE" not in text  # generated from fixed tool allowlist
     assert 'for tool in ("pg_dump", "pg_restore")' in text
 
+    # The existing actual four-unit restore also re-backs up its readonly target;
+    # no extra case, process generation, or third database substitutes this path.
+    import ast
+
+    source = Path("tests/integration/test_configured_analysis_restore.py").read_text()
+    tree = ast.parse(source)
+    call = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "create_backup"
+    )
+    keywords = {k.arg: k.value for k in call.keywords}
+    assert keywords["database"].id == "restored_db"
+    assert keywords["storage_root"].id == "target"
+    assert keywords["quiesced"].value is True
+    assert 'assert _files(rebackup_path / "storage") == files' in source
+    assert "assert restored_db.source_snapshot(BackupLimits()) == after" in source
+
 
 def test_genuine_browser_reuses_pinned_node_and_keeps_required_runtime_cases():
     text = Path(".github/workflows/mineagent-configured-analysis.yml").read_text()

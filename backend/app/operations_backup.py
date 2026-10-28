@@ -1289,7 +1289,7 @@ def _shared_storage_reader(function):
                 "Explicit acknowledgement that API, all workers and writers are stopped is required"
             )
         root = _directory(kwargs["storage_root"])
-        with storage_guard(root, exclusive=True):
+        with storage_guard(root, exclusive=True) as root_fd:
             from runtimes.factor_parser.supervisor import (
                 ParserIsolationError,
                 assert_quiescent,
@@ -1301,13 +1301,13 @@ def _shared_storage_reader(function):
                 raise BackupError(
                     "Unconfirmed factor parser must be resolved first"
                 ) from None
-            from packages.research_runtime.process_contracts import ProcessError
-            from runtimes.research_supervisor.supervisor import (
-                assert_quiescent as research_quiescent,
+            from backend.app.maintenance_process_quiescence import (
+                assert_maintenance_quiescent,
             )
+            from packages.research_runtime.process_contracts import ProcessError
 
             try:
-                research_quiescent(root)
+                assert_maintenance_quiescent(root, root_fd=root_fd)
             except (ValueError, ProcessError):
                 raise BackupError(
                     "Unconfirmed neutral research process must be resolved first"

@@ -77,7 +77,11 @@ def test_input_reordering_rejected(field):
         read_input(canonical_bytes(value))
 
 
-@pytest.mark.parametrize("raw", [b"{}", b"", b" " * 16777217])
+@pytest.mark.parametrize(
+    "raw",
+    [b"{}", b"", b" " * 16777217],
+    ids=["invalid-object", "empty", "over-16-mib"],
+)
 def test_bounded_input(raw):
     with pytest.raises(ValueError):
         read_input(raw)

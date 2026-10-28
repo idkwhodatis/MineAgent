@@ -92,4 +92,8 @@ def test_installed_authoring_contract_matches_real_canonical_producer(migrated_e
 
         assert re.fullmatch(r"[a-z][a-z0-9_]{0,62}", schema)
         for statement in authoring_statements():
-            connection.execute(text(statement.replace("@SCHEMA@", '"' + schema + '"')))
+            # These generated SQL literals contain canonical JSON colons. They
+            # are complete statements, not SQLAlchemy :parameter templates.
+            connection.exec_driver_sql(
+                statement.replace("@SCHEMA@", '"' + schema + '"')
+            )
