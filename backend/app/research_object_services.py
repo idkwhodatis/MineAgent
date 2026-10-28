@@ -582,9 +582,11 @@ def publish_reserved_object(factory, fence, publication_id, content, settings):
     Never call from another transaction. The lifecycle/filesystem guards span both
     short DB transactions and writes. No process/model work occurs in this helper.
     """
+    from backend.app.openevolve_lock_admission import publication_storage_admission
+
     with (
         shared_lifecycle(factory.kw["bind"], settings.storage_root),
-        object_storage_guard(settings.storage_root),
+        publication_storage_admission(settings.storage_root, fence),
     ):
         with neutral_transaction(factory, fence, resource_scope="objects") as session:
             publication = _publication(session, fence, publication_id)

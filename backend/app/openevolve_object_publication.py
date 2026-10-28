@@ -61,6 +61,35 @@ def publish_search_object(factory, fence, *, kind, content, logical_key, setting
     else:
         raise ValueError("closed operational search object")
     sha = hashlib.sha256(content).hexdigest()
+    from backend.app.openevolve_lock_admission import retry_acquisition
+
+    try:
+        reserved = retry_acquisition(
+            lambda: _reserve(factory, fence, kind, content, logical_key, settings, sha),
+            fence,
+            _ReservationBusy,
+        )
+    except _ReservationBusy as exc:
+        raise exc.__cause__ from None
+    if isinstance(reserved, PublishedEvidence):
+        return reserved
+    publication_id = reserved
+    identity = publish_reserved_object(
+        factory, fence, publication_id, content, settings
+    )
+    # Shared publisher returns UUID, not ORM object. Resolve exact retained bytes
+    # once more under a fresh fence rather than leaking a detached mutable row.
+    with neutral_transaction(factory, fence, resource_scope="objects") as session:
+        return _read(session, fence, identity, kind, content, settings)
+
+
+class _ReservationBusy(Exception):
+    """Only reserve_object's pre-write filesystem acquisition failed."""
+
+
+def _reserve(factory, fence, kind, content, logical_key, settings, sha):
+    from backend.app.services import DomainError
+
     with neutral_transaction(factory, fence, resource_scope="objects") as session:
         require_search_identity(_current_search(session, fence))
         reservation = reserve_budget(
@@ -87,14 +116,15 @@ def publish_search_object(factory, fence, *, kind, content, logical_key, setting
             outcome = session.get(ResearchObjectOutcome, previous.id)
             if outcome is not None:
                 return _read(session, fence, outcome.object_id, kind, content, settings)
-        publication = reserve_object(
-            session, fence, kind, content, reservation.id, settings
-        )
+        try:
+            publication = reserve_object(
+                session, fence, kind, content, reservation.id, settings
+            )
+        except DomainError as exc:
+            if exc.code != "neutral_object_busy":
+                raise
+            # No physical write has started. Unwind this transaction completely
+            # before waiting, since the publisher takes FS then DB locks.
+            raise _ReservationBusy from exc
         publication_id = publication.id
-    identity = publish_reserved_object(
-        factory, fence, publication_id, content, settings
-    )
-    # Shared publisher returns UUID, not ORM object. Resolve exact retained bytes
-    # once more under a fresh fence rather than leaking a detached mutable row.
-    with neutral_transaction(factory, fence, resource_scope="objects") as session:
-        return _read(session, fence, identity, kind, content, settings)
+    return publication_id

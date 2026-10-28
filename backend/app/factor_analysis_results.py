@@ -14,7 +14,7 @@ from backend.app.factor_analysis_models import FactorDirectAnalysisOutcome
 from backend.app.factor_analysis_services import (
     SCOPE,
     _error,
-    _materialize,
+    _materialize_with_snapshot,
     _plan,
     require_analysis_plan,
 )
@@ -44,7 +44,7 @@ class VerifiedDirectAnalysis:
     qualification: str = "current_stopped_measurement_not_adoption_authority"
 
 
-def _measured(session, fence, analysis_id, admission_id, settings):
+def _measured_with_snapshot(session, fence, analysis_id, admission_id, settings):
     from backend.app.analysis_process_services import read_stopped_analysis
 
     binding = require_analysis_plan(session, fence, analysis_id)
@@ -52,7 +52,11 @@ def _measured(session, fence, analysis_id, admission_id, settings):
     if receipt.analysis_id != analysis_id or receipt.admission.id != admission_id:
         raise _error()
     _, objective = _plan(session, fence)
-    _, _, value, _ = _materialize(session, fence, binding.snapshot_id, settings)
+    # Keep the second fresh physical read after stopped-result validation.
+    # Return this internally produced snapshot, never accept a detached one.
+    _, _, value, _, snapshot = _materialize_with_snapshot(
+        session, fence, binding.snapshot_id, settings
+    )
     projection = DirectAnalysisProjection(
         value.protocol, value.factors, value.labels, value.calendar_sessions
     )
@@ -64,7 +68,13 @@ def _measured(session, fence, analysis_id, admission_id, settings):
         or receipt.size_bytes != len(raw)
     ):
         raise _error()
-    return binding, receipt, result, measurement
+    return binding, receipt, result, measurement, snapshot
+
+
+def _measured(session, fence, analysis_id, admission_id, settings):
+    return _measured_with_snapshot(session, fence, analysis_id, admission_id, settings)[
+        :4
+    ]
 
 
 def _reservation(session, fence, receipt, *, completed):
@@ -126,13 +136,13 @@ def _expected(receipt, result, measurement):
     }
 
 
-def read_verified_direct_analysis(session, fence, analysis_id, settings):
+def _read_verified_analysis_with_snapshot(session, fence, analysis_id, settings):
     # Metadata scope is required before any row can be used to choose a receipt.
     require_analysis_plan(session, fence, analysis_id)
     row = session.get(FactorDirectAnalysisOutcome, analysis_id)
     if row is None or any(getattr(row, k) != getattr(fence, k) for k in SCOPE):
         raise _error()
-    binding, receipt, result, measurement = _measured(
+    binding, receipt, result, measurement, snapshot = _measured_with_snapshot(
         session, fence, analysis_id, row.admission_id, settings
     )
     if any(
@@ -140,7 +150,7 @@ def read_verified_direct_analysis(session, fence, analysis_id, settings):
     ):
         raise _error()
     _reservation(session, fence, receipt, completed=True)
-    return VerifiedDirectAnalysis(
+    return snapshot, VerifiedDirectAnalysis(
         analysis_id,
         binding.snapshot_id,
         row.admission_id,
@@ -149,6 +159,12 @@ def read_verified_direct_analysis(session, fence, analysis_id, settings):
         result,
         measurement,
     )
+
+
+def read_verified_direct_analysis(session, fence, analysis_id, settings):
+    return _read_verified_analysis_with_snapshot(session, fence, analysis_id, settings)[
+        1
+    ]
 
 
 def persist_direct_analysis_outcome(

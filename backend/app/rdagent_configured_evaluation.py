@@ -12,13 +12,12 @@ from backend.app.execution_snapshot_models import (
 )
 from backend.app.execution_snapshot_services import (
     publish_execution_snapshot,
-    read_execution_snapshot,
 )
 from backend.app.factor_analysis_models import (
     FactorDirectAnalysisIntent,
     FactorDirectAnalysisOutcome,
 )
-from backend.app.factor_analysis_results import read_verified_direct_analysis
+from backend.app.factor_analysis_results import _read_verified_analysis_with_snapshot
 from backend.app.factor_analysis_services import prepare_direct_analysis_intent
 from backend.app.rdagent_controller_services import require_rd_controller
 from backend.app.rdagent_models import (
@@ -43,14 +42,27 @@ def read_configured_evaluation(session, fence, peer, evaluation_id, settings):
     )
     if publication is None:
         raise RPCError("configured_snapshot_missing")
-    snapshot = read_execution_snapshot(session, fence, publication.id, settings)
+    analysis = session.scalar(
+        select(FactorDirectAnalysisIntent).filter_by(
+            **_scope(fence), snapshot_id=publication.id
+        )
+    )
+    if analysis is None:
+        raise RPCError("configured_analysis_missing")
+    # The private analysis reader performs both full fresh input reads and
+    # returns its last verified snapshot, rather than doing a third read first.
+    snapshot, measured = _read_verified_analysis_with_snapshot(
+        session, fence, analysis.id, settings
+    )
     if (
+        snapshot.snapshot_id,
         snapshot.evaluation_id,
         snapshot.source_id,
         snapshot.generation_start_id,
         snapshot.factor_version_id,
         snapshot.input_sha256,
     ) != (
+        publication.id,
         evaluation.id,
         evaluation.evaluated_source_id,
         evaluation.start_id,
@@ -58,14 +70,6 @@ def read_configured_evaluation(session, fence, peer, evaluation_id, settings):
         evaluation.input_sha256,
     ):
         raise RPCError("configured_snapshot_binding")
-    analysis = session.scalar(
-        select(FactorDirectAnalysisIntent).filter_by(
-            **_scope(fence), snapshot_id=snapshot.snapshot_id
-        )
-    )
-    if analysis is None:
-        raise RPCError("configured_analysis_missing")
-    measured = read_verified_direct_analysis(session, fence, analysis.id, settings)
     if measured.snapshot_id != snapshot.snapshot_id:
         raise RPCError("configured_analysis_snapshot_drift")
     return snapshot, SnapshotInput.model_validate(evaluation.snapshot_input), measured

@@ -36,7 +36,7 @@ jobs:
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('qlib-contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 196
+          assert len(cases) == 209
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure', 'error', 'skipped'))
           PY
           python script/summarize_ci_junit.py qlib-contracts.xml

@@ -140,7 +140,7 @@ def require_analysis_plan(session, fence, analysis_id):
     )
 
 
-def _materialize(session, fence, snapshot_id, settings):
+def _materialize_with_snapshot(session, fence, snapshot_id, settings):
     from backend.app.rdagent_configured_source import resolve_configured_labels
 
     plan, objective = _plan(session, fence)
@@ -182,7 +182,12 @@ def _materialize(session, fence, snapshot_id, settings):
         calendar_sessions=projection.calendar_sessions,
     )
     raw = write_input(value)
-    return plan, labels, value, raw
+    return plan, labels, value, raw, verified
+
+
+def _materialize(session, fence, snapshot_id, settings):
+    # Preserve the existing input-only API. No caller can supply a snapshot DTO.
+    return _materialize_with_snapshot(session, fence, snapshot_id, settings)[:4]
 
 
 def prepare_direct_analysis_intent(session, fence, snapshot_id, settings):

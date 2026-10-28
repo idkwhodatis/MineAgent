@@ -55,10 +55,10 @@ def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
         rows = []
         where = " WHERE engine='structured'" if name == "research_runs" else ""
         order = "id" if name == "research_runs" else ",".join(KEYS[name])
-        cursor = connection.execution_options(stream_results=True, yield_per=1).execute(
+        cursor = connection.execute(
             text(
                 f"SELECT to_jsonb(t) FROM (SELECT {','.join(fields.split())} FROM {name}{where} ORDER BY {order} LIMIT :limit) t"
-            ),
+            ).execution_options(stream_results=True, yield_per=1),
             {"limit": maximum_rows + 1},
         )
         try:

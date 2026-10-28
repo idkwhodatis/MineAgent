@@ -389,7 +389,14 @@ def assert_quiescent(root):
 
                         validate_numeric_quiescence(operation, record)
                     else:
-                        validate_stopped_journal(operation)
+                        from runtimes.research_supervisor.cold_journal import (
+                            validate_modern_quiescence,
+                        )
+
+                        if not validate_modern_quiescence(
+                            operation, record.get("schema_version")
+                        ):
+                            validate_stopped_journal(operation)
             finally:
                 os.close(owner_fd)
     except (OSError, ValueError, TypeError, KeyError):

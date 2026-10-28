@@ -1,5 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
-import { factorRequest } from "./factor-api";
+import { completeFactorRead, factorRequest } from "./factor-api";
 import type {
   StructuredExecutionRecords,
   StructuredExecutionView,
@@ -10,7 +10,7 @@ import type {
 const get = <T>(key: readonly unknown[], path: string) =>
   queryOptions({
     queryKey: ["structured-results", ...key],
-    queryFn: ({ signal }) => factorRequest<T>(path, { signal }),
+    queryFn: () => completeFactorRead(() => factorRequest<T>(path)),
     retry: false,
   });
 const runPath = (run: string) => `/engine-runs/${encodeURIComponent(run)}`;

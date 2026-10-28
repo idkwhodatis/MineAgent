@@ -8,7 +8,22 @@ import {
   factorExecutionOptions,
   exactFactorExecutionOptions,
 } from "../../src/lib/factor-execution-api";
+import {
+  factorStructuredOptions,
+  structuredCapabilityOptions,
+  structuredRecordsOptions,
+  structuredExecutionOptions,
+  structuredComparisonOptions,
+} from "../../src/lib/structured-results-api";
 import { requireFactorReadsIdle } from "../../src/lib/factor-publication";
+
+const structuredQueries = [
+  factorStructuredOptions("factor", "version"),
+  structuredCapabilityOptions,
+  structuredRecordsOptions("run"),
+  structuredExecutionOptions("run", "execution"),
+  structuredComparisonOptions("run", "before", "after"),
+];
 
 afterEach(() => vi.unstubAllGlobals());
 function harness() {
@@ -61,6 +76,7 @@ it("finishes one bounded query/body across StrictMode-equivalent unsubscribe/rem
     factorCapabilitiesOptions,
     factorValuesOptions("snapshot"),
     factorExecutionOptions("factor", "version"),
+    ...structuredQueries,
   ]) {
     const { client, requests } = harness();
     const first = new QueryObserver(
@@ -278,4 +294,62 @@ it("waits for a pre-mutation body then refreshes once instead of accepting its s
   expect(requests).toHaveLength(2);
   stop();
   client.clear();
+});
+
+it("rejects old-session structured results and errors for every exact query key", async () => {
+  for (const options of structuredQueries) {
+    for (const status of [200, 401, 409]) {
+      const { client, requests, setToken, token } = harness();
+      const result = client
+        .fetchQuery(options as typeof structuredCapabilityOptions)
+        .catch((error) => error);
+      setToken("owner-b");
+      requests[0].body({ secret: "old-owner" }, status);
+      expect(await result).toMatchObject({
+        code: "factor_read_session_unauthorized",
+      });
+      expect(client.getQueryData(options.queryKey)).toBeUndefined();
+      expect(token()).toBe("owner-b");
+      expect(requests).toHaveLength(1);
+      client.clear();
+    }
+  }
+});
+
+it("retains structured transport deadlines and response failures without retries", async () => {
+  for (const options of structuredQueries) {
+    const timer = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timer.signal);
+    const { client, requests } = harness();
+    try {
+      const result = client.fetchQuery(
+        options as typeof structuredCapabilityOptions,
+      );
+      expect(timeout).toHaveBeenCalledWith(20000);
+      const rejected = expect(result).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      timer.abort();
+      await rejected;
+      expect(requests).toHaveLength(1);
+      expect(client.getQueryData(options.queryKey)).toBeUndefined();
+    } finally {
+      timeout.mockRestore();
+      client.clear();
+    }
+    const failed = harness();
+    const result = failed.client.fetchQuery(
+      options as typeof structuredCapabilityOptions,
+    );
+    failed.requests[0].body({ code: "release_required" }, 409);
+    await expect(result).rejects.toMatchObject({
+      status: 409,
+      code: "release_required",
+    });
+    expect(failed.requests).toHaveLength(1);
+    expect(failed.client.getQueryData(options.queryKey)).toBeUndefined();
+    failed.client.clear();
+  }
 });
