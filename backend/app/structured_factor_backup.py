@@ -371,8 +371,10 @@ def validate_closure(
             dataset["end_date"],
             "structured_factor_execution_source",
             expected_provenance,
-            run["experiment_id"],
-            run["split_version_id"],
+            # The frozen structured run mode forbids experiment/split binding;
+            # these are deliberately absent from the v1 run projection.
+            None,
+            None,
         ):
             raise ValueError("Structured source exposure differs")
         from backend.app.experiment_services import dataset_identities

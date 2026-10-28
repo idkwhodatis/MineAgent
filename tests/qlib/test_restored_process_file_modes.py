@@ -168,6 +168,12 @@ def test_read_time_mutation_rejected_by_full_postread_identity(
     tmp_path, monkeypatch, fault
 ):
     path = record(tmp_path)
+    # Rewriting identical bytes and restoring the mode can occur within one
+    # filesystem timestamp tick. Give the write an observable mtime change
+    # instead of relying on wall-clock progress to exercise the identity guard.
+    if fault == "same_length_write":
+        os.utime(path, ns=(1_000_000_000, 1_000_000_000))
+    before = path.stat()
     original = os.read
     changed = False
 
@@ -193,6 +199,7 @@ def test_read_time_mutation_rejected_by_full_postread_identity(
                 path.chmod(0o600)
                 path.write_bytes(b'{"ok":true}')
                 path.chmod(0o400)
+                assert path.stat().st_mtime_ns != before.st_mtime_ns
         return raw
 
     monkeypatch.setattr(os, "read", read)

@@ -39,7 +39,7 @@ BOOTSTRAP_EMAIL="$E2E_EMAIL" BOOTSTRAP_PASSWORD="$E2E_PASSWORD" BOOTSTRAP_SYNTHE
 fixture="$TRADEGRAD_STATE_ROOT/rd-compose-fixture"
 mkdir -m700 "$fixture"
 cp script/ci_rd_compose_inside.py "$fixture/"
-cp tests/integration/rd_provider_fixture.py tests/integration/rd_configured_dataset_fixture.py tests/integration/rd_submission_fixture.py "$fixture/"
+cp tests/integration/rd_provider_fixture.py tests/integration/rd_configured_dataset_fixture.py tests/integration/rd_submission_fixture.py tests/integration/rd_composed_profile_fixture.py "$fixture/"
 # Read-only fixture source only. No checkout/credential/host-venv bind into apps.
 chmod 644 "$fixture/"*.py
 copy_fixture() {
@@ -49,7 +49,7 @@ copy_fixture() {
   # Write in the container mount namespace: daemon-side docker cp cannot reliably
   # address this private /tmp tmpfs. No host metadata or root user is imported.
   "${docker_cli[@]}" exec "$container" mkdir -m700 /tmp/mineagent-rd-compose
-  for name in ci_rd_compose_inside.py rd_provider_fixture.py rd_configured_dataset_fixture.py rd_submission_fixture.py; do
+  for name in ci_rd_compose_inside.py rd_provider_fixture.py rd_configured_dataset_fixture.py rd_submission_fixture.py rd_composed_profile_fixture.py; do
     "${docker_cli[@]}" exec -i "$container" python -c '
 import os, sys
 raw = sys.stdin.buffer.read(1048577)

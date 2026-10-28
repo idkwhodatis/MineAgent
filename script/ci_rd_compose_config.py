@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from uuid import UUID
 
+from packages.rdagent_adapter.controller_profile import COMPOSED_CONTROLLER_PROFILE
 from packages.rdagent_provider.contracts import DeclaredTokenPricing
 from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
 from script.build_rd_compose_images import profile_from_ids, read_iid
@@ -28,6 +29,14 @@ def write_config(owner_text):
                 "analysis",
                 "qlib-installed",
             )
+        }
+    )
+    # This new gate exercises the full composed SDK/factor/analysis lifecycle.
+    # Keep profile_from_ids default and all historical declarations unchanged.
+    runtime = type(runtime).model_validate(
+        {
+            **runtime.model_dump(mode="json"),
+            "controller_profile": COMPOSED_CONTROLLER_PROFILE,
         }
     )
     operator = RDOperatorModelProfile(

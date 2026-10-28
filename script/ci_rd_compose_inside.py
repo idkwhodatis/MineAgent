@@ -116,6 +116,7 @@ def provider():
 
 
 def run():
+    from rd_composed_profile_fixture import PROFILE, assert_composed_controller
     from rd_configured_dataset_fixture import persist_configured_dataset
     from rd_provider_fixture import GUIDANCE
     from rd_submission_fixture import body
@@ -160,14 +161,16 @@ def run():
             "/rd-steers", token=token, body={"kind": "hypothesis", "text": GUIDANCE}
         )
         model = settings.rdagent_provider_profiles[0]
-        declaration = body(dataset, policy).model_dump(mode="json")
+        declaration = body(dataset, policy, controller_profile=PROFILE).model_dump(
+            mode="json"
+        )
         declaration.update(
             schema_version="mineagent.rdagent-provider-submission.v1",
             model_profile_id=model.connection.id,
             selected_steer_version_ids=[steer["current"]["version_id"]],
-            budget=provider_budget_floor(model.public_binding(owner)).model_dump(
-                mode="json"
-            ),
+            budget=provider_budget_floor(
+                model.public_binding(owner), profile=PROFILE
+            ).model_dump(mode="json"),
             task={
                 "name": "compose-current-price",
                 "description": GUIDANCE,
@@ -201,6 +204,7 @@ def run():
         if detail["status"] != "succeeded":
             raise ValueError("Normal Compose worker did not succeed")
         with factory() as session:
+            assert_composed_controller(session, rid)
             run_row = session.get(ResearchRun, rid)
             if run_row.owner_id != owner or run_row.status != "succeeded":
                 raise ValueError("Owned terminal run differs")
@@ -283,6 +287,55 @@ def run():
         engine.dispose()
 
 
+def failure_location(error):
+    """Only fixed local frame identifiers, never exception payloads or paths."""
+    allowed_functions = {
+        "<module>",
+        "request",
+        "database",
+        "owner_id",
+        "compose_source",
+        "provider",
+        "run",
+    }
+    allowed_types = {
+        "ModuleNotFoundError",
+        "ImportError",
+        "ValueError",
+        "TypeError",
+        "KeyError",
+        "AttributeError",
+        "HTTPError",
+        "TimeoutError",
+        "CalledProcessError",
+        "PermissionError",
+        "AssertionError",
+    }
+    frames = []
+    trace = error.__traceback__
+    while trace is not None:
+        frame = trace.tb_frame
+        if (
+            frame.f_code.co_filename == __file__
+            and frame.f_code.co_name in allowed_functions
+            and 0 < trace.tb_lineno <= 10000
+        ):
+            frames.append(
+                {
+                    "module": "script.ci_rd_compose_inside",
+                    "function": frame.f_code.co_name,
+                    "line": trace.tb_lineno,
+                }
+            )
+        trace = trace.tb_next
+    kind = type(error).__name__
+    return {
+        "schema": "mineagent.compose-fixture-failure.v1",
+        "type": kind if kind in allowed_types else "Exception",
+        "frames": frames[-8:],
+    }
+
+
 if __name__ == "__main__":
     try:
         mode = sys.argv[1]
@@ -294,7 +347,12 @@ if __name__ == "__main__":
             print(json.dumps(run(), sort_keys=True))
         else:
             raise ValueError("Unknown fixture mode")
-    except Exception:  # noqa: BLE001 - never emit private request/config/credential data
+    except Exception as error:  # noqa: BLE001 - private payloads never emitted
+        print(
+            "COMPOSE_FAILURE_LOCATION:"
+            + json.dumps(failure_location(error), sort_keys=True),
+            file=sys.stderr,
+        )
         raise SystemExit(
             "Packaged RD Compose fixture failed; acceptance not established"
         ) from None

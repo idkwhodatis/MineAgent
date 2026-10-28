@@ -91,6 +91,9 @@ def test_inside_fixture_does_not_dispatch_or_run_a_host_worker():
     assert '"http://127.0.0.1:8000/api/v1"' in source
     assert "provider_server(sources=(compose_source(),), port=18765)" in source
     assert "verify_sdk(settings.rdagent_provider_python)" in source
+    assert "controller_profile=PROFILE" in source
+    assert "profile=PROFILE" in source
+    assert "assert_composed_controller(session, rid)" in source
     assert 'row.state == "completed"' in source
     assert "read_historical_execution_snapshot" in source
     assert "[98.0, 102.0, 104.0]" in source
@@ -132,10 +135,24 @@ def test_synthetic_private_config_uses_actual_iid_files_and_no_live_activation(
     assert values["RDAGENT_LIVE_PROVIDER_ENABLED"] == "false"
     assert values["RDAGENT_SYNTHETIC_PROVIDER_ENABLED"] == "true"
     runtime = json.loads(values["RDAGENT_PROVIDER_RUNTIME_PROFILE"])
+    assert runtime["controller_profile"] == "mineagent.rdagent-orchestrator.v3"
     assert runtime["runtime"]["orchestrator_image"] == "sha256:" + "1" * 64
     model = json.loads(values["RDAGENT_PROVIDER_PROFILES"])[0]
     assert model["connection"]["owner_ids"] == [owner]
     assert model["connection"]["base_url"] == "http://127.0.0.1:18765/v1"
+    from backend.app.rdagent_provider_preflight import provider_budget_floor
+    from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
+
+    binding = RDOperatorModelProfile.model_validate(model).public_binding(UUID(owner))
+    legacy = provider_budget_floor(binding).model_dump()
+    composed = provider_budget_floor(
+        binding, profile=runtime["controller_profile"]
+    ).model_dump()
+    assert composed.pop("wall_milliseconds") == legacy.pop("wall_milliseconds") + 60000
+    assert (
+        composed == legacy
+    )  # Calls, tokens, cost, slots, memory and storage unchanged.
+
     # Exercise the actual dispatcher queue resolver, not just YAML key presence.
     from backend.app.services import DomainError
     from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
@@ -227,6 +244,7 @@ def test_fixture_transfer_uses_container_namespace_and_stops_on_failure(
         "rd_provider_fixture.py",
         "rd_configured_dataset_fixture.py",
         "rd_submission_fixture.py",
+        "rd_composed_profile_fixture.py",
     )
     for index, name in enumerate(names):
         (fixture / name).write_bytes(
@@ -286,7 +304,7 @@ else:
     calls = [json.loads(line) for line in (tmp_path / "calls").read_text().splitlines()]
     if failure == "none":
         assert result.returncode == 0, result.stderr
-        assert len(calls) == 5
+        assert len(calls) == 6
         assert (tmp_path / "private").stat().st_mode & 0o777 == 0o700
         assert {p.name for p in (tmp_path / "private").iterdir()} == set(names)
         for name in names:
@@ -302,3 +320,93 @@ else:
             ).read_bytes() == b"must not overwrite"
         elif failure == "oversize":
             assert list((tmp_path / "private").iterdir()) == []
+
+
+def test_packaged_fixture_import_closure_without_test_checkout(tmp_path):
+    """Use only the exact copied fixtures plus shipped app/package sources."""
+    import shutil
+
+    shell = (ROOT / "script/ci_rd_provider_compose.sh").read_text()
+    transfer = shell.split("  for name in ", 1)[1].split("; do", 1)[0].split()
+    assert len(transfer) == len(set(transfer)) == 5
+    for name in transfer:
+        source = (
+            ROOT
+            / ("script" if name == "ci_rd_compose_inside.py" else "tests/integration")
+            / name
+        )
+        shutil.copyfile(source, tmp_path / name)
+    code = """
+import importlib, pathlib, sys
+root, fixture = map(pathlib.Path, sys.argv[1:])
+sys.path[:] = [str(fixture), str(root)] + [p for p in sys.path if p and not pathlib.Path(p).is_relative_to(root)]
+for name in ('rd_provider_fixture', 'rd_configured_dataset_fixture', 'rd_submission_fixture', 'rd_composed_profile_fixture', 'ci_rd_compose_inside'):
+    module = importlib.import_module(name)
+    assert pathlib.Path(module.__file__).parent == fixture
+from ci_rd_compose_inside import compose_source, owner_id, provider, run
+assert 'time.sleep(3)' in compose_source()
+assert all(callable(f) for f in (owner_id, provider, run))
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code, str(ROOT), str(tmp_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    # Removing the actual dependency must fail even when the host checkout has it.
+    (tmp_path / "rd_composed_profile_fixture.py").unlink()
+    missing = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", code, str(ROOT), str(tmp_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert missing.returncode != 0
+    assert b"No module named 'rd_composed_profile_fixture'" in missing.stderr
+
+    entry = """
+import pathlib, runpy, sys
+root, fixture = map(pathlib.Path, sys.argv[1:])
+sys.path[:] = [str(fixture), str(root)] + [p for p in sys.path if p and not pathlib.Path(p).is_relative_to(root)]
+sys.argv = [str(fixture / 'ci_rd_compose_inside.py'), 'run']
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+    failed_entry = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", entry, str(ROOT), str(tmp_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert failed_entry.returncode != 0 and failed_entry.stdout == b""
+    lines = failed_entry.stderr.decode().splitlines()
+    diagnostic = json.loads(lines[0].removeprefix("COMPOSE_FAILURE_LOCATION:"))
+    assert diagnostic["type"] == "ModuleNotFoundError"
+    assert diagnostic["frames"] and len(diagnostic["frames"]) <= 8
+    assert {v["function"] for v in diagnostic["frames"]} == {"<module>", "run"}
+    assert all(
+        v["module"] == "script.ci_rd_compose_inside" for v in diagnostic["frames"]
+    )
+    assert str(tmp_path) not in failed_entry.stderr.decode()
+    assert "rd_composed_profile_fixture" not in failed_entry.stderr.decode()
+
+
+def test_compose_failure_location_never_serializes_private_payloads():
+    from script.ci_rd_compose_inside import failure_location
+
+    secret = "secret-token-private-url-prompt"
+    try:
+        raise ValueError(secret)
+    except ValueError as error:
+        value = failure_location(error)
+    assert value == {
+        "schema": "mineagent.compose-fixture-failure.v1",
+        "type": "ValueError",
+        "frames": [],
+    }
+    assert secret not in json.dumps(value)
+    dynamic = type(secret, (Exception,), {})
+    assert failure_location(dynamic(secret))["type"] == "Exception"
