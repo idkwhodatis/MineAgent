@@ -176,10 +176,8 @@ def _revalidate(peer):
         _fail()
 
 
-def authenticate_controller(
-    connection, admission, *, binding, supplied_ticket, observer_context=None
-):
-    """Only supplied_ticket is request data; admission and binding are host-owned."""
+def _validated_controller_claim(admission, *, binding, supplied_ticket):
+    """Validate only immutable host data and the ticket; returns NO peer authority."""
     if (
         type(admission) is not ProcessDeclarationV2
         or type(binding) is not TrustedControllerBinding
@@ -202,11 +200,34 @@ def authenticate_controller(
             != hashlib.sha256(declaration_bytes(admission)).hexdigest()
         ):
             _fail()
-        peer = ControllerPeer(admission, binding, connection, _ISSUER, observer_context)
-        _revalidate(peer)
-        return peer
+        return admission
     except (ValueError, TypeError):
         _fail()
+
+
+def _preflight_controller_connection(connection, binding):
+    """Cheap early socket rejection only; never issues or caches authority."""
+    try:
+        if _credentials(connection) != (
+            binding.controller.host_pid,
+            CONTROLLER_UID,
+            CONTROLLER_GID,
+        ):
+            _fail()
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        _fail()
+
+
+def authenticate_controller(
+    connection, admission, *, binding, supplied_ticket, observer_context=None
+):
+    """Only supplied_ticket is request data; every returned peer is freshly observed."""
+    admission = _validated_controller_claim(
+        admission, binding=binding, supplied_ticket=supplied_ticket
+    )
+    peer = ControllerPeer(admission, binding, connection, _ISSUER, observer_context)
+    _revalidate(peer)
+    return peer
 
 
 def require_controller_peer(peer, fence, *, logical_operation_id):

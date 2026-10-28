@@ -149,6 +149,22 @@ def validate_process_unit(
     else:
         extraction = records.get("extraction")
         native.validate_native_journal(launch, identity, stop, extraction)
+        from runtimes.openevolve_evaluator.contracts import parse_manifest
+
+        key = prefix + "manifest.json"
+        if key not in physical:
+            raise ValueError("OE native retained manifest absent")
+        binding = launch.intent.inputs
+        raw = read_bytes(key, binding.manifest_sha256, 65536)
+        if (
+            type(raw) is not bytes
+            or len(raw) != binding.manifest_size_bytes
+            or hashlib.sha256(raw).hexdigest() != binding.manifest_sha256
+        ):
+            raise ValueError("OE native retained manifest identity differs")
+        binding.require_manifest(parse_manifest(raw))
+        check(key, binding.manifest_sha256, binding.manifest_size_bytes)
+        paths.add(key)
         if extraction is not None:
             from runtimes.openevolve_evaluator.protected_output import (
                 MAX_FRAME,

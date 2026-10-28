@@ -31,7 +31,6 @@ from backend.app.rdagent_controller_process import (
 from backend.app.rdagent_controller_services import (
     bind_controller_launch,
     expected_operational_bootstrap,
-    require_rd_controller,
 )
 from backend.app.rdagent_models import FactorGenerationOutcome, FactorResearchSpec
 from backend.app.rdagent_operational_admission import (
@@ -40,6 +39,7 @@ from backend.app.rdagent_operational_admission import (
     record_claimed_controller_identity,
 )
 from backend.app.rdagent_operational_handler import OperationalHandler
+from backend.app.rdagent_protected_controller import authenticate_current_controller
 from backend.app.rdagent_services import _scope, bind_research_attempt
 from backend.app.research_broker_models import (
     ResearchBudgetControl,
@@ -62,7 +62,6 @@ from packages.research_runtime.process_declarations_v2 import (
     HostTicketIPC,
     ProcessDeclarationV2,
 )
-from runtimes.rdagent_operational.peer import authenticate_controller
 from runtimes.rdagent_operational.process_journal import STORAGE_FLOOR, ControllerIntent
 from runtimes.rdagent_operational.rpc import serve_one
 from runtimes.rdagent_operational.supervisor import (
@@ -337,18 +336,15 @@ def _execute_controller(factory, fence, settings, *, handler_type):
             channel, binding = running.accept_controller(on_child=child_observed)
 
             def authorize(channel, supplied_ticket):
-                peer = authenticate_controller(
+                return authenticate_current_controller(
+                    factory,
+                    fence,
                     channel,
                     admission,
                     binding=binding,
                     supplied_ticket=supplied_ticket,
                     observer_context=running.observer_context,
                 )
-                with neutral_transaction(
-                    factory, fence, resource_scope="processes"
-                ) as session:
-                    require_rd_controller(session, fence, peer)
-                return peer
 
             sequence = 0
             while not handler.returned:

@@ -43,6 +43,13 @@ def validate_controller_links(idx, shared, configs):
             and configs[start["run_id"]].max_iterations == 1
         )
         source = sources[0]
+        model_profile = configs[start["run_id"]].model_profile
+        require(model_profile in {"fixture.rdagent.v1", "configured.rdagent.v1"})
+        protocol_prefix = (
+            "mineagent.rdagent-provider-"
+            if model_profile == "configured.rdagent.v1"
+            else "mineagent.rdagent-"
+        )
         expected = {
             "schema_version": "mineagent.rdagent-adoption-observation.v1",
             "logical_step": 0,
@@ -93,19 +100,36 @@ def validate_controller_links(idx, shared, configs):
             )
             responses = []
             for member in members:
-                require(
-                    member["protocol"] == "mineagent.rdagent-" + call["kind"] + ".v1"
-                )
+                require(member["protocol"] == protocol_prefix + call["kind"] + ".v1")
                 operation = shared["research_model_operations"].get(
                     member["operation_id"]
                 )
-                require(operation is not None and operation["state"] == "completed")
-                completed = [
-                    r
-                    for r in shared["research_model_outcomes"].values()
-                    if r["operation_id"] == operation["id"]
-                    and r["outcome"] == "completed"
-                ]
+                require(
+                    operation is not None
+                    and operation["state"] == "completed"
+                    and all(operation[k] == member[k] == call[k] for k in SCOPE)
+                )
+                completed = []
+                for outcome in shared["research_model_outcomes"].values():
+                    # Frozen outcome rows bind a transport, not an operation.
+                    # Traverse the actual retained FK instead of a synthetic
+                    # operation_id field which no database outcome contains.
+                    transport = shared["research_model_transports"].get(
+                        outcome["transport_id"]
+                    )
+                    require(transport is not None)
+                    if (
+                        transport["operation_id"] == operation["id"]
+                        and outcome["outcome"] == "completed"
+                    ):
+                        require(
+                            transport["state"] == "completed"
+                            and all(
+                                outcome[k] == transport[k] == operation[k]
+                                for k in SCOPE
+                            )
+                        )
+                        completed.append(outcome)
                 require(len(completed) == 1)
                 responses.append(completed[0]["id"])
             require(

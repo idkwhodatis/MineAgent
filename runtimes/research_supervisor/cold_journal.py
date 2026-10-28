@@ -88,7 +88,17 @@ def validate_modern_quiescence(operation, schema):
         getattr(module, validator_name)(launch, identity, stop, extraction)
         # Stopped evaluators retain an output directory, including empty output
         # on failure. Inputs must have been removed by positive-stop cleanup.
-        if _names(operation) != {"control", "output"}:
+        operation_names = {"control", "output"}
+        if prefix == "Native":
+            from runtimes.research_supervisor.openevolve_native_supervisor import (
+                read_manifest,
+            )
+
+            # Native positive-stop cleanup deliberately retains this bound
+            # inventory after deleting staged inputs. It is not an extra file.
+            read_manifest(operation, launch)
+            operation_names.add("manifest.json")
+        if _names(operation) != operation_names:
             raise ProcessError("research_process_journal_inventory")
         if _names(operation / "output") != (
             set() if extraction is None else {extraction.basename}

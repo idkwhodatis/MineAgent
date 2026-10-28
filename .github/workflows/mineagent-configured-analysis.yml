@@ -121,7 +121,7 @@ jobs:
           source=Path('var/numeric-private/provider.xml')
           summarize(source,Path('var/numeric-proof/provider-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==116
+          assert len(cases)==117
           names={case.get('name') for case in cases}
           assert {'test_actual_sdk_route_and_usage[chat]', 'test_actual_sdk_route_and_usage[embedding]', 'test_actual_identity_callback_precedes_request_and_matches_result', 'test_unconfirmed_group_never_records_stop_or_returns_result'} <= names
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))

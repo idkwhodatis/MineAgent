@@ -29,7 +29,7 @@ def test_render_is_literal_additive_and_closed_schema():
 def test_nulls_never_grant_config_or_request_or_settlement():
     sql = render_upgrade_sql()
     for predicate in (
-        "mineagent_rd_provider_config(run.config) IS NOT TRUE",
+        "config_valid IS NOT TRUE",
         "run.config->'steer_snapshot'->>'owner_id' IS DISTINCT FROM op.owner_id::text",
         "op.protocol IS DISTINCT FROM op.request->>'schema_version'",
         "op.request_sha256 IS DISTINCT FROM",
@@ -79,10 +79,44 @@ def test_attempt_and_run_terminal_mutations_recheck_all_provider_transport_evide
     assert {"execution_attempts", "research_runs"} <= set(TABLES)
     assert "IF TG_TABLE_NAME='research_runs' THEN rid:=NEW.id;" in sql
     assert "FROM execution_attempts WHERE id=op.attempt_id" in sql
-    assert "(attempt.run_id,attempt.generation) IS DISTINCT FROM (op.run_id,op.generation)" in sql
+    assert (
+        "(attempt.run_id,attempt.generation) IS DISTINCT FROM (op.run_id,op.generation)"
+        in sql
+    )
     assert "attempt.sandbox_stopped IS TRUE OR attempt.finished_at IS NOT NULL" in sql
     assert "attempt.status IN ('succeeded','failed','cancelled','interrupted')" in sql
     assert "run.status IN ('succeeded','failed','cancelled','interrupted')" in sql
-    assert "must_be_stopped AND (t.state IS NULL OR t.state NOT IN ('completed','failed','unknown'))" in sql
+    assert (
+        "must_be_stopped AND (t.state IS NULL OR t.state NOT IN ('completed','failed','unknown'))"
+        in sql
+    )
     assert "IF (t.state='completed' OR must_be_stopped) AND (SELECT array_agg" in sql
     assert "Provider terminal usage cannot refund its whole held vector" in sql
+
+
+def test_graph_reuses_only_function_local_pure_config_after_first_operation():
+    sql = render_upgrade_sql()
+    start = sql.index("CREATE FUNCTION @SCHEMA@.mineagent_rd_provider_graph(rid uuid)")
+    graph = sql[
+        start : sql.index(
+            "CREATE FUNCTION @SCHEMA@.mineagent_rd_provider_graph_trigger", start
+        )
+    ]
+    assert graph.count("mineagent_rd_provider_config(run.config)") == 1
+    assert graph.index("at most 32 operations per run") < graph.index("FOR op IN")
+    assert graph.index("FOR op IN") < graph.index("IF NOT config_checked THEN")
+    assert graph.index("run.owner_id IS DISTINCT FROM op.owner_id") < graph.index(
+        "IF NOT config_checked THEN"
+    )
+    assert "IF config_valid IS TRUE THEN" in graph
+    assert "config_checked:=true;" in graph
+    assert (
+        "OR run.config->>'steer_snapshot_sha256' IS DISTINCT FROM steer_digest" in graph
+    )
+    assert graph.index("FROM rd_steer_versions sv") > graph.index(
+        "config_checked:=true;"
+    )
+    assert (
+        "FOR w IN SELECT * FROM rd_provider_transport_receipts WHERE run_id=rid LOOP"
+        in graph
+    )

@@ -10,9 +10,12 @@ from backend.app.openevolve_process_backup import SCOPE, validate_process_unit
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.process_contracts import canonical, digest
 from packages.research_runtime.process_persistence_codec import encode_row
+from runtimes.openevolve_evaluator.output_reader import read_native_journal
 from runtimes.openevolve_operational.profile import STORAGE_FLOOR
 from tests.openevolve.operational_fixtures import records as controller_records
-from tests.openevolve.test_native_evaluator_journal import records as native_records
+from tests.openevolve.test_native_evaluator_output_reader import (
+    fixture as native_fixture,
+)
 
 
 def fixture(tmp_path, profile):
@@ -30,7 +33,8 @@ def fixture(tmp_path, profile):
         )
         key = "oe-controller:" + str(launch.intent.admission.logical_operation_id)
     else:
-        launch, identity, stop, _ = native_records()
+        admission, operation, _ = native_fixture(tmp_path)
+        launch, identity, stop, _ = read_native_journal(tmp_path, admission)
         models = {"launch": launch, "identity": identity, "stop": stop}
         payloads = {
             "launch_intent": launch.intent,
@@ -87,6 +91,10 @@ def fixture(tmp_path, profile):
         prefix + name + ".json": canonical(value.model_dump(mode="json"))
         for name, value in models.items()
     }
+    if profile == "native":
+        files[prefix.removesuffix("control/") + "manifest.json"] = (
+            operation / "manifest.json"
+        ).read_bytes()
     physical = {
         k: {
             "path": k,
@@ -239,3 +247,40 @@ def test_native_extracted_bytes_reparsed_not_just_hash(tmp_path):
         }
     with pytest.raises(ValueError):
         run(case)
+
+
+@pytest.mark.parametrize("damage", ["missing", "changed", "noncanonical", "oversize"])
+def test_native_retained_manifest_cold_binding(tmp_path, damage):
+    case = fixture(tmp_path, "native")
+    _row, _indexes, physical, files = case
+    key = next(k for k in files if k.endswith("/manifest.json"))
+    if damage == "missing":
+        physical.pop(key)
+    else:
+        if damage == "changed":
+            import json
+
+            value = json.loads(files[key])
+            value["execution_plan_sha256"] = "0" * 64
+            files[key] = canonical(value)
+        elif damage == "noncanonical":
+            files[key] += b"\n"
+        else:
+            files[key] = b" " * 65537
+        physical[key] = {
+            "path": key,
+            "sha256": hashlib.sha256(files[key]).hexdigest(),
+            "size_bytes": len(files[key]),
+        }
+    allowed, reservations = set(), set()
+    with pytest.raises(ValueError):
+        validate_process_unit(
+            case[0],
+            case[1],
+            physical,
+            lambda *_: None,
+            lambda key, _sha, _cap: files[key],
+            allowed,
+            reservations,
+        )
+    assert not allowed and not reservations

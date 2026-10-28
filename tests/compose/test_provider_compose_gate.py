@@ -30,7 +30,7 @@ def test_new_compose_phase_follows_all_existing_actual_proofs_and_old_pg_cleanup
     )
     assert prior < cleanup < packaged
     assert "if" not in steps[packaged] and steps[packaged]["timeout-minutes"] == 40
-    assert "assert len(cases)==116" in next(
+    assert "assert len(cases)==117" in next(
         step["run"]
         for step in steps
         if step.get("name")

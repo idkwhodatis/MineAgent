@@ -101,13 +101,22 @@ def graph():
         "research_model_operations": {
             "operation": dict(scope, id="operation", state="completed")
         },
+        "research_model_transports": {
+            "transport": dict(
+                scope, id="transport", operation_id="operation", state="completed"
+            )
+        },
         "research_model_outcomes": {
             "response": dict(
-                scope, id="response", operation_id="operation", outcome="completed"
+                scope, id="response", transport_id="transport", outcome="completed"
             )
         },
     }
-    return idx, shared, {"run": SimpleNamespace(max_iterations=1)}
+    return (
+        idx,
+        shared,
+        {"run": SimpleNamespace(max_iterations=1, model_profile="fixture.rdagent.v1")},
+    )
 
 
 def test_complete_initial_boundary():
@@ -170,5 +179,84 @@ def test_shared_or_profile_drift(mutation):
         shared["research_model_outcomes"]["response"]["outcome"] = "failed"
     if mutation == "iterations":
         configs["run"].max_iterations = 2
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+
+
+def test_cold_graph_fixture_fields_match_frozen_inventories():
+    from backend.app.rdagent_backup import FIELDS as RD_FIELDS
+    from backend.app.research_backup import FIELDS_V4 as RESEARCH_FIELDS
+    from backend.app.research_broker_models import (
+        ResearchModelOutcome,
+        ResearchModelTransport,
+    )
+
+    for model in (ResearchModelOutcome, ResearchModelTransport):
+        assert set(RESEARCH_FIELDS[model.__tablename__].split()) == set(
+            model.__table__.columns.keys()
+        )
+    idx, shared, _ = graph()
+    for table, rows in {**idx, **shared}.items():
+        fields = set({**RD_FIELDS, **RESEARCH_FIELDS}[table].split())
+        assert all(set(row) <= fields for row in rows.values())
+    assert "operation_id" not in shared["research_model_outcomes"]["response"]
+
+
+def test_provider_profile_uses_only_exact_provider_protocol():
+    idx, shared, configs = graph()
+    configs["run"].model_profile = "configured.rdagent.v1"
+    idx["factor_generation_model_operations"]["member"]["protocol"] = (
+        "mineagent.rdagent-provider-embedding.v1"
+    )
+    validate_controller_links(idx, shared, configs)
+    idx["factor_generation_model_operations"]["member"]["protocol"] = (
+        "mineagent.rdagent-embedding.v1"
+    )
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+
+
+@pytest.mark.parametrize(
+    "table,key,field,value",
+    [
+        ("research_model_outcomes", "response", "transport_id", "missing"),
+        ("research_model_transports", "transport", "operation_id", "foreign"),
+        ("research_model_transports", "transport", "state", "submitted"),
+        ("research_model_transports", "transport", "owner_id", "foreign"),
+        ("research_model_outcomes", "response", "run_id", "foreign"),
+        ("research_model_operations", "operation", "attempt_id", "foreign"),
+    ],
+)
+def test_exact_transport_operation_and_scope_are_required(table, key, field, value):
+    idx, shared, configs = graph()
+    shared[table][key][field] = value
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+
+
+@pytest.mark.parametrize(
+    "profile", [None, "future.rdagent.v1", "configured.rdagent.v2"]
+)
+def test_unknown_model_profile_cannot_select_a_cold_protocol(profile):
+    idx, shared, configs = graph()
+    configs["run"].model_profile = profile
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+
+
+def test_duplicate_completed_transport_outcome_is_not_collapsed():
+    idx, shared, configs = graph()
+    shared["research_model_outcomes"]["duplicate"] = dict(
+        shared["research_model_outcomes"]["response"], id="duplicate"
+    )
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+
+
+def test_fixture_profile_cannot_select_provider_protocol():
+    idx, shared, configs = graph()
+    idx["factor_generation_model_operations"]["member"]["protocol"] = (
+        "mineagent.rdagent-provider-embedding.v1"
+    )
     with pytest.raises(ValueError):
         validate_controller_links(idx, shared, configs)

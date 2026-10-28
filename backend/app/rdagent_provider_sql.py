@@ -169,7 +169,7 @@ CREATE TRIGGER rd_provider_receipt_append BEFORE INSERT OR UPDATE OR DELETE ON @
  FOR EACH ROW EXECUTE FUNCTION @SCHEMA@.mineagent_rd_provider_receipt_append();
 CREATE FUNCTION @SCHEMA@.mineagent_rd_provider_graph(rid uuid) RETURNS void
 LANGUAGE plpgsql SET search_path=@SCHEMA@,pg_catalog AS $$
-DECLARE op record; run record; t record; w record; held record; settlement record; outcome record; amount jsonb; selected jsonb; n integer; attempt record; must_be_stopped boolean;
+DECLARE op record; run record; t record; w record; held record; settlement record; outcome record; amount jsonb; selected jsonb; n integer; attempt record; must_be_stopped boolean; config_checked boolean:=false; config_valid boolean; steer_digest text;
 BEGIN
  SELECT * INTO run FROM research_runs WHERE id=rid;
  IF (SELECT count(*) FROM research_model_operations WHERE run_id=rid AND protocol IN ('mineagent.rdagent-provider-chat.v1','mineagent.rdagent-provider-embedding.v1'))>32
@@ -177,9 +177,20 @@ BEGIN
  FOR op IN SELECT * FROM research_model_operations WHERE run_id=rid AND protocol IN ('mineagent.rdagent-provider-chat.v1','mineagent.rdagent-provider-embedding.v1') LOOP
   IF run.id IS NULL OR (run.purpose,run.engine) IS DISTINCT FROM ('factor_research','rdagent')
   OR run.owner_id IS DISTINCT FROM op.owner_id
-  OR mineagent_rd_provider_config(run.config) IS NOT TRUE
+  THEN RAISE EXCEPTION 'Provider operation/config/request identity differs'; END IF;
+  -- Function-local pure values from the single captured run record only.
+  -- Lazy first operation preserves the empty-run and 32-operation boundaries.
+  -- No relational evidence or result survives this function invocation.
+  IF NOT config_checked THEN
+   config_valid:=mineagent_rd_provider_config(run.config);
+   IF config_valid IS TRUE THEN
+    steer_digest:=encode(sha256(convert_to(mineagent_rd_canonical_json(run.config->'steer_snapshot',true),'UTF8')),'hex');
+   END IF;
+   config_checked:=true;
+  END IF;
+  IF config_valid IS NOT TRUE
   OR run.config->'steer_snapshot'->>'owner_id' IS DISTINCT FROM op.owner_id::text
-  OR run.config->>'steer_snapshot_sha256' IS DISTINCT FROM encode(sha256(convert_to(mineagent_rd_canonical_json(run.config->'steer_snapshot',true),'UTF8')),'hex')
+  OR run.config->>'steer_snapshot_sha256' IS DISTINCT FROM steer_digest
   OR mineagent_rd_provider_request_binding(op.request,run.config->'model_binding') IS NOT TRUE
   OR op.protocol IS DISTINCT FROM op.request->>'schema_version'
   OR op.request_sha256 IS DISTINCT FROM encode(sha256(convert_to(mineagent_rd_canonical_json(op.request,false),'UTF8')),'hex')

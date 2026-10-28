@@ -20,6 +20,10 @@ FACTORIES = {
 
 
 def persist(root, kind):
+    if kind == "native":
+        from tests.openevolve.test_native_evaluator_output_reader import fixture
+
+        return fixture(root)[1]
     factory = importlib.import_module(FACTORIES[kind]).records
     values = factory(root) if kind in {"rd", "oe"} else factory()
     admission = values[0].intent.admission
@@ -170,4 +174,61 @@ def test_directory_links_never_followed(tmp_path, kind, component):
     path.rename(outside)
     path.symlink_to(outside, target_is_directory=True)
     with pytest.raises((ProcessError, OSError)):
+        assert_quiescent(tmp_path)
+
+
+def test_native_production_cleanup_retains_bound_manifest(tmp_path):
+    from runtimes.research_supervisor.openevolve_native_supervisor import (
+        NativeSupervisor,
+        _write_bytes,
+        staged_name,
+    )
+    from tests.openevolve.test_native_evaluator_contracts import manifest
+    from tests.openevolve.test_native_evaluator_output_reader import fixture
+
+    admission, operation, _ = fixture(tmp_path)
+    supervisor = NativeSupervisor(admission.image_id, "sha256:" + "f" * 64)
+    launch = supervisor._launch(operation)
+    inputs = operation / "inputs"
+    inputs.mkdir(mode=0o700)
+    _, files = manifest()
+    for name, raw in files.items():
+        _write_bytes(inputs / staged_name("/input/" + name), raw, 0o444)
+    supervisor._remove_inputs(operation, launch)
+    assert {p.name for p in operation.iterdir()} == {
+        "control",
+        "output",
+        "manifest.json",
+    }
+    assert_quiescent(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["missing", "changed", "noncanonical", "symlink", "hardlink", "mode", "oversize"],
+)
+def test_native_manifest_is_required_and_bound(tmp_path, damage):
+    operation = persist(tmp_path, "native")
+    path = operation / "manifest.json"
+    if damage == "missing":
+        path.unlink()
+    elif damage == "changed":
+        value = json.loads(path.read_bytes())
+        value["execution_plan_sha256"] = "0" * 64
+        path.write_bytes(canonical(value))
+    elif damage == "noncanonical":
+        path.write_bytes(path.read_bytes() + b"\n")
+    elif damage == "symlink":
+        outside = tmp_path / "outside-manifest.json"
+        path.rename(outside)
+        path.symlink_to(outside)
+    elif damage == "hardlink":
+        import os
+
+        os.link(path, tmp_path / "manifest-link")
+    elif damage == "mode":
+        path.chmod(0o644)
+    else:
+        path.write_bytes(b" " * 65537)
+    with pytest.raises((ProcessError, OSError, ValueError)):
         assert_quiescent(tmp_path)

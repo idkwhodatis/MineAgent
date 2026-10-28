@@ -31,6 +31,7 @@ def document():
 
 Literal-only migration; imports no application code and does not launch engines.
 """
+
 import re
 
 from alembic import op
@@ -63,14 +64,36 @@ def _maintenance(schema):
     OR NOT pg_try_advisory_xact_lock(1413960260,1129270340)
     THEN RAISE EXCEPTION 'Seed migration requires quiescent maintenance'; END IF;
     END $$;""")
-    tables = ("research_runs", "execution_attempts", "factor_analysis_plans", "factor_research_specs",
-              "factor_research_submissions", "factor_controller_launches", "outbox_events",
-              "research_budget_controls", "factor_generation_starts", "factor_source_publications",
-              "factor_versions", "factor_objects", "factors", "research_model_operations",
-              "research_model_transports", "research_model_outcomes", "research_budget_reservations",
-              "research_budget_settlements", "research_objects", "research_object_publications",
-              "factor_generation_model_operations", "factor_source_read_witnesses", "users")
-    op.execute("LOCK TABLE " + ",".join(schema + "." + name for name in tables) + " IN ACCESS EXCLUSIVE MODE NOWAIT")
+    tables = (
+        "research_runs",
+        "execution_attempts",
+        "factor_analysis_plans",
+        "factor_research_specs",
+        "factor_research_submissions",
+        "factor_controller_launches",
+        "outbox_events",
+        "research_budget_controls",
+        "factor_generation_starts",
+        "factor_source_publications",
+        "factor_versions",
+        "factor_objects",
+        "factors",
+        "research_model_operations",
+        "research_model_transports",
+        "research_model_outcomes",
+        "research_budget_reservations",
+        "research_budget_settlements",
+        "research_objects",
+        "research_object_publications",
+        "factor_generation_model_operations",
+        "factor_source_read_witnesses",
+        "users",
+    )
+    op.execute(
+        "LOCK TABLE "
+        + ",".join(schema + "." + name for name in tables)
+        + " IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
     op.execute("SET LOCAL search_path = " + schema + ",pg_catalog")
 
 
@@ -78,15 +101,35 @@ def upgrade():
     schema = _schema()
     _maintenance(schema)
     connection = op.get_bind()
-    connection.exec_driver_sql(TABLE_SQL.replace("@SCHEMA@", schema), execution_options={"no_parameters": True})
-    connection.exec_driver_sql(UPGRADE_SQL.replace("@SCHEMA@", schema), execution_options={"no_parameters": True})
+    connection.exec_driver_sql(
+        TABLE_SQL.replace("@SCHEMA@", schema), execution_options={"no_parameters": True}
+    )
+    connection.exec_driver_sql(
+        UPGRADE_SQL.replace("@SCHEMA@", schema),
+        execution_options={"no_parameters": True},
+    )
 
 
 def downgrade():
     schema = _schema()
     _maintenance(schema)
-    op.execute("LOCK TABLE " + ",".join(schema + "." + name for name in ("factor_seeded_submissions", "rd_provider_transport_receipts", "rd_steers", "rd_steer_versions")) + " IN ACCESS EXCLUSIVE MODE NOWAIT")
-    op.get_bind().exec_driver_sql(DOWNGRADE_SQL.replace("@SCHEMA@", schema), execution_options={"no_parameters": True})
+    op.execute(
+        "LOCK TABLE "
+        + ",".join(
+            schema + "." + name
+            for name in (
+                "factor_seeded_submissions",
+                "rd_provider_transport_receipts",
+                "rd_steers",
+                "rd_steer_versions",
+            )
+        )
+        + " IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
+    op.get_bind().exec_driver_sql(
+        DOWNGRADE_SQL.replace("@SCHEMA@", schema),
+        execution_options={"no_parameters": True},
+    )
 '''
     )
 

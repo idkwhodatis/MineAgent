@@ -1,6 +1,7 @@
 """Current-transaction protected RD child authority, never direct-leader fallback."""
 
 import json
+import time
 
 from sqlalchemy import select
 
@@ -29,7 +30,7 @@ from runtimes.rdagent_operational.process_journal import (
 )
 
 
-def require_protected_controller(session, fence, authorization):
+def _controller_records(session, fence):
     require_neutral_transaction(session, fence)
     attempt_binding, bootstrap = expected_operational_bootstrap(session, fence)
     launch = session.scalar(
@@ -105,7 +106,13 @@ def require_protected_controller(session, fence, authorization):
     validate_records(physical_launch, identity, child)
     if intent.admission != admission:
         raise ProcessError("rd_controller_receipts")
-    context = getattr(authorization, "_observer_context", None)
+    expected = TrustedControllerBinding(
+        identity.admission_sha256, identity.leader, child.controller
+    )
+    return launch, admission, expected, identity
+
+
+def _require_context(context, identity):
     if context is not None:
         from runtimes.rdagent_operational.daemon_identity import DaemonIdentityContext
 
@@ -116,12 +123,67 @@ def require_protected_controller(session, fence, authorization):
             or context.leader_pid != identity.leader.host_pid
         ):
             raise ProcessError("rd_controller_observer_context_drift")
+
+
+def require_protected_controller(session, fence, authorization):
+    launch, admission, expected, identity = _controller_records(session, fence)
+    _require_context(getattr(authorization, "_observer_context", None), identity)
     current = require_controller_peer(
-        authorization, fence, logical_operation_id=attempt_binding.id
-    )
-    expected = TrustedControllerBinding(
-        identity.admission_sha256, identity.leader, child.controller
+        authorization, fence, logical_operation_id=admission.logical_operation_id
     )
     if current.admission != admission or current.binding != expected:
         raise ProcessError("rd_controller_peer_drift")
     return launch
+
+
+def authenticate_current_controller(
+    factory, fence, connection, admission, *, binding, supplied_ticket, observer_context
+):
+    """One fresh kernel observation AFTER all persisted checks in this callback.
+
+    The pre-transaction claim is plain validated host data, never ControllerPeer.
+    A bad ticket still cannot enter the transaction. Nothing is returned before
+    the unchanged transaction commit checks succeed. Later handler boundaries
+    retain their independent fresh peer checks; no observations are cached.
+    """
+    from backend.app.research_lifecycle import neutral_transaction
+    from runtimes.rdagent_operational.peer import (
+        _preflight_controller_connection,
+        _validated_controller_claim,
+        authenticate_controller,
+    )
+
+    admission = _validated_controller_claim(
+        admission, binding=binding, supplied_ticket=supplied_ticket
+    )
+    _preflight_controller_connection(connection, binding)
+    if observer_context is not None:
+        from runtimes.rdagent_operational.daemon_identity import DaemonIdentityContext
+
+        if (
+            type(observer_context) is not DaemonIdentityContext
+            or observer_context.image_id != admission.image_id
+            or observer_context.leader_pid != binding.leader.host_pid
+        ):
+            raise ProcessError("rd_controller_peer")
+        # Preserve early original-deadline rejection without observing/caching
+        # kernel authority. Full observe_pair checks this again after DB locks.
+        if not 0 < observer_context.deadline - time.monotonic() <= 60:
+            raise ProcessError("rd_controller_daemon_identity")
+    with neutral_transaction(factory, fence, resource_scope="processes") as session:
+        _launch, current, expected, identity = _controller_records(session, fence)
+        if (
+            type(fence.generation) is not int
+            or admission != current
+            or binding != expected
+        ):
+            raise ProcessError("rd_controller_peer_drift")
+        _require_context(observer_context, identity)
+        peer = authenticate_controller(
+            connection,
+            admission,
+            binding=binding,
+            supplied_ticket=supplied_ticket,
+            observer_context=observer_context,
+        )
+    return peer

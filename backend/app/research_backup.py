@@ -169,6 +169,8 @@ def validate_path(key, *, schema=None):
         and parts[3:] == ["output", "native-export.bin"]
     ):
         return
+    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10} and parts[3:] == ["manifest.json"]:
+        return
     if schema in {SCHEMA_V9, SCHEMA_V10} and parts[3:] in (
         ["output", "result.json"],
         ["inputs"],
@@ -496,6 +498,10 @@ def manifest_keys(closure):
                         keys.add(f"{root}/child.json")
                     elif receipt["kind"] == "extraction":
                         keys.add(f"{root}/extraction.json")
+            if row["profile"] == "mineagent.openevolve-native-evaluator.v1":
+                keys.add(
+                    f"research-processes/{row['owner_id']}/{row['id']}/manifest.json"
+                )
             # Native export is binary: read_bytes validates it, never read_json.
             continue
         if (
