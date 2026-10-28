@@ -79,6 +79,8 @@ class InitialEpochServer:
         self._requests = 0
         self._acknowledgements = 0
         self._last_event = "none"
+        self._started_at = time.monotonic()
+        self._first_failure = None
 
     def _handle(self, channel, kind):
         from backend.app.openevolve_lock_admission import acquisition_window
@@ -94,6 +96,7 @@ class InitialEpochServer:
     def _handle_in_window(self, channel, kind):
         with self._lock:
             self._connections.add(channel)
+        phase, candidate = "frame", "none"
         try:
             raw = _raw_frame(channel, self.running.deadline)
             event = parse_event(raw) if kind == "events" else None
@@ -110,6 +113,8 @@ class InitialEpochServer:
                 if type(envelope) is not dict:
                     raise ValueError("Closed broker envelope required")
                 ticket = envelope.get("process_ticket")
+            candidate = event.kind if event is not None else "broker"
+            phase = "auth"
             peer = authenticate_socket(
                 self.factory,
                 self.fence,
@@ -123,6 +128,7 @@ class InitialEpochServer:
             )
             with self._lock:
                 self._last_event = event.kind if event is not None else "broker"
+            phase = "dispatch"
             if event is not None:
                 if event.epoch_id != self.epoch_id:
                     raise ValueError("Event epoch differs from host-owned unit")
@@ -148,6 +154,7 @@ class InitialEpochServer:
                         frontier=self.frontier,
                     )
                 )
+                phase = "reply"
                 write_reply(channel, event, receipt, result, self.running.deadline)
                 with self._lock:
                     self._acknowledgements += 1
@@ -168,10 +175,35 @@ class InitialEpochServer:
                     or time.monotonic() >= self.running.deadline
                 ):
                     raise ValueError("Late or oversized committed model reply")
+                phase = "reply"
                 channel.settimeout(min(65, self.running.deadline - time.monotonic()))
                 channel.sendall(struct.pack("!I", len(response)) + response)
                 with self._lock:
                     self._acknowledgements += 1
+        except BaseException as error:
+            try:
+                from backend.app.openevolve_failure_diagnostic import (
+                    event_label,
+                    exception_label,
+                    seconds_bucket,
+                )
+
+                with self._lock:
+                    if self._first_failure is None:
+                        self._first_failure = {
+                            "elapsed_seconds_bucket": seconds_bucket(
+                                time.monotonic() - self._started_at
+                            ),
+                            "remaining_seconds_bucket": seconds_bucket(
+                                self.running.deadline - time.monotonic()
+                            ),
+                            "phase": phase,
+                            "untrusted_event_kind": event_label(candidate),
+                            "exception": exception_label(error),
+                        }
+            except BaseException:  # noqa: BLE001, S110 - preserve original handler failure.
+                pass
+            raise
         finally:
             with self._lock:
                 self._connections.discard(channel)
@@ -185,6 +217,25 @@ class InitialEpochServer:
                 "acknowledgements": min(self._acknowledgements, MAX_REQUESTS),
                 "last_event": self._last_event,
                 "active_handlers": min(len(self._connections), MAX_CONNECTIONS),
+            }
+
+    def failure_diagnostic(self):
+        from backend.app.openevolve_failure_diagnostic import (
+            count,
+            event_label,
+            seconds_bucket,
+        )
+
+        now = time.monotonic()
+        with self._lock:
+            return {
+                "elapsed_seconds_bucket": seconds_bucket(now - self._started_at),
+                "remaining_seconds_bucket": seconds_bucket(self.running.deadline - now),
+                "requests": count(self._requests, MAX_REQUESTS),
+                "acknowledgements": count(self._acknowledgements, MAX_REQUESTS),
+                "active_handlers": count(len(self._connections), MAX_CONNECTIONS),
+                "authenticated_last_event": event_label(self._last_event),
+                "first_handler_failure": self._first_failure,
             }
 
     def disconnect(self):

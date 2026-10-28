@@ -1,3 +1,4 @@
+import { observeFailedImport } from "./factor-import-status-diagnostic";
 import { createHash } from "node:crypto";
 import {
   installFactorUploadObservation,
@@ -491,12 +492,24 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     await expect(page).not.toHaveURL(/import_id=/);
     await factorReadLifecycle();
     await page.goto(`/factors?import_id=${admission.id}`);
-    await expect(
-      page.getByRole("link", {
-        name: "Open exact imported factor",
-        exact: true,
-      }),
-    ).toBeVisible({ timeout: 90000 });
+    try {
+      await expect(
+        page.getByRole("link", {
+          name: "Open exact imported factor",
+          exact: true,
+        }),
+      ).toBeVisible({ timeout: 90000 });
+    } catch {
+      const diagnostic = await observeFailedImport(() =>
+        request.get(api(`/factor-imports/${admission.id}`), {
+          headers: authorization(auth),
+          timeout: 5000,
+        }),
+      );
+      throw new Error(
+        `Exact imported factor was not visible within the original wait. ${diagnostic}`,
+      );
+    }
     const status = await request.get(api(`/factor-imports/${admission.id}`), {
       headers: authorization(auth),
     });

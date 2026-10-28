@@ -21,6 +21,7 @@ from backend.app.openevolve_controller_process import (
 )
 from backend.app.openevolve_epoch_admission import prepare_initial_epoch
 from backend.app.openevolve_epoch_completion import complete_initial_epoch
+from backend.app.openevolve_failure_diagnostic import emit_failure
 from backend.app.openevolve_models import StrategySearchSpec
 from backend.app.openevolve_operational_admission import (
     check_controller_claim,
@@ -176,6 +177,7 @@ def run_initial_epoch(factory, fence, *, runtime, schedule, settings):
             result = service.serve()
             running.finish(on_stopped=stopped)
         except BaseException as original:
+            emit_failure("before_cleanup", service, running, original)
             if service is not None:
                 service.disconnect()
             if running is not None:
@@ -185,6 +187,8 @@ def run_initial_epoch(factory, fence, *, runtime, schedule, settings):
                     running.finish(on_stopped=stopped, no_reader=True)
                 except BaseException as cleanup:
                     raise original from cleanup
+                finally:
+                    emit_failure("after_cleanup", service, running, original)
             raise
         if not running.original_deadline_completion:
             raise ProcessError("oe_controller_incomplete_original_deadline")

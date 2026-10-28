@@ -399,3 +399,44 @@ def test_import_retry_diagnostics_export_only_closed_states(tmp_path):
     path.write_text("<!DOCTYPE x><testsuite/>")
     with pytest.raises(ValueError):
         import_retry_diagnostics(path)
+
+
+def test_import_status_diagnostic_is_failure_only_bounded_and_redacted(tmp_path):
+    from script.factor_browser_acceptance import import_status_diagnostics
+
+    path = tmp_path / "report.xml"
+    root = ET.Element("testsuite")
+    case = ET.SubElement(root, "testcase", name="private")
+    failure = ET.SubElement(case, "failure")
+    marker = "FACTOR_IMPORT_STATUS_DIAGNOSTIC_V1:http=200;status=queued;error=factor_busy;generation=1;envelope=false;binding=false"
+    failure.text = "private path/id/hash " + marker
+    ET.SubElement(case, "system-out").text = marker.replace(
+        "generation=1", "generation=2"
+    )
+    ET.ElementTree(root).write(path)
+    assert import_status_diagnostics(path) == [
+        {
+            "case_index": 0,
+            "http_status": 200,
+            "status": "queued",
+            "error": "factor_busy",
+            "generation": 1,
+            "envelope": False,
+            "binding": False,
+        }
+    ]
+    assert "private" not in str(import_status_diagnostics(path))
+    for invalid in (
+        marker.replace("generation=1", "generation=4"),
+        marker.replace("factor_busy", "factor_busy_private"),
+        marker.replace("http=200", "http=999"),
+        marker.replace("status=queued", "status=private"),
+        marker + ";id=private",
+        marker + "_private",
+    ):
+        failure.text = invalid
+        ET.ElementTree(root).write(path)
+        assert import_status_diagnostics(path) == []
+    path.write_text("<!DOCTYPE x><testsuite/>")
+    with pytest.raises(ValueError):
+        import_status_diagnostics(path)

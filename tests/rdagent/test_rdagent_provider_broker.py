@@ -167,7 +167,9 @@ def broker(monkeypatch, tmp_path):
         "controller_peer": object(),
         "original_deadline": time.monotonic() + 10,
     }
-    return SimpleNamespace(state=state, args=args, fence=fence, factory=object())
+    return SimpleNamespace(
+        state=state, args=args, fence=fence, factory=object(), binding=binding
+    )
 
 
 def test_started_is_retained_before_request_and_stopped_before_success(broker):
@@ -255,3 +257,50 @@ def test_provider_handler_passes_same_peer_to_fixed_broker_guard(monkeypatch):
     assert authorized == [peer]
     assert seen[0]["controller_peer"] is peer
     assert "revalidate_controller" not in seen[0]
+
+
+def test_embedding_primitive_reaches_completed_broker_with_absent_output(
+    broker, monkeypatch
+):
+    from packages.rdagent_provider.contracts import RDProviderEmbeddingRequest
+    from tests.rdagent_provider.test_embedding_accounting import response_from_sdk
+
+    binding = broker.binding
+    request = RDProviderEmbeddingRequest(
+        model_profile_id=binding.profile_id,
+        model_binding_sha256=binding.sha256,
+        model=binding.embedding_model,
+        dimensions=binding.embedding_dimensions,
+        inputs=("actual final feedback",),
+    )
+    original = module.execute
+
+    def sdk(actual, **kwargs):
+        assert actual == request
+        # Keep the fixture's physical callback ordering; response validation and
+        # accounting use real production code, DB/process authority are doubles.
+        original(actual, **kwargs)
+        response = response_from_sdk(
+            actual,
+            {
+                "data": [{"object": "embedding", "index": 0, "embedding": [1.0, 0.0]}],
+                "usage": {"prompt_tokens": 100, "total_tokens": 100},
+            },
+        )
+        return SimpleNamespace(vectors=response.vectors, **response.usage.model_dump())
+
+    monkeypatch.setattr(module, "execute", sdk)
+    args = dict(
+        broker.args,
+        protocol=request.schema_version,
+        request_bytes=canonical_bytes(request.schema_version, request),
+    )
+    _, raw = module.submit_provider_request(broker.factory, broker.fence, **args)
+    import json
+
+    usage = json.loads(raw)["usage"]
+    assert usage["output_tokens"] is None
+    assert usage["input_tokens"] == usage["total_tokens"] == 100
+    assert usage["billing_status"] == "unknown"
+    assert broker.state.calls == 1 and broker.state.outcomes == ["completed"]
+    assert set(broker.state.receipts) == {"intent", "started", "stopped"}

@@ -55,9 +55,19 @@ def expected_usage(protocol, request, response, binding):
     usage = response.usage
     if any(
         value is None
-        for value in (usage.input_tokens, usage.output_tokens, usage.total_tokens)
+        for value in (
+            (usage.input_tokens, usage.output_tokens, usage.total_tokens)
+            if request.kind == "chat"
+            else (usage.input_tokens, usage.total_tokens)
+        )
     ):
         raise ValueError("Missing provider usage cannot complete a transport")
+    # Embeddings report input/total only; absence of completion tokens is part
+    # of that protocol, not missing billing evidence and never a fabricated zero.
+    if request.kind == "embedding" and (
+        usage.output_tokens is not None or usage.input_tokens != usage.total_tokens
+    ):
+        raise ValueError("Embedding usage must report equal input/total only")
     if usage.usage_source != (
         "synthetic_provider" if binding.synthetic else "provider"
     ):

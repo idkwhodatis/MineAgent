@@ -114,7 +114,7 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert "MINEAGENT_PROVIDER_SDK_PYTHON" in workflow
     assert '"tests/rdagent_provider/**"' in workflow
     assert "python -m pytest tests/rdagent_provider -q -p no:cacheprovider" in workflow
-    assert "assert len(cases)==117" in workflow
+    assert "assert len(cases)==137" in workflow
     assert "var/numeric-proof/provider-outcomes.xml" in workflow
     assert (
         workflow.index("Install isolated host SDK")

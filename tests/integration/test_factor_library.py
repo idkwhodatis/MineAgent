@@ -497,3 +497,88 @@ def test_execution_record_navigation_is_separate_and_owner_scoped(
     assert (
         api.get(path, headers=owner_headers, params={"limit": 101}).status_code == 422
     )
+
+
+def test_import_prepublication_owner_lock_requeues_then_same_admission_succeeds(
+    api, owner_headers, owner, migrated_engine, settings
+):
+    """Two real sessions: lock admission cannot execute/archive-publish the body."""
+    from sqlalchemy.orm import sessionmaker
+
+    from backend.app.factor_import_models import (
+        FactorImportAdmission,
+        FactorImportEnvelope,
+    )
+    from backend.app.factor_services import try_lock
+    from workers.research.factor_import import process_one
+
+    original = post(api, owner_headers, "factors", manual())
+    assert original.status_code == 201
+    exported = post(
+        api,
+        owner_headers,
+        f"factor-versions/{original.json()['version']['id']}/exports",
+        {},
+    )
+    assert exported.status_code == 201
+    archive = api.get(exported.json()["download_url"], headers=owner_headers).content
+    settings.factor_import_enabled = True
+    settings.factor_parser_image_id = "sha256:" + "a" * 64
+    queued = api.post(
+        "/api/v1/factor-packages/import",
+        headers={
+            **owner_headers,
+            "Content-Type": "application/zip",
+            "Idempotency-Key": uuid4().hex,
+        },
+        content=archive,
+    )
+    assert queued.status_code == 202
+    admission_id = UUID(queued.json()["id"])
+    factory = sessionmaker(bind=migrated_engine, expire_on_commit=False)
+    parser_calls = []
+
+    class NoNativeParser:
+        def __init__(self, **kwargs):
+            parser_calls.append("constructed")
+            raise AssertionError("Code-only import must never construct parser")
+
+    with Session(migrated_engine) as blocker:
+        try_lock(blocker, f"submit:{owner.user.id}")
+        assert process_one(
+            settings, admission_id, factory=factory, parser_factory=NoNativeParser
+        )
+        with factory() as observed:
+            row = observed.get(FactorImportAdmission, admission_id)
+            assert (row.status, row.generation, row.error_code) == (
+                "queued",
+                1,
+                "factor_busy",
+            )
+            assert row.lease_token is None and row.lease_expires_at is None
+            assert row.result_envelope_id is None
+            assert (
+                observed.scalar(
+                    select(FactorImportEnvelope).filter_by(
+                        owner_id=owner.user.id,
+                        archive_sha256=row.archive_sha256,
+                    )
+                )
+                is None
+            )
+            original_hash = row.archive_sha256
+        assert parser_calls == []
+        blocker.rollback()
+    assert process_one(
+        settings, admission_id, factory=factory, parser_factory=NoNativeParser
+    )
+    with factory() as observed:
+        row = observed.get(FactorImportAdmission, admission_id)
+        assert (row.status, row.generation, row.archive_sha256) == (
+            "succeeded",
+            2,
+            original_hash,
+        )
+        assert row.result_envelope_id is not None
+        assert row.error_code is None
+    assert parser_calls == []

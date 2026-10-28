@@ -1000,6 +1000,7 @@ def process_one(
         engine = create_db_engine(settings)
         factory = session_factory(engine)
     claim = None
+    publication_entered = False
     try:
         with factory() as session:
             claim = claim_one(session, admission_id)
@@ -1015,6 +1016,7 @@ def process_one(
                 peak_bytes=256 * 1024 * 1024,
                 peak_files=100,
             ) as admission:
+                publication_entered = True
                 row = fenced_admission(session, claim)
                 archive = owned(
                     session, FactorObject, claim.owner_id, row.archive_object_id
@@ -1032,7 +1034,16 @@ def process_one(
         if claim is None:
             raise
         code = getattr(exc, "code", "factor_import_failed")
-        _outcome(factory, claim, code, settings)
+        # Only a known-unexecuted publication admission collision is eligible.
+        # A busy error from the body or context exit may follow parser/publication
+        # work and must never authorize replay. _outcome independently reconciles
+        # committed envelopes, fences generation, proves quiescence and caps retry.
+        retry = (
+            not publication_entered
+            and isinstance(exc, DomainError)
+            and exc.code == "factor_busy"
+        )
+        _outcome(factory, claim, code, settings, retry=retry)
         return True
     finally:
         if engine is not None:

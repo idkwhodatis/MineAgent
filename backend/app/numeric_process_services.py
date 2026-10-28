@@ -160,6 +160,25 @@ def record_numeric_stopped(
         _receipt(session, admission, "extraction", extraction.model_dump(mode="json"))
     state.status, state.updated_at = "stopped", utcnow()
     session.flush()
+    if with_output:
+        # Only the current-fence path above has reread the exact protected stop,
+        # extraction and opaque bytes. Containment-only recovery cannot settle.
+        # Keep receipt/state and full conservative process charge in one TX.
+        from backend.app.research_broker_models import ResearchBudgetReservation
+        from backend.app.research_broker_services import settle_budget
+        from packages.research_runtime.budget_contracts import BudgetVector
+
+        reservation = session.get(ResearchBudgetReservation, admission.reservation_id)
+        if reservation is None or reservation.purpose != "process_unit":
+            raise ProcessError("numeric_process_reservation")
+        _scope(reservation, fence)
+        settle_budget(
+            session,
+            fence,
+            admission.reservation_id,
+            charge=BudgetVector.model_validate(reservation.amounts),
+            outcome="conservative_unknown",
+        )
 
 
 @dataclass(frozen=True)
