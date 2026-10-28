@@ -272,10 +272,12 @@ def test_frontend_and_exporter_share_exact_fixed_vocabulary():
     assert f'"{NOTE_HTTP_PREFIX}"' in source
 
 
+@pytest.mark.parametrize("source_suite", ["engine-results", "structured-results"])
 def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
     tmp_path,
+    source_suite,
 ):
-    directory = tmp_path / "frontend/tests/engine-results-acceptance"
+    directory = tmp_path / "frontend/tests" / (source_suite + "-acceptance")
     directory.mkdir(parents=True)
     (directory / "results.spec.ts").write_text("\n" * 30)
     private = secrets.token_urlsafe(48)
@@ -290,7 +292,7 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
     )
     source.write_bytes(ET.tostring(report))
     assert failure_sites(source, tmp_path)[0]["source_frames"] == []
-    result = failure_sites(source, tmp_path, source_suite="engine-results")
+    result = failure_sites(source, tmp_path, source_suite=source_suite)
     assert result == [
         {
             "case_index": 0,
@@ -298,7 +300,7 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
             "source_frames": [{"file": "results.spec.ts", "line": 12, "column": 5}],
         }
     ]
-    projected = failure_diagnostic(source, tmp_path, source_suite="engine-results")
+    projected = failure_diagnostic(source, tmp_path, source_suite=source_suite)
     assert private not in projected and "https" not in projected
     for suite in ("../engine-results-acceptance", "/tmp", "unknown", None):
         assert failure_diagnostic(source, tmp_path, source_suite=suite).endswith(
@@ -306,14 +308,21 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
         )
 
 
+@pytest.mark.parametrize(
+    ("source_name", "message"),
+    [
+        ("engine_result_browser.py", "Actual configured result browser failed"),
+        ("structured_result_browser.py", "Actual structured result browser failed"),
+    ],
+)
 def test_actual_result_browser_failure_stays_failed_after_safe_projection(
-    tmp_path, capsys
+    tmp_path, capsys, source_name, message
 ):
     import ast
     from types import SimpleNamespace
 
     root = Path(__file__).resolve().parents[2]
-    tree = ast.parse((root / "tests/integration/engine_result_browser.py").read_text())
+    tree = ast.parse((root / "tests/integration" / source_name).read_text())
     guarded = next(
         node
         for node in ast.walk(tree)
@@ -342,7 +351,7 @@ def test_actual_result_browser_failure_stays_failed_after_safe_projection(
         "secrets": secrets,
         "failure_diagnostic": failure_diagnostic,
     }
-    with pytest.raises(RuntimeError, match="^Actual configured result browser failed$"):
+    with pytest.raises(RuntimeError, match="^" + re.escape(message) + "$"):
         exec(  # noqa: S102 - trusted repository AST only
             compile(
                 ast.Module(body=[guarded], type_ignores=[]), "browser-gate", "exec"

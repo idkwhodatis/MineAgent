@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.factor_models import FactorVersion
 from backend.app.main import create_app
 from backend.app.structured_factor_models import StructuredExecution
+from script.ci_browser_diagnostics import failure_diagnostic
 from script.ci_process_owner import ProcessOwner
 
 
@@ -84,21 +85,31 @@ def assert_actual_structured_result_browser(
                 tmp_path / "structured-results-browser.xml"
             ),
         )
-        process.run(
-            [
-                node,
-                str(root / "frontend/node_modules/@playwright/test/cli.js"),
-                "test",
-                "-c",
-                "playwright.structured-results.config.ts",
-                "--reporter=junit",
-                "--output",
-                str(tmp_path / ("browser-" + secrets.token_hex(4))),
-            ],
-            cwd=root / "frontend",
-            env=env,
-            seconds=120,
-        )
+        try:
+            process.run(
+                [
+                    node,
+                    str(root / "frontend/node_modules/@playwright/test/cli.js"),
+                    "test",
+                    "-c",
+                    "playwright.structured-results.config.ts",
+                    "--reporter=junit",
+                    "--output",
+                    str(tmp_path / ("browser-" + secrets.token_hex(4))),
+                ],
+                cwd=root / "frontend",
+                env=env,
+                seconds=120,
+            )
+        except Exception:  # noqa: BLE001 - raw browser output remains private
+            print(
+                failure_diagnostic(
+                    tmp_path / "structured-results-browser.xml",
+                    root,
+                    source_suite="structured-results",
+                )
+            )
+            raise RuntimeError("Actual structured result browser failed") from None
         # A zero exit after filtering/listing/skipping is not acceptance.
         from xml.etree import ElementTree as ET
 

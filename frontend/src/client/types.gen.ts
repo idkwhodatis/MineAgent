@@ -191,7 +191,7 @@ export type BackupReceipt = {
     /**
      * Schema Revision
      */
-    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger' | '012_factor_library' | '013_factor_import' | '014_run_identity' | '015_neutral_primitives' | '016_process_versioning' | '017_numeric_process_boundary' | '018_rd_source_persistence' | '019_native_hdf_storage' | '020_rd_controller' | '021_execution_snapshots' | '022_factor_analysis' | '023_rd_submissions' | '024_openevolve_initial' | '025_structured_factor_strategy' | '026_rd_seeded_submissions' | '027_rd_controller_v3';
+    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger' | '012_factor_library' | '013_factor_import' | '014_run_identity' | '015_neutral_primitives' | '016_process_versioning' | '017_numeric_process_boundary' | '018_rd_source_persistence' | '019_native_hdf_storage' | '020_rd_controller' | '021_execution_snapshots' | '022_factor_analysis' | '023_rd_submissions' | '024_openevolve_initial' | '025_structured_factor_strategy' | '026_rd_seeded_submissions' | '027_rd_controller_v3' | '027a_contract_repairs';
 };
 
 /**

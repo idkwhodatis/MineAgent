@@ -46,10 +46,19 @@ copy_fixture() {
   local container="$1" name
   [[ "$container" =~ ^[0-9a-f]{64}$ ]]
   # Let the configured nonroot container user own the writable private folder.
-  # Copy only fixed readable source files; never import host directory metadata.
+  # Write in the container mount namespace: daemon-side docker cp cannot reliably
+  # address this private /tmp tmpfs. No host metadata or root user is imported.
   "${docker_cli[@]}" exec "$container" mkdir -m700 /tmp/mineagent-rd-compose
   for name in ci_rd_compose_inside.py rd_provider_fixture.py rd_configured_dataset_fixture.py rd_submission_fixture.py; do
-    "${docker_cli[@]}" cp "$fixture/$name" "$container:/tmp/mineagent-rd-compose/$name"
+    "${docker_cli[@]}" exec -i "$container" python -c '
+import os, sys
+raw = sys.stdin.buffer.read(1048577)
+if len(raw) > 1048576:
+    raise ValueError("Fixture source exceeds fixed bound")
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, "wb") as output:
+    output.write(raw)
+' "/tmp/mineagent-rd-compose/$name" < "$fixture/$name"
   done
 }
 api=$("${compose[@]}" ps --quiet api)

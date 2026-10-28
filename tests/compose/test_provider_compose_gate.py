@@ -62,7 +62,9 @@ def test_gate_runs_actual_application_subset_and_real_legacy_startup_images():
         and "--user root" not in shell
     )
     assert 'exec "$container" mkdir -m700 /tmp/mineagent-rd-compose' in shell
-    assert 'cp "$fixture/$name" "$container:/tmp/mineagent-rd-compose/$name"' in shell
+    assert 'exec -i "$container" python -c' in shell
+    assert '\' "/tmp/mineagent-rd-compose/$name" < "$fixture/$name"' in shell
+    assert '"${docker_cli[@]}" cp ' not in shell
     assert shell.count('copy_fixture "$api"') == 2 and 'copy_fixture "$worker"' in shell
     assert shell.index("python -m script.ci_compose_cleanup") < shell.index(
         'cp "$TRADEGRAD_STATE_ROOT/normal-compose-provider.json"'
@@ -207,3 +209,96 @@ docker_cli=(fake_docker)
         timeout=5,
     )
     assert result.returncode == expected
+
+
+@pytest.mark.parametrize("failure", ["none", "mkdir", "write", "oversize"])
+def test_fixture_transfer_uses_container_namespace_and_stops_on_failure(
+    tmp_path, failure
+):
+    """Execute the actual shell function with a daemon stand-in, never Docker.
+
+    Its daemon-side cp is deliberately unsupported; exec maps the private mount
+    to a disposable directory and executes the actual Python writer unchanged.
+    """
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    names = (
+        "ci_rd_compose_inside.py",
+        "rd_provider_fixture.py",
+        "rd_configured_dataset_fixture.py",
+        "rd_submission_fixture.py",
+    )
+    for index, name in enumerate(names):
+        (fixture / name).write_bytes(
+            b"x" * 1048577
+            if failure == "oversize" and index == 0
+            else b"# exact source\r\n" + bytes([index, 255]) + b"\n"
+        )
+    fake = tmp_path / "docker.py"
+    fake.write_text("""import json, os, pathlib, subprocess, sys
+args = sys.argv[1:]
+root = pathlib.Path(os.environ["FAKE_ROOT"])
+with (root / "calls").open("a") as log:
+    log.write(json.dumps(args) + "\\n")
+assert args.pop(0) == "exec", "daemon copy must not be used"
+interactive = bool(args and args[0] == "-i")
+if interactive:
+    args.pop(0)
+assert args.pop(0) == "a" * 64
+if args[0] == "mkdir":
+    assert not interactive and args == ["mkdir", "-m700", "/tmp/mineagent-rd-compose"]
+    if os.environ["FAILURE"] == "mkdir":
+        sys.exit(17)
+    (root / "private").mkdir(mode=0o700)
+else:
+    assert interactive and args[:2] == ["python", "-c"] and len(args) == 4
+    destination = pathlib.PurePosixPath(args[3])
+    assert str(destination.parent) == "/tmp/mineagent-rd-compose"
+    target = root / "private" / destination.name
+    if os.environ["FAILURE"] == "write":
+        target.write_bytes(b"must not overwrite")
+    sys.exit(subprocess.run([sys.executable, "-c", args[2], str(target)],
+                           stdin=sys.stdin.buffer, check=False).returncode)
+""")
+    shell = (ROOT / "script/ci_rd_provider_compose.sh").read_text()
+    function = (
+        "copy_fixture() {" + shell.split("copy_fixture() {", 1)[1].split("\napi=", 1)[0]
+    )
+    import os
+    import shlex
+
+    script = (
+        "set -euo pipefail\n"
+        + f"docker_cli=({shlex.quote(sys.executable)} {shlex.quote(str(fake))})\n"
+        + f"fixture={shlex.quote(str(fixture))}\n"
+        + function
+        + '\ncopy_fixture "'
+        + "a" * 64
+        + '"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        timeout=10,
+        check=False,
+        env={**os.environ, "FAKE_ROOT": str(tmp_path), "FAILURE": failure},
+    )
+    calls = [json.loads(line) for line in (tmp_path / "calls").read_text().splitlines()]
+    if failure == "none":
+        assert result.returncode == 0, result.stderr
+        assert len(calls) == 5
+        assert (tmp_path / "private").stat().st_mode & 0o777 == 0o700
+        assert {p.name for p in (tmp_path / "private").iterdir()} == set(names)
+        for name in names:
+            target = tmp_path / "private" / name
+            assert target.read_bytes() == (fixture / name).read_bytes()
+            assert target.stat().st_mode & 0o777 == 0o600
+    else:
+        assert result.returncode != 0
+        assert len(calls) == (1 if failure == "mkdir" else 2)
+        if failure == "write":
+            assert (
+                tmp_path / "private" / names[0]
+            ).read_bytes() == b"must not overwrite"
+        elif failure == "oversize":
+            assert list((tmp_path / "private").iterdir()) == []

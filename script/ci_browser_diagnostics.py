@@ -212,7 +212,11 @@ def failure_diagnostic(source: Path, root: Path, *, source_suite="e2e") -> str:
 
 def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]:
     # Fixed public source sets only; callers cannot select a filesystem path.
-    suites = {"e2e": "e2e", "engine-results": "engine-results-acceptance"}
+    suites = {
+        "e2e": "e2e",
+        "engine-results": "engine-results-acceptance",
+        "structured-results": "structured-results-acceptance",
+    }
     if type(source_suite) is not str or source_suite not in suites:
         raise ValueError("Unsupported browser source suite")
     if (

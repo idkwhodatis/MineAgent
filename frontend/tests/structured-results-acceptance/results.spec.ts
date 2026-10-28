@@ -96,17 +96,31 @@ test("actual structured pair requires both releases and links factor decisions t
   expect(pair.before.parent_factor_version_id).toBeNull();
   expect(pair.after.parent_factor_version_id).toBeNull();
   for (const side of [pair.before, pair.after]) {
-    expect(side.decisions.length).toBeGreaterThan(0);
+    expect(
+      side.decisions.map((item: { event_seq: number }) => item.event_seq),
+    ).toEqual([0, 1, 2]);
+    const [warmup, signal, hold] = side.decisions;
+    expect(warmup.observation.warmup).toBe(true);
+    expect(warmup.reply.decision.action).toBe("no_decision");
+    expect(warmup.reads).toEqual([]);
+    expect(signal.observation.warmup).toBe(false);
+    expect(signal.reply.decision.action).toBe("rebalance");
+    expect(signal.reads).toHaveLength(3);
+    expect(hold.observation.warmup).toBe(false);
+    expect(hold.reply.decision.action).toBe("hold");
+    expect(hold.reads).toEqual([]);
     expect(side.orders.length).toBeGreaterThan(0);
     expect(side.fills.length).toBeGreaterThan(0);
-    expect(side.decisions[0].reads.length).toBeGreaterThan(0);
+    const warmupElement = page.locator(
+      `[id="structured-${side.execution_id}-decision-${warmup.event_seq}"]`,
+    );
+    await expect(warmupElement).toContainText(warmup.observation.decision_time);
+    await expect(warmupElement).toContainText("warmup");
     const decision = page.locator(
-      `[id="structured-${side.execution_id}-decision-${side.decisions[0].event_seq}"]`,
+      `[id="structured-${side.execution_id}-decision-${signal.event_seq}"]`,
     );
-    await expect(decision).toContainText(
-      side.decisions[0].observation.decision_time,
-    );
-    for (const read of side.decisions[0].reads)
+    await expect(decision).toContainText(signal.observation.decision_time);
+    for (const read of signal.reads)
       await expect(decision).toContainText(String(read.value));
     const fill = side.fills[0];
     const fillElement = page.locator(

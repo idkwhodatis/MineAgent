@@ -116,6 +116,52 @@ const render = (view: StructuredExecution) =>
       side: "Before",
     }),
   );
+it("keeps retained warmup empty and binds actual factor reads to the later signal", () => {
+  const signal = { ...execution.decisions[0], event_seq: 1 };
+  const warmup: StructuredExecution["decisions"][number] = {
+    ...execution.decisions[0],
+    event_seq: 0,
+    observation: {
+      ...execution.decisions[0].observation,
+      warmup: true,
+      session_date: "2024-01-01",
+      decision_time: "2024-01-01T21:00:00Z",
+    },
+    reads: [],
+    eligible: [],
+    ranking: [],
+    targets: [],
+    reply: {
+      ...execution.decisions[0].reply,
+      decision: {
+        ...execution.decisions[0].reply.decision,
+        action: "no_decision",
+        omitted_positions: "preserve",
+      },
+    },
+  };
+  const html = render({
+    ...execution,
+    decisions: [warmup, signal],
+    orders: execution.orders.map((order) => ({
+      ...order,
+      decision_sequence: 1,
+    })),
+  });
+  const warmupSection = html
+    .split('id="structured-execution-a-decision-0"')[1]
+    .split("</section>")[0];
+  const signalSection = html
+    .split('id="structured-execution-a-decision-1"')[1]
+    .split("</section>")[0];
+  expect(warmupSection).toContain("2024-01-01T21:00:00Z");
+  expect(warmupSection).toContain("warmup");
+  expect(warmupSection).not.toContain("0.12");
+  expect(warmupSection).not.toContain("factor-listing");
+  expect(signalSection).toContain("0.12");
+  expect(signalSection).toContain("factor-listing");
+  expect(html).toContain("Back to decision 1");
+});
 it("withholds every derived value and flag while either side still needs release", () => {
   const html = renderToStaticMarkup(
     createElement(StructuredComparisonPanel, {
