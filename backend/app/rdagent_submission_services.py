@@ -40,7 +40,7 @@ from packages.research_runtime.budget_contracts import BudgetVector
 REVISION = "023_rd_submissions"
 
 
-def resolve_submission_runtime(settings):
+def resolve_submission_profile(settings):
     # Explicit operator configuration after real acceptance, never client authority.
     from backend.app.rdagent_server_profile import RDServerRuntimeProfile
 
@@ -65,6 +65,11 @@ def resolve_submission_runtime(settings):
             "The server RD runtime profile is unsupported",
             409,
         ) from None
+    return profile
+
+
+def resolve_submission_runtime(settings):
+    profile = resolve_submission_profile(settings)
     return profile.runtime, profile.qlib_installed_parent_image_id
 
 
@@ -75,6 +80,7 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -88,7 +94,11 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
     from backend.app.comparison_services import reject_comparison_key
 
     reject_comparison_key(session, owner_id, idempotency_key)
-    runtime, installed_parent = resolve_submission_runtime(settings)
+    selected_profile = resolve_submission_profile(settings)
+    runtime, installed_parent = (
+        selected_profile.runtime,
+        selected_profile.qlib_installed_parent_image_id,
+    )
     return _persist_queued(
         session,
         owner_id,
@@ -97,11 +107,20 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         settings,
         runtime,
         installed_parent,
+        controller_selection=selected_profile.controller_profile,
     )
 
 
 def _persist_queued(
-    session, owner_id, submitted, key, settings, runtime, installed_parent
+    session,
+    owner_id,
+    submitted,
+    key,
+    settings,
+    runtime,
+    installed_parent,
+    *,
+    controller_selection=None,
 ):
     """Internal writer after server runtime selection; no runtime parameter on API.
 
@@ -126,6 +145,7 @@ def _persist_queued(
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -143,7 +163,13 @@ def _persist_queued(
         )
     selected_profile_sha = digest(
         RDServerRuntimeProfile(
-            runtime=runtime, qlib_installed_parent_image_id=installed_parent
+            runtime=runtime,
+            qlib_installed_parent_image_id=installed_parent,
+            **(
+                {}
+                if controller_selection is None
+                else {"controller_profile": controller_selection}
+            ),
         )
     )
     if not checked.can_submit or checked.runtime_profile_sha256 != selected_profile_sha:
@@ -167,6 +193,7 @@ def _persist_queued(
         runtime,
         installed_parent,
         expected_input_sha256=checked.frozen_input_sha256,
+        controller_selection=controller_selection,
     )
     row = FactorResearchSubmission(
         id=uuid4(),
@@ -206,6 +233,7 @@ def _persist_queued_graph(
     expected_input_sha256,
     model_binding=None,
     steer_snapshot=None,
+    controller_selection=None,
 ):
     """Shared flush-only graph, called after a versioned declaration preflight.
 
@@ -260,6 +288,8 @@ def _persist_queued_graph(
         }
     elif steer_snapshot is not None:
         raise DomainError("request_drift", "Fixture cannot consume model guidance", 409)
+    if controller_selection is not None:
+        extra["controller_profile"] = controller_selection
     config = config_type(
         **extra,
         input=frozen,

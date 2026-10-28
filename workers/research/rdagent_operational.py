@@ -54,6 +54,11 @@ from backend.app.research_lifecycle import neutral_transaction
 from backend.app.research_process_models import ResearchProcessState
 from packages.factors.contracts import canonical_bytes
 from packages.rdagent_adapter.contracts import FactorResearchConfig
+from packages.rdagent_adapter.controller_profile import (
+    controller_profile,
+    controller_wall_milliseconds,
+    controller_wall_seconds,
+)
 from packages.rdagent_adapter.provider_bootstrap import RDProviderSeededBootstrap
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.fences import AttemptFence
@@ -89,6 +94,7 @@ def require_maintained_revision(session):
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -210,6 +216,12 @@ def _execute_controller(factory, fence, settings, *, handler_type):
     with shared_lifecycle(factory.kw["bind"], settings.storage_root):
         with neutral_transaction(factory, fence, resource_scope="processes") as session:
             _, bootstrap = expected_operational_bootstrap(session, fence)
+            if controller_profile(
+                bootstrap.config
+            ) == "mineagent.rdagent-orchestrator.v3" and session.scalars(
+                text("SELECT version_num FROM alembic_version")
+            ).all() != ["027_rd_controller_v3"]:
+                raise ProcessError("rd_controller_composed_revision")
         from backend.app.rdagent_seed_controller import reread_bootstrap_parent
         from packages.rdagent_adapter.seeded_bootstrap import (
             RDSeededOperationalBootstrap,
@@ -236,7 +248,9 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 logical_key="rd-controller:" + str(binding.id),
                 amounts=BudgetVector(
                     process_slots=1,
-                    wall_milliseconds=60000,
+                    wall_milliseconds=controller_wall_milliseconds(
+                        controller_profile(bootstrap.config)
+                    ),
                     storage_bytes=STORAGE_FLOOR,
                 ),
             )
@@ -247,7 +261,7 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 role="rd_orchestrator",
                 logical_operation_id=binding.id,
                 launch_ordinal=1,
-                profile="mineagent.rdagent-orchestrator.v2",
+                profile=controller_profile(bootstrap.config),
                 input_sha256=bootstrap.sha256,
                 reservation_id=held.id,
                 image_id=bootstrap.config.runtime.orchestrator_image,
@@ -265,7 +279,8 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 bootstrap_size_bytes=len(canonical_bytes(bootstrap)),
                 input_layout="single_bootstrap_json_no_other_mounts",
                 issued_at=now,
-                not_after=now + timedelta(seconds=60),
+                not_after=now
+                + timedelta(seconds=controller_wall_seconds(admission.profile)),
             )
             persist_controller_intent(session, fence, intent)
             bind_controller_launch(session, fence, admission_id=admission.id)

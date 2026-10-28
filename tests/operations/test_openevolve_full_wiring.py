@@ -91,6 +91,7 @@ def composed_snapshot(revision):
         "024_openevolve_initial",
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
     ],
 )
 def test_full_empty_cold_dispatch_preserves_exact_registered_tuples(tmp_path, revision):
@@ -130,6 +131,7 @@ def test_full024_rejects_unknown_or_historical_mixed_tuple(tmp_path, field, sche
         "024_openevolve_initial",
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
     ],
 )
 def test_actual_source_snapshot_envelope_survives_full_cold_validation(
@@ -167,3 +169,39 @@ def test_actual_source_snapshot_envelope_survives_full_cold_validation(
     assert _snapshot_manifest_keys(value, BackupLimits()) == set()
     _, trees = _protected(value, {}, {}, time.monotonic() + 10)
     assert "factors" in trees
+
+
+@pytest.mark.parametrize(
+    "revision,field,schema",
+    [
+        (
+            "027_rd_controller_v3",
+            "research_closure",
+            "mineagent.research-restore-closure.v10",
+        ),
+        (
+            "027_rd_controller_v3",
+            "rd_source_closure",
+            "mineagent.rd-source-restore-closure.v5",
+        ),
+        (
+            "026_rd_seeded_submissions",
+            "research_closure",
+            "mineagent.research-restore-closure.v11",
+        ),
+        (
+            "026_rd_seeded_submissions",
+            "rd_source_closure",
+            "mineagent.rd-source-restore-closure.v6",
+        ),
+    ],
+)
+def test_controller_revision_cannot_mix_old_and_new_closure_authority(
+    tmp_path, revision, field, schema
+):
+    value = composed_snapshot(revision)
+    value[field]["schema_version"] = schema
+    with pytest.raises(BackupError):
+        _validate_references(tmp_path, [], value, BackupLimits())
+    with pytest.raises(RetentionError):
+        _protected(value, {}, {}, time.monotonic() + 10)

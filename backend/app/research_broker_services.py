@@ -106,6 +106,35 @@ def reserve_budget(
     amounts: BudgetVector,
     settings=None,
 ):
+    budget, previous, held = _budget_reservation_preflight(
+        session,
+        fence,
+        purpose=purpose,
+        logical_key=logical_key,
+        amounts=amounts,
+        settings=settings,
+    )
+    return _write_budget_reservation(
+        session,
+        fence,
+        purpose=purpose,
+        logical_key=logical_key,
+        amounts=amounts,
+        budget=budget,
+        previous=previous,
+        held=held,
+    )
+
+
+def _budget_reservation_preflight(
+    session,
+    fence,
+    *,
+    purpose: str,
+    logical_key: str,
+    amounts: BudgetVector,
+    settings=None,
+):
     budget = _budget(session, fence)
     if purpose == "engine_mutation":
         from backend.app.models import ResearchRun
@@ -140,7 +169,7 @@ def reserve_budget(
     if row is not None:
         if row.amounts != amounts.model_dump():
             raise BrokerAbort("request_drift")
-        return row
+        return budget, row, None
     held = BudgetVector.model_validate(budget.reserved).add(amounts)
     if not BudgetVector.model_validate(budget.limits).covers(
         BudgetVector.model_validate(budget.used).add(held)
@@ -150,6 +179,14 @@ def reserve_budget(
         from backend.app.openevolve_process_quota import admit_process_capacity
 
         admit_process_capacity(session, fence, amounts, settings)
+    return budget, None, held
+
+
+def _write_budget_reservation(
+    session, fence, *, purpose, logical_key, amounts, budget, previous, held
+):
+    if previous is not None:
+        return previous
     row = ResearchBudgetReservation(
         id=uuid4(),
         **_values(fence),

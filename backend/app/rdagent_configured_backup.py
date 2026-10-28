@@ -20,7 +20,14 @@ from packages.strategy_sdk import JsonLimits, parse_json
 
 
 def validate_configured_input_closure(
-    witnesses, *, tables, datasets, read_bytes, max_rows=100000, provider_config=False
+    witnesses,
+    *,
+    tables,
+    datasets,
+    read_bytes,
+    max_rows=100000,
+    provider_config=False,
+    composed_controller=False,
 ):
     """read_bytes(storage_key, maximum) must reject unsafe paths/oversized files.
 
@@ -84,6 +91,7 @@ def validate_configured_input_closure(
             spec["config"],
             owner_id=spec["owner_id"],
             provider_config=provider_config,
+            composed_controller=composed_controller,
             json_mode=True,
         )
         policy = ConfiguredSourcePolicy.model_validate_json(

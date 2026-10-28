@@ -10,6 +10,11 @@ import re
 from datetime import date
 from pathlib import Path
 
+from rd_composed_profile_fixture import (
+    COMPOSED_WALL_MS,
+    PROFILE,
+    assert_composed_controller,
+)
 from rd_configured_dataset_fixture import persist_configured_dataset
 from sqlalchemy.orm import sessionmaker
 
@@ -92,12 +97,13 @@ def prepare_configured_generation(engine, settings, owner_id):
                 "interpretation": "unsigned",
             },
             "runtime": runtime.model_dump(mode="json"),
+            "controller_profile": PROFILE,
             "budget": BudgetVector(
                 calls=32,
                 tokens=200000,
                 mutation_slots=1,
                 evaluator_executions=1,
-                wall_milliseconds=240000,
+                wall_milliseconds=COMPOSED_WALL_MS,
                 storage_bytes=512 * 1024**2,
                 process_slots=4,
             ).model_dump(),
@@ -137,4 +143,6 @@ def run_configured_generation(engine, settings, owner_id):
 
     with diagnose_rd_rpc(), diagnose_direct_outcomes():
         assert execute_configured_controller(factory, fence, settings) == fence.run_id
+    with factory() as session:
+        assert_composed_controller(session, fence.run_id)
     return factory, fence

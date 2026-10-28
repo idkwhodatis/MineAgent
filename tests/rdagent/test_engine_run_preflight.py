@@ -64,7 +64,9 @@ def test_bool_not_integer_limits(request_body, field):
         RDSubmissionRequest.model_validate(raw)
 
 
-@pytest.mark.parametrize("field", ["runtime", "provider", "orchestrator_image"])
+@pytest.mark.parametrize(
+    "field", ["runtime", "provider", "orchestrator_image", "controller_profile"]
+)
 def test_no_user_runtime_or_provider_authority(request_body, field):
     raw = request_body.model_dump(mode="json")
     raw[field] = "chosen-by-caller"
@@ -143,7 +145,8 @@ def test_receipt_uses_actual_run_statuses(status):
 
 
 def test_fixture_task_rejection_is_not_silent_source_substitution(
-    setup_source, request_body  # noqa:F811
+    setup_source,  # noqa: F811
+    request_body,
 ):
     s = setup_source
     result = preflight(s.session, s.fence.owner_id, request_body, s.settings)

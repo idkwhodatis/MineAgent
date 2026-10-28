@@ -27,6 +27,7 @@ SCHEMA_V7 = "mineagent.research-restore-closure.v7"
 SCHEMA_V8 = "mineagent.research-restore-closure.v8"
 SCHEMA_V9 = "mineagent.research-restore-closure.v9"
 SCHEMA_V10 = "mineagent.research-restore-closure.v10"
+SCHEMA_V11 = "mineagent.research-restore-closure.v11"
 NAMESPACES = frozenset({"research-objects", "research-processes"})
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 # Literal field inventories are intentionally not derived from ORM reflection:
@@ -70,6 +71,7 @@ def closure_fields(schema):
         SCHEMA_V8,
         SCHEMA_V9,
         SCHEMA_V10,
+        SCHEMA_V11,
     }:
         return FIELDS_V4
     if schema in {SCHEMA_V2, SCHEMA_V3}:
@@ -113,13 +115,14 @@ def validate_path(key, *, schema=None):
         SCHEMA_V8,
         SCHEMA_V9,
         SCHEMA_V10,
+        SCHEMA_V11,
     }:
         from packages.rdagent_adapter.object_identity import KIND, parse_storage_key
 
         OBJECT_KINDS = {**OBJECT_KINDS, KIND: ("json", "application/json")}
     elif schema not in {None, SCHEMA, SCHEMA_V2, SCHEMA_V3}:
         raise ValueError("Unsupported research path grammar revision")
-    if schema in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+    if schema in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
         from packages.rdagent_adapter.execution_object_identity import (
             KINDS,
             parse_storage_key,
@@ -129,14 +132,14 @@ def validate_path(key, *, schema=None):
             **OBJECT_KINDS,
             **{kind: ("json", "application/json") for kind in KINDS},
         }
-    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
         from packages.openevolve_adapter.object_identity import KINDS, parse_storage_key
 
         OBJECT_KINDS = {
             **OBJECT_KINDS,
             **{kind: ("json", "application/json") for kind in KINDS},
         }
-    if schema == SCHEMA_V10:
+    if schema in {SCHEMA_V10, SCHEMA_V11}:
         from packages.rdagent_provider.object_identity import KINDS, parse_storage_key
 
         OBJECT_KINDS = {
@@ -164,14 +167,16 @@ def validate_path(key, *, schema=None):
     if len(parts) == 3:
         return
     if (
-        schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+        schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
         and len(parts) == 5
         and parts[3:] == ["output", "native-export.bin"]
     ):
         return
-    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10} and parts[3:] == ["manifest.json"]:
+    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11} and parts[3:] == [
+        "manifest.json"
+    ]:
         return
-    if schema in {SCHEMA_V9, SCHEMA_V10} and parts[3:] in (
+    if schema in {SCHEMA_V9, SCHEMA_V10, SCHEMA_V11} and parts[3:] in (
         ["output", "result.json"],
         ["inputs"],
         ["inputs", "strategy.json"],
@@ -185,10 +190,12 @@ def validate_path(key, *, schema=None):
             in (
                 (
                     {"result.h5", "values.parquet", "rows.json", "analysis.json"}
-                    if schema in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+                    if schema
+                    in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
                     else {"result.h5", "values.parquet", "rows.json"}
                 )
-                if schema in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+                if schema
+                in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
                 else {"result.h5", "values.parquet"}
             )
         ):
@@ -204,7 +211,15 @@ def validate_path(key, *, schema=None):
         "stop.json",
         "extraction.json",
     }
-    if schema in {SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+    if schema in {
+        SCHEMA_V5,
+        SCHEMA_V6,
+        SCHEMA_V7,
+        SCHEMA_V8,
+        SCHEMA_V9,
+        SCHEMA_V10,
+        SCHEMA_V11,
+    }:
         allowed_journals.add("child.json")
     if len(parts) != 5 or parts[4] not in allowed_journals:
         raise ValueError("Unknown neutral process journal")
@@ -223,6 +238,7 @@ def read_closure(connection, maximum_rows, *, revision, maximum_bytes=32_000_000
         SCHEMA_V8,
         SCHEMA_V9,
         SCHEMA_V10,
+        SCHEMA_V11,
     }:
         raise ValueError("Unsupported neutral research closure capability")
     count = size = 0
@@ -290,6 +306,7 @@ def _indexes(closure, maximum_rows):
             SCHEMA_V8,
             SCHEMA_V9,
             SCHEMA_V10,
+            SCHEMA_V11,
         }
     ):
         raise ValueError("Unsupported neutral research closure")
@@ -338,12 +355,17 @@ def _indexes(closure, maximum_rows):
         SCHEMA_V8,
         SCHEMA_V9,
         SCHEMA_V10,
+        SCHEMA_V11,
     } and any(
         row.get("schema_version", "mineagent.process-admission.v1")
         != "mineagent.process-admission.v1"
         for row in tables["research_process_admissions"]
     ):
         raise ValueError("Numeric process requires closure v3")
+    from backend.app.rdagent_profile_backup import require_admission_revision
+
+    for admission in tables["research_process_admissions"]:
+        require_admission_revision(admission.get("profile"), closure["schema_version"])
     terminal = {"paused", "cancelled", "failed", "interrupted", "succeeded"}
     if any(row["status"] not in terminal for row in external["runs"]):
         raise ValueError("Active runs cannot enter neutral cold closure")
@@ -379,11 +401,17 @@ def _indexes(closure, maximum_rows):
                     SCHEMA_V8,
                     SCHEMA_V9,
                     SCHEMA_V10,
+                    SCHEMA_V11,
                 }:
                     allowed.add(("factor_research", "rdagent"))
-                if closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+                if closure["schema_version"] in {
+                    SCHEMA_V8,
+                    SCHEMA_V9,
+                    SCHEMA_V10,
+                    SCHEMA_V11,
+                }:
                     allowed.add(("strategy_search", "openevolve"))
-                if closure["schema_version"] in {SCHEMA_V9, SCHEMA_V10}:
+                if closure["schema_version"] in {SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
                     allowed.add(("factor_strategy", "structured"))
                     if run["engine"] == "structured" and name in {
                         "research_model_operations",
@@ -396,7 +424,7 @@ def _indexes(closure, maximum_rows):
                     raise ValueError("Versioned research identity is not admitted")
                 if name == "research_model_operations" and closure[
                     "schema_version"
-                ] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+                ] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
                     protocols = {
                         "legacy": {"mineagent.neutral-model.v1"},
                         "rdagent": {
@@ -405,7 +433,7 @@ def _indexes(closure, maximum_rows):
                         },
                         "openevolve": {"mineagent.openevolve-chat.v1"},
                     }
-                    if closure["schema_version"] == SCHEMA_V10:
+                    if closure["schema_version"] in {SCHEMA_V10, SCHEMA_V11}:
                         from packages.rdagent_provider.codec import PROTOCOLS
 
                         protocols["rdagent"].update(PROTOCOLS)
@@ -422,6 +450,7 @@ def _indexes(closure, maximum_rows):
                         SCHEMA_V8,
                         SCHEMA_V9,
                         SCHEMA_V10,
+                        SCHEMA_V11,
                     }
                     and (
                         (row["protocol"] == "mineagent.neutral-model.v1")
@@ -439,11 +468,13 @@ def _indexes(closure, maximum_rows):
                     SCHEMA_V8,
                     SCHEMA_V9,
                     SCHEMA_V10,
+                    SCHEMA_V11,
                 }:
                     if run["engine"] == "openevolve" and closure["schema_version"] in {
                         SCHEMA_V8,
                         SCHEMA_V9,
                         SCHEMA_V10,
+                        SCHEMA_V11,
                     }:
                         if (
                             row["context"].get("schema_version")
@@ -465,7 +496,7 @@ def _indexes(closure, maximum_rows):
                     not in (
                         {"rdagent", "openevolve"}
                         if closure["schema_version"]
-                        in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+                        in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
                         else {"rdagent"}
                     )
                 ):
@@ -482,9 +513,12 @@ def manifest_keys(closure):
         keys.add(f"research-objects/{row['owner_id']}/journals/{row['id']}.json")
         keys.add(row["storage_key"])
     for row in tables["research_process_admissions"]:
-        if closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10} and row.get(
-            "profile"
-        ) in {
+        if closure["schema_version"] in {
+            SCHEMA_V8,
+            SCHEMA_V9,
+            SCHEMA_V10,
+            SCHEMA_V11,
+        } and row.get("profile") in {
             "mineagent.openevolve-orchestrator.v1",
             "mineagent.openevolve-native-evaluator.v1",
         }:
@@ -504,11 +538,18 @@ def manifest_keys(closure):
                 )
             # Native export is binary: read_bytes validates it, never read_json.
             continue
-        if (
-            closure["schema_version"]
-            in {SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
-            and row.get("profile") == "mineagent.rdagent-orchestrator.v2"
-        ):
+        if closure["schema_version"] in {
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+            SCHEMA_V8,
+            SCHEMA_V9,
+            SCHEMA_V10,
+            SCHEMA_V11,
+        } and row.get("profile") in {
+            "mineagent.rdagent-orchestrator.v2",
+            "mineagent.rdagent-orchestrator.v3",
+        }:
             from backend.app.rdagent_controller_backup import (
                 manifest_keys as controller_keys,
             )
@@ -529,6 +570,7 @@ def manifest_keys(closure):
         SCHEMA_V8,
         SCHEMA_V9,
         SCHEMA_V10,
+        SCHEMA_V11,
     }:
         for receipt in tables["research_process_receipts"]:
             if (
@@ -539,7 +581,13 @@ def manifest_keys(closure):
                 keys.add(
                     f"research-processes/{receipt['owner_id']}/{receipt['admission_id']}/output/rows.json"
                 )
-    if closure["schema_version"] in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+    if closure["schema_version"] in {
+        SCHEMA_V7,
+        SCHEMA_V8,
+        SCHEMA_V9,
+        SCHEMA_V10,
+        SCHEMA_V11,
+    }:
         for row in tables["research_process_admissions"]:
             if row.get("profile") == "mineagent.qlib-direct-analysis.v1":
                 keys.add(
@@ -561,23 +609,23 @@ def validate_closure(
     structured_links_pending=False,
     seed_context=None,
 ):
-    if (closure["schema_version"] in {SCHEMA_V9, SCHEMA_V10}) != (
+    if (closure["schema_version"] in {SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}) != (
         structured_links_pending is True
     ):
         raise ValueError("Exact structured final links must be independently validated")
     if (
-        closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+        closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
         and type(openevolve_closure) is not dict
     ):
         raise ValueError("OE v8 requires its full separate typed domain closure")
     if (
-        closure["schema_version"] not in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+        closure["schema_version"] not in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
         and openevolve_closure is not None
     ):
         raise ValueError("Historical research closure cannot acquire OE authority")
     from collections.abc import Mapping
 
-    if closure["schema_version"] == SCHEMA_V10:
+    if closure["schema_version"] in {SCHEMA_V10, SCHEMA_V11}:
         if not isinstance(seed_context, Mapping):
             raise ValueError(
                 "Seed context must be reconstructed before research validation"
@@ -602,13 +650,15 @@ def validate_closure(
             SCHEMA_V8,
             SCHEMA_V9,
             SCHEMA_V10,
+            SCHEMA_V11,
         },
         rd_execution=closure["schema_version"]
-        in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10},
+        in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11},
         rd_analysis=closure["schema_version"]
-        in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10},
-        openevolve=closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10},
-        rd_provider=closure["schema_version"] == SCHEMA_V10,
+        in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11},
+        openevolve=closure["schema_version"]
+        in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11},
+        rd_provider=closure["schema_version"] in {SCHEMA_V10, SCHEMA_V11},
     )
     process_records = _validate_processes(
         indexes,
@@ -623,14 +673,16 @@ def validate_closure(
     from backend.app.research_broker_services import validate_accounting_closure
 
     provider_bindings = None
-    if closure["schema_version"] == SCHEMA_V10:
+    if closure["schema_version"] in {SCHEMA_V10, SCHEMA_V11}:
         from packages.rdagent_adapter.persisted_identity import require_source_identity
 
-        if (
-            type(rd_source_closure) is not dict
-            or rd_source_closure.get("schema_version")
-            != "mineagent.rd-source-restore-closure.v5"
-        ):
+        if type(rd_source_closure) is not dict or (
+            closure["schema_version"],
+            rd_source_closure.get("schema_version"),
+        ) not in {
+            (SCHEMA_V10, "mineagent.rd-source-restore-closure.v5"),
+            (SCHEMA_V11, "mineagent.rd-source-restore-closure.v6"),
+        }:
             raise ValueError(
                 "Provider accounting requires exact RD-v5 source inventory"
             )
@@ -639,6 +691,11 @@ def validate_closure(
             values = dict(row)
             values["owner_id"] = UUID(values["owner_id"])
             values["dataset_version_id"] = UUID(values["dataset_version_id"])
+            from backend.app.rdagent_profile_backup import require_config_revision
+
+            require_config_revision(
+                row["config"], research_schema=closure["schema_version"]
+            )
             config = require_source_identity(SimpleNamespace(**values))
             if config.model_profile == "configured.rdagent.v1":
                 provider_bindings[row["id"]] = config.model_binding
@@ -655,8 +712,10 @@ def validate_closure(
             SCHEMA_V8,
             SCHEMA_V9,
             SCHEMA_V10,
+            SCHEMA_V11,
         },
-        openevolve=closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10},
+        openevolve=closure["schema_version"]
+        in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11},
         **(
             {"rd_provider": True, "model_bindings": provider_bindings}
             if provider_bindings is not None
@@ -682,7 +741,7 @@ def validate_closure(
         obj = indexes["research_objects"][outcome["response_object_id"]]
         payload = read_json(obj["storage_key"])
         protocol = operation.get("protocol", "mineagent.neutral-model.v1")
-        if closure["schema_version"] == SCHEMA_V10 and protocol in {
+        if closure["schema_version"] in {SCHEMA_V10, SCHEMA_V11} and protocol in {
             "mineagent.rdagent-provider-chat.v1",
             "mineagent.rdagent-provider-embedding.v1",
         }:
@@ -707,7 +766,7 @@ def validate_closure(
                 protocol, provider_request(protocol, operation["request"]), response
             )
         elif (
-            closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+            closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
             and protocol == "mineagent.openevolve-chat.v1"
         ):
             from packages.openevolve_adapter.persisted_broker import (
@@ -730,6 +789,7 @@ def validate_closure(
                 SCHEMA_V8,
                 SCHEMA_V9,
                 SCHEMA_V10,
+                SCHEMA_V11,
             }
             and protocol != "mineagent.neutral-model.v1"
         ):
@@ -757,7 +817,7 @@ def validate_closure(
             response = RESPONSE.validate_json(canonical_bytes(payload))
             validate_response(parse_request(operation["request"]), response)
 
-    if closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+    if closure["schema_version"] in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
         from backend.app.openevolve_backup import validate_closure as validate_search
 
         validate_search(
@@ -1026,7 +1086,7 @@ def _validate_processes(
         receipts_by_admission[receipt["admission_id"]].append(receipt)
     for row in admissions.values():
         if (
-            research_schema in {SCHEMA_V9, SCHEMA_V10}
+            research_schema in {SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
             and row.get("profile") == "mineagent.factor-strategy-engine.v1"
         ):
             from backend.app.structured_process_backup import (
@@ -1037,7 +1097,7 @@ def _validate_processes(
                 row, indexes, physical, check, read_json, allowed, reservation_ids
             )
             continue
-        if research_schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+        if research_schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
             from runtimes.openevolve_evaluator.contracts import PROFILE as OE_NATIVE
             from runtimes.openevolve_operational.process_journal import (
                 PROFILE as OE_CONTROLLER,
@@ -1050,11 +1110,18 @@ def _validate_processes(
                     row, indexes, physical, check, read_bytes, allowed, reservation_ids
                 )
                 continue
-        if (
-            research_schema
-            in {SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
-            and row.get("profile") == "mineagent.rdagent-orchestrator.v2"
-        ):
+        if research_schema in {
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+            SCHEMA_V8,
+            SCHEMA_V9,
+            SCHEMA_V10,
+            SCHEMA_V11,
+        } and row.get("profile") in {
+            "mineagent.rdagent-orchestrator.v2",
+            "mineagent.rdagent-orchestrator.v3",
+        }:
             from backend.app.rdagent_controller_backup import (
                 validate_controller_closure_unit,
             )
@@ -1077,7 +1144,7 @@ def _validate_processes(
             )
             continue
         if (
-            research_schema in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+            research_schema in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
             and row.get("profile") == "mineagent.qlib-direct-analysis.v1"
         ):
             from backend.app.analysis_process_backup import (
@@ -1102,7 +1169,14 @@ def _validate_processes(
                 **(
                     {"allow_reports": True}
                     if research_schema
-                    in {SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+                    in {
+                        SCHEMA_V6,
+                        SCHEMA_V7,
+                        SCHEMA_V8,
+                        SCHEMA_V9,
+                        SCHEMA_V10,
+                        SCHEMA_V11,
+                    }
                     else {}
                 ),
             )

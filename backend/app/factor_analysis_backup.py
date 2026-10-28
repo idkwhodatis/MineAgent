@@ -178,6 +178,10 @@ def validate_closure(
             "mineagent.research-restore-closure.v10",
             "mineagent.rd-source-restore-closure.v5",
         ),
+        (
+            "mineagent.research-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v6",
+        ),
     } or execution_closure.get(
         "schema_version"
     ) != "mineagent.execution-snapshot-restore-closure.v2":
@@ -185,10 +189,16 @@ def validate_closure(
     provider_config = (
         research_closure.get("schema_version"),
         rd_source_closure.get("schema_version"),
-    ) == (
-        "mineagent.research-restore-closure.v10",
-        "mineagent.rd-source-restore-closure.v5",
-    )
+    ) in {
+        (
+            "mineagent.research-restore-closure.v10",
+            "mineagent.rd-source-restore-closure.v5",
+        ),
+        (
+            "mineagent.research-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v6",
+        ),
+    }
     own = indexes(closure, maximum_rows)
     tables = {}
     for component in (
@@ -241,8 +251,19 @@ def validate_closure(
     for plan in plans.values():
         spec = specs[plan["spec_id"]]
         run = runs[plan["run_id"]]
+        from backend.app.rdagent_profile_backup import require_config_revision
+
+        require_config_revision(
+            spec["config"],
+            research_schema=research_closure["schema_version"],
+            source_schema=rd_source_closure["schema_version"],
+        )
         config = parse_snapshot_config(
-            spec["config"], owner_id=spec["owner_id"], provider_config=provider_config
+            spec["config"],
+            owner_id=spec["owner_id"],
+            provider_config=provider_config,
+            composed_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v11",
         )
         objective = read_objective(plan)
         policy = ConfiguredSourcePolicy.model_validate(plan["source_policy"])
@@ -304,6 +325,8 @@ def validate_closure(
         read_bytes=read_bytes,
         max_rows=maximum_rows,
         provider_config=provider_config,
+        composed_controller=research_closure["schema_version"]
+        == "mineagent.research-restore-closure.v11",
     )
     inputs = {}
     pairs = set()
@@ -326,6 +349,8 @@ def validate_closure(
             dataset=datasets[plan["label_source_dataset_id"]],
             read_bytes=read_bytes,
             provider_config=provider_config,
+            composed_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v11",
         )
     # Every retained analysis admission, including stopped/no-result attempts,
     # must bind a real declared input; outcome-only checks miss pending authority.

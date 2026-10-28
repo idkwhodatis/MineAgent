@@ -13,6 +13,11 @@ from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
+from packages.rdagent_adapter.controller_profile import (
+    COMPOSED_CONTROLLER_PROFILE,
+    LEGACY_CONTROLLER_PROFILE,
+    controller_wall_seconds,
+)
 from packages.research_runtime.process_contracts import ProcessError, canonical, digest
 from packages.research_runtime.process_declarations_v2 import (
     SHA,
@@ -34,7 +39,7 @@ def controller_admission(value):
     value = ProcessDeclarationV2.model_validate(value)
     if (
         value.role != "rd_orchestrator"
-        or value.profile != PROFILE
+        or value.profile not in (LEGACY_CONTROLLER_PROFILE, COMPOSED_CONTROLLER_PROFILE)
         or type(value.ipc) is not HostTicketIPC
     ):
         raise ProcessError("rd_controller_profile")
@@ -61,7 +66,11 @@ class ControllerIntent(Closed):
             for t in (self.issued_at, self.not_after)
         ):
             raise ValueError("UTC deadline required")
-        if not 0 < (self.not_after - self.issued_at).total_seconds() <= 60:
+        if (
+            not 0
+            < (self.not_after - self.issued_at).total_seconds()
+            <= controller_wall_seconds(admission.profile)
+        ):
             raise ValueError("Original controller deadline exceeds profile")
         return self
 

@@ -199,16 +199,22 @@ def private_browser_report(root: Path):
         yield Path(folder) / "junit.xml"
 
 
-def failure_diagnostic(source: Path, root: Path) -> str:
+def failure_diagnostic(source: Path, root: Path, *, source_suite="e2e") -> str:
     """Diagnostic failure can reveal neither report content nor exception text."""
     try:
-        detail = json.dumps(failure_sites(source, root), sort_keys=True)
+        detail = json.dumps(
+            failure_sites(source, root, source_suite=source_suite), sort_keys=True
+        )
     except Exception:  # noqa: BLE001 - report/exception payloads are private
         detail = "unavailable"
     return "BROWSER_SOURCE_DIAGNOSTICS_V1:" + detail
 
 
-def failure_sites(source: Path, root: Path) -> list[dict]:
+def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]:
+    # Fixed public source sets only; callers cannot select a filesystem path.
+    suites = {"e2e": "e2e", "engine-results": "engine-results-acceptance"}
+    if type(source_suite) is not str or source_suite not in suites:
+        raise ValueError("Unsupported browser source suite")
     if (
         source.is_symlink()
         or not source.is_file()
@@ -225,7 +231,7 @@ def failure_sites(source: Path, root: Path) -> list[dict]:
         raise ValueError("Browser case bound exceeded")
     allowed = {
         path.name: len(path.read_text().splitlines())
-        for path in (root / "frontend/tests/e2e").glob("*.spec.ts")
+        for path in (root / "frontend/tests" / suites[source_suite]).glob("*.spec.ts")
         if path.is_file() and not path.is_symlink() and path.stat().st_size <= 1_000_000
     }
     result = []
@@ -249,7 +255,11 @@ def failure_sites(source: Path, root: Path) -> list[dict]:
                     and 1 <= column <= 10000
                 ):
                     frames.add((name, line, column))
-            for diagnostic in _note_http_diagnostics(failure.text or ""):
+            for diagnostic in (
+                _note_http_diagnostics(failure.text or "")
+                if source_suite == "e2e"
+                else ()
+            ):
                 http_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
         result.append(
             {

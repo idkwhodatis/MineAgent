@@ -14,6 +14,9 @@ from backend.app.research_process_models import (
     ResearchProcessReceipt,
     ResearchProcessState,
 )
+from packages.rdagent_adapter.controller_profile import (
+    controller_wall_seconds,
+)
 from packages.research_runtime.process_contracts import ProcessError, digest
 from packages.research_runtime.process_persistence_codec import ROW_FIELDS, decode_row
 from runtimes.rdagent_operational.peer import (
@@ -162,13 +165,18 @@ def authenticate_current_controller(
 
         if (
             type(observer_context) is not DaemonIdentityContext
+            or observer_context.profile != admission.profile
             or observer_context.image_id != admission.image_id
             or observer_context.leader_pid != binding.leader.host_pid
         ):
             raise ProcessError("rd_controller_peer")
         # Preserve early original-deadline rejection without observing/caching
         # kernel authority. Full observe_pair checks this again after DB locks.
-        if not 0 < observer_context.deadline - time.monotonic() <= 60:
+        if (
+            not 0
+            < observer_context.deadline - time.monotonic()
+            <= controller_wall_seconds(admission.profile)
+        ):
             raise ProcessError("rd_controller_daemon_identity")
     with neutral_transaction(factory, fence, resource_scope="processes") as session:
         _launch, current, expected, identity = _controller_records(session, fence)

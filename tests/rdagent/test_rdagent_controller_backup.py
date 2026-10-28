@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -20,11 +21,19 @@ from packages.research_runtime.process_persistence_codec import encode_row
 
 
 @pytest.fixture
-def retained(tmp_path):
+def retained(tmp_path, request):
+    composed = getattr(request, "param", None) == "v3"
     launch, identity, child, stop = records(tmp_path)
     a = launch.intent.admission
     configdata = research_dict()
     configdata["budget"]["storage_bytes"] = 200000000
+    if composed:
+        configdata["controller_profile"] = "mineagent.rdagent-orchestrator.v3"
+        configdata["max_iterations"] = 1
+        configdata["budget"]["wall_milliseconds"] = max(
+            configdata["budget"]["wall_milliseconds"], 300000
+        )
+        a = a.model_copy(update={"profile": configdata["controller_profile"]})
     config = FactorResearchConfig.model_validate(configdata)
     specid = uuid4()
     bootstrap = RDOperationalBootstrap(
@@ -42,6 +51,11 @@ def retained(tmp_path):
     intent = launch.intent.model_copy(
         update={
             "admission": a,
+            **(
+                {"not_after": launch.intent.issued_at + timedelta(seconds=120)}
+                if composed
+                else {}
+            ),
             "bootstrap_sha256": bootstrap.sha256,
             "bootstrap_size_bytes": len(canonical_bytes(bootstrap)),
         }
@@ -70,7 +84,9 @@ def retained(tmp_path):
     row["created_at"] = "2026-10-26T00:00:00Z"
     scope = {k: row[k] for k in module.SCOPE}
     amounts = BudgetVector(
-        process_slots=1, wall_milliseconds=60000, storage_bytes=module.STORAGE_FLOOR
+        process_slots=1,
+        wall_milliseconds=120000 if composed else 60000,
+        storage_bytes=module.STORAGE_FLOOR,
     ).model_dump()
     reservation = {
         "id": row["reservation_id"],
@@ -125,7 +141,9 @@ def retained(tmp_path):
         **dict.fromkeys(LEGACY_ONLY_FIELDS),
     }
     rd = {
-        "schema_version": module.RD_SCHEMA,
+        "schema_version": "mineagent.rd-source-restore-closure.v6"
+        if composed
+        else module.RD_SCHEMA,
         "tables": {name: [] for name in FIELDS},
         "external_bindings": {"runs": [run]},
     }
@@ -197,7 +215,10 @@ def retained(tmp_path):
             "read_bytes": read,
             "allowed": set(),
             "reservation_ids": set(),
-            "research_schema": module.SCHEMA,
+            "research_schema": "mineagent.research-restore-closure.v11"
+            if composed
+            else module.SCHEMA,
+            **({"seed_context": {}} if composed else {}),
         }
         args.update(changes)
         return module.validate_controller_closure_unit(**args)
@@ -354,3 +375,23 @@ def test_binding_hash_and_foreign_owner_rejected(retained):
     )
     with pytest.raises(ValueError, match="predecessor"):
         retained["validate"]()
+
+
+@pytest.mark.parametrize("retained", ["v3"], indirect=True)
+def test_composed_controller_retained_bytes_and_budget(retained):
+    retained["validate"]()
+    reservation = next(
+        iter(retained["indexes"]["research_budget_reservations"].values())
+    )
+    reservation["amounts"]["wall_milliseconds"] = 60000
+    with pytest.raises(ValueError):
+        retained["validate"]()
+
+
+@pytest.mark.parametrize("retained", ["v3"], indirect=True)
+def test_composed_controller_cannot_be_relabelled_as_old_closure(retained):
+    retained["rd"]["schema_version"] = "mineagent.rd-source-restore-closure.v5"
+    with pytest.raises(ValueError):
+        retained["validate"](
+            research_schema="mineagent.research-restore-closure.v10", seed_context={}
+        )

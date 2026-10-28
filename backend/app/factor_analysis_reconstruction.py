@@ -22,13 +22,24 @@ from packages.strategy_sdk import JsonLimits, parse_json
 
 
 def reconstruct_direct_input(
-    *, plan, intent, publication, spec, dataset, read_bytes, provider_config=False
+    *,
+    plan,
+    intent,
+    publication,
+    spec,
+    dataset,
+    read_bytes,
+    provider_config=False,
+    composed_controller=False,
 ):
     """Return data-only complete input after actual retained dataset/row rereads."""
     objective = read_objective(plan)
     policy = ConfiguredSourcePolicy.model_validate(plan["source_policy"])
     config = parse_snapshot_config(
-        spec["config"], owner_id=spec["owner_id"], provider_config=provider_config
+        spec["config"],
+        owner_id=spec["owner_id"],
+        provider_config=provider_config,
+        composed_controller=composed_controller,
     )
     manifest = ExecutionSnapshotManifest.model_validate(publication["manifest"])
     owner = str(plan["owner_id"])

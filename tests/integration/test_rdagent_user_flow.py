@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from rd_composed_profile_fixture import PROFILE, assert_composed_controller
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_browser import create_queued_submission_browser
@@ -49,13 +50,15 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
 
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "023_rd_submissions")
+        legacy._upgrade(engine, "027_rd_controller_v3")
         storage = tmp_path / "rd-user-flow"
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(engine, storage).model_copy(
             update={
                 "rdagent_research_enabled": True,
-                "rdagent_runtime_profile": profile(actual_images=True),
+                "rdagent_runtime_profile": profile(
+                    actual_images=True, controller_profile=PROFILE
+                ),
                 "lease_seconds": 120,
                 "heartbeat_seconds": 1,
             }
@@ -79,7 +82,7 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
         dataset, _source, policy = persist_configured_dataset(
             factory, user.id, settings
         )
-        request = body(dataset, policy)
+        request = body(dataset, policy, controller_profile=PROFILE)
         account = SimpleNamespace(user=user, password=password)
         create_queued_submission_browser(settings, engine, account, dataset, request)
         with factory() as session:
@@ -128,6 +131,7 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
                 admissions = session.scalars(
                     select(ResearchProcessAdmission).filter_by(run_id=run_id)
                 ).all()
+                assert_composed_controller(session, run_id)
                 assert sorted(row.role for row in admissions) == [
                     "factor_cutoff_candidate",
                     "factor_normalizer",
@@ -194,11 +198,19 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
         before = PostgresDatabase(
             drill_databases.source.render_as_string(hide_password=False)
         ).source_snapshot(BackupLimits())
+        assert (
+            before["research_closure"]["schema_version"]
+            == "mineagent.research-restore-closure.v11"
+        )
+        assert (
+            before["rd_source_closure"]["schema_version"]
+            == "mineagent.rd-source-restore-closure.v6"
+        )
         files = _files(storage)
         target = tmp_path / "restored-user-flow"
         manifest = _roundtrip(drill_databases, tmp_path, engine, storage, target)
         assert (
-            manifest["schema_revision"] == "023_rd_submissions"
+            manifest["schema_revision"] == "027_rd_controller_v3"
             and _files(target) == files
         )
         after = PostgresDatabase(
@@ -215,6 +227,8 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
             assert before[name] == after[name]
         restored = legacy._engine(drill_databases.restored)
         try:
+            with sessionmaker(restored, expire_on_commit=False)() as session:
+                assert_composed_controller(session, run_id)
             restored_settings = legacy._note_settings(restored, target)
             with TestClient(
                 create_app(settings=restored_settings, engine=restored)

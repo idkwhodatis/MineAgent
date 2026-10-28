@@ -90,7 +90,12 @@ def test_arbitrary_observer_callback_rejected(daemon_authority, context):
 
 
 @pytest.mark.parametrize(
-    "field,value", [("image_id", "sha256:" + "e" * 64), ("leader_pid", 999)]
+    "field,value",
+    [
+        ("image_id", "sha256:" + "e" * 64),
+        ("leader_pid", 999),
+        ("profile", "mineagent.rdagent-orchestrator.v3"),
+    ],
 )
 def test_context_binding_mismatch_before_observation(daemon_authority, field, value):
     state = daemon_authority

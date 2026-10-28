@@ -13,7 +13,8 @@ def controller_profile(admission):
     if admission.profile == "mineagent.rdagent-orchestrator.v1":
         return admission.profile
     if (
-        admission.profile == "mineagent.rdagent-orchestrator.v2"
+        admission.profile
+        in ("mineagent.rdagent-orchestrator.v2", "mineagent.rdagent-orchestrator.v3")
         and admission.schema_version == "mineagent.process-admission.v2"
         and admission.ipc_policy == "host_ticket"
         and isinstance(admission.ticket_sha256, str)
@@ -72,6 +73,14 @@ def bind_controller_launch(session, fence, *, admission_id):
 
     attempt_binding, bootstrap = expected_operational_bootstrap(session, fence)
     admission = _scope_row(session, ResearchProcessAdmission, admission_id, fence)
+    if (admission.profile == "mineagent.rdagent-orchestrator.v3") != (
+        bootstrap.config.controller_profile == "mineagent.rdagent-orchestrator.v3"
+    ):
+        raise DomainError(
+            "factor_controller_admission_drift",
+            "Controller profile differs from immutable config",
+            409,
+        )
     if (
         admission.role,
         admission.profile,

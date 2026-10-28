@@ -194,9 +194,10 @@ def require_initial_seed(session, fence, *, submission_id, parent_factor_version
         raise DomainError(
             "factor_initial_parent", "Exact seeded declaration and parent required", 409
         )
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
-        "026_rd_seeded_submissions"
-    ]:
+    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+    ):
         raise DomainError(
             "factor_initial_parent", "Seeded generation schema unavailable", 409
         )

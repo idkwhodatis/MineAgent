@@ -318,3 +318,24 @@ def test_new_config_bootstrap_preserves_explicit_model_and_unknown_pricing(
     assert "endpoint" not in canonical_bytes(result).decode()
     if seeded:
         assert result.seed.source.encode() == cold.parent.path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "research_version,source_version,allowed",
+    [(10, 5, True), (11, 6, True), (10, 6, False), (11, 5, False)],
+)
+def test_seed_parent_closure_versions_are_exact_pairs(
+    cold, research_version, source_version, allowed
+):
+    closure, kwargs = cold.closure, cold.kwargs
+    kwargs["research_closure"]["schema_version"] = (
+        f"mineagent.research-restore-closure.v{research_version}"
+    )
+    kwargs["rd_source_closure"]["schema_version"] = (
+        f"mineagent.rd-source-restore-closure.v{source_version}"
+    )
+    if allowed:
+        backup.validate_closure(closure, **kwargs)
+    else:
+        with pytest.raises(ValueError):
+            backup.validate_closure(closure, **kwargs)

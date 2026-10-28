@@ -200,6 +200,11 @@ def validate_closure(
                 "mineagent.rd-source-restore-closure.v5",
                 "mineagent.native-hdf-restore-closure.v3",
             ),
+            (
+                "mineagent.research-restore-closure.v11",
+                "mineagent.rd-source-restore-closure.v6",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
         },
     }.get(closure.get("schema_version"))
     if (
@@ -290,6 +295,13 @@ def validate_closure(
             raise ValueError("Execution source witness differs")
         start = rd["factor_generation_starts"][row["start_id"]]
         spec = rd["factor_research_specs"][start["spec_id"]]
+        from backend.app.rdagent_profile_backup import require_config_revision
+
+        require_config_revision(
+            spec["config"],
+            research_schema=research_closure["schema_version"],
+            source_schema=rd_source_closure["schema_version"],
+        )
         config = parse_snapshot_config(
             spec["config"],
             owner_id=spec["owner_id"],
@@ -297,10 +309,18 @@ def validate_closure(
                 research_closure.get("schema_version"),
                 rd_source_closure.get("schema_version"),
             )
-            == (
-                "mineagent.research-restore-closure.v10",
-                "mineagent.rd-source-restore-closure.v5",
-            ),
+            in {
+                (
+                    "mineagent.research-restore-closure.v10",
+                    "mineagent.rd-source-restore-closure.v5",
+                ),
+                (
+                    "mineagent.research-restore-closure.v11",
+                    "mineagent.rd-source-restore-closure.v6",
+                ),
+            },
+            composed_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v11",
         )
         from backend.app.rdagent_complete_evaluation import maintained_calendar
 

@@ -58,7 +58,7 @@ def test_actual_configured_analysis_cold_restore_historical_read(
         tmp_path / "configured-restored-storage",
     )
     try:
-        legacy._upgrade(source, "022_factor_analysis")
+        legacy._upgrade(source, "027_rd_controller_v3")
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(source, storage).model_copy(
             update={"lease_seconds": 3600}
@@ -121,9 +121,17 @@ def test_actual_configured_analysis_cold_restore_historical_read(
             drill_databases.source.render_as_string(hide_password=False)
         )
         before = source_db.source_snapshot(BackupLimits())
+        assert (
+            before["research_closure"]["schema_version"]
+            == "mineagent.research-restore-closure.v11"
+        )
+        assert (
+            before["rd_source_closure"]["schema_version"]
+            == "mineagent.rd-source-restore-closure.v6"
+        )
         files = _files(storage)
         manifest = _roundtrip(drill_databases, tmp_path, source, storage, target)
-        assert manifest["schema_revision"] == "022_factor_analysis"
+        assert manifest["schema_revision"] == "027_rd_controller_v3"
         assert storage.stat().st_ino != target.stat().st_ino
         assert not (target / ".restore-incomplete").exists()
         assert _files(target) == files
@@ -140,6 +148,10 @@ def test_actual_configured_analysis_cold_restore_historical_read(
         ):
             assert after[key] == before[key]
         restored_factory = sessionmaker(restored, expire_on_commit=False)
+        from rd_composed_profile_fixture import assert_composed_controller
+
+        with restored_factory() as session:
+            assert_composed_controller(session, fence.run_id)
         restored_settings = legacy._note_settings(restored, target).model_copy(
             update={"lease_seconds": 3600}
         )

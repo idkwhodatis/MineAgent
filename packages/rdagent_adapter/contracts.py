@@ -23,6 +23,7 @@ from packages.factors.contracts import (
     Sha256,
     digest,
 )
+from packages.rdagent_adapter.controller_profile import ControllerProfileSelection
 from packages.research_runtime.budget_contracts import BudgetVector
 
 RDAGENT_COMMIT = "484776c211e4fbbeef03e0ec00d6bbee7362a4f4"
@@ -127,7 +128,7 @@ class FrozenResearchInput(Contract):
         return digest(self)
 
 
-class FactorResearchConfig(Contract):
+class FactorResearchConfig(ControllerProfileSelection):
     schema_version: Literal["mineagent.factor-research.v1"] = (
         "mineagent.factor-research.v1"
     )
@@ -154,6 +155,13 @@ class FactorResearchConfig(Contract):
 
     @model_validator(mode="after")
     def bounded_budget(self):
+        if self.controller_profile is not None:
+            if self.max_iterations != 1:
+                raise ValueError("Composed controller profile requires one iteration")
+            if self.budget.wall_milliseconds < 300000:
+                raise ValueError(
+                    "Composed controller budget must cover controller and three children"
+                )
         if self.budget.calls < 1 or self.budget.mutation_slots < self.max_iterations:
             raise ValueError("Research requires model and iteration reservations")
         if (

@@ -572,6 +572,7 @@ def _protected(snapshot, files, manifests, deadline):
                         "mineagent.rd-source-restore-closure.v3",
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v6",
                     }
                     else {}
                 ),
@@ -581,6 +582,7 @@ def _protected(snapshot, files, manifests, deadline):
                     in {
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v6",
                     }
                     else {}
                 ),

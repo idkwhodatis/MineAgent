@@ -5,11 +5,20 @@ Rendering is bounded memory only; the separately accepted supervisor owns the
 sole physical staging/create sequence. Unknown preparation is never refunded.
 """
 
+import copy
 import hashlib
+import sys
+import threading
+import time
+from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import timedelta
 from uuid import uuid4
 
+from sqlalchemy import event as sqlalchemy_event
 from sqlalchemy import select
+from sqlalchemy.sql import visitors
+from sqlalchemy.sql.elements import ColumnClause, TextClause
+from sqlalchemy.sql.functions import FunctionElement, count
 
 from backend.app.models import DatasetVersion, utcnow
 from backend.app.openevolve_candidate_events import resolve_evaluation_peer
@@ -23,7 +32,11 @@ from backend.app.openevolve_operational_models import (
     SearchEvaluationPreparation,
 )
 from backend.app.openevolve_services import _owned_row, _scope
-from backend.app.research_broker_services import require_reservation, reserve_budget
+from backend.app.research_broker_services import (
+    _budget_reservation_preflight,
+    _write_budget_reservation,
+    require_reservation,
+)
 from backend.app.research_lifecycle import neutral_transaction
 from backend.app.research_object_services import read_research_object
 from packages.openevolve_adapter.host_contracts import SourceEnvelope
@@ -82,54 +95,304 @@ def _held(session, fence, preparation):
     return row
 
 
-def prepare_evaluation(factory, fence, peer, *, event, ticket_key, window_id, settings):
-    with neutral_transaction(factory, fence, resource_scope="processes") as session:
-        candidate, _grant, _worker, bootstrap, window = _resolve(
-            session, fence, peer, event, ticket_key, window_id
+def _read_preparation(session, fence, peer, event, ticket_key, window_id):
+    candidate, _grant, _worker, bootstrap, window = _resolve(
+        session, fence, peer, event, ticket_key, window_id
+    )
+    previous = session.scalar(
+        select(SearchEvaluationPreparation).where(
+            SearchEvaluationPreparation.epoch_id == candidate.epoch_id,
+            SearchEvaluationPreparation.candidate_id == candidate.id,
+            SearchEvaluationPreparation.window_id == window.id,
         )
-        previous = session.scalar(
-            select(SearchEvaluationPreparation).where(
-                SearchEvaluationPreparation.epoch_id == candidate.epoch_id,
-                SearchEvaluationPreparation.candidate_id == candidate.id,
-                SearchEvaluationPreparation.window_id == window.id,
+    )
+    if previous is not None:
+        _owned_row(session, SearchEvaluationPreparation, previous.id, fence)
+        if (
+            previous.source_sha256 != candidate.source_sha256
+            or previous.execution_sha256 != document_digest(bootstrap.spec.execution)
+        ):
+            raise ValueError("Preparation immutable replay differs")
+    return candidate, bootstrap, window, previous
+
+
+def _read_only_statement(clause):
+    # Closed to this reviewed mapped-SELECT call chain, not a SQL interpreter.
+    # Text/functions from an unknown path may have side effects despite SELECT.
+    if type(clause) is TextClause:
+        return str(clause).strip() == "SELECT version_num FROM alembic_version"
+    if not getattr(clause, "is_select", False):
+        return False
+    for node in visitors.iterate(clause):
+        if getattr(node, "is_dml", False) or isinstance(node, TextClause):
+            return False
+        if isinstance(node, FunctionElement) and type(node) is not count:
+            return False
+        if isinstance(node, ColumnClause) and node.is_literal and node.name != "*":
+            return False
+    return True
+
+
+@contextmanager
+def _preparation_admission(
+    factory, fence, peer, event, ticket_key, window_id, settings, identity
+):
+    from backend.app.openevolve_lock_admission import (
+        acquisition_deadline,
+        acquisition_window,
+        current_window,
+    )
+    from backend.app.services import DomainError
+
+    deadline = acquisition_deadline(fence)
+    while True:
+        current_window(fence)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise DomainError(
+                "neutral_acquisition_invalid", "Lock acquisition scope unavailable", 409
             )
-        )
-        if previous is not None:
-            _owned_row(session, SearchEvaluationPreparation, previous.id, fence)
+        stack = ExitStack()
+        session = None
+        write_attempted = False
+        connection = None
+
+        def forbid_flush(*_):
+            nonlocal write_attempted
+            write_attempted = True
+            raise ValueError("Preparation acquisition is read only")
+
+        def forbid_sql_write(_conn, clause, *_args):
+            if not _read_only_statement(clause):
+                forbid_flush()
+
+        def forbid_driver_sql(_conn, _cursor, _statement, _params, context, _many):
+            if context.compiled is None:
+                forbid_flush()
+
+        try:
+            stack.enter_context(
+                acquisition_window(fence, deadline)
+                if deadline is not None
+                else nullcontext()
+            )
+            session = stack.enter_context(
+                neutral_transaction(factory, fence, resource_scope="processes")
+            )
+            connection = session.connection()
+            sqlalchemy_event.listen(session, "before_flush", forbid_flush)
+            sqlalchemy_event.listen(connection, "before_execute", forbid_sql_write)
+            sqlalchemy_event.listen(
+                connection, "before_cursor_execute", forbid_driver_sql
+            )
+            capacity = _capacity_settings(settings)
+            amounts = FLOOR
+            try:
+                with session.no_autoflush:
+                    candidate, bootstrap, window, previous = _read_preparation(
+                        session, fence, peer, event, ticket_key, window_id
+                    )
+                    plan = (
+                        None
+                        if previous is not None
+                        else _budget_reservation_preflight(
+                            session,
+                            fence,
+                            purpose="process_unit",
+                            logical_key=f"oe-native:{identity}:1",
+                            amounts=amounts,
+                            settings=settings,
+                        )
+                    )
+            finally:
+                sqlalchemy_event.remove(session, "before_flush", forbid_flush)
+                sqlalchemy_event.remove(connection, "before_execute", forbid_sql_write)
+                sqlalchemy_event.remove(
+                    connection, "before_cursor_execute", forbid_driver_sql
+                )
+            if session.new or session.dirty or session.deleted:
+                write_attempted = True
+                raise ValueError("Preparation acquisition is read only")
+        except BaseException as exc:
+            changed = write_attempted or (
+                session is not None
+                and bool(session.new or session.dirty or session.deleted)
+            )
+            # Pass the error through __exit__: normal close() would commit.
+            stack.__exit__(*sys.exc_info())
             if (
-                previous.source_sha256 != candidate.source_sha256
-                or previous.execution_sha256
-                != document_digest(bootstrap.spec.execution)
+                changed
+                or not isinstance(exc, DomainError)
+                or exc.code != "neutral_object_busy"
+                or deadline is None
             ):
-                raise ValueError("Preparation immutable replay differs")
-            # Existing records are a reconciliation identity only, never a new
-            # physical launch grant or a reset of a depleted reservation.
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise
+            time.sleep(min(0.05, remaining))
+            continue
+        with stack:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise DomainError(
+                    "neutral_acquisition_invalid",
+                    "Lock acquisition scope unavailable",
+                    409,
+                )
+            with _admitted_writer(
+                session,
+                fence,
+                candidate,
+                bootstrap,
+                window,
+                previous,
+                plan,
+                identity,
+                deadline,
+                settings,
+                capacity,
+                amounts,
+            ) as write:
+                yield write
+        return
+
+
+def _capacity_settings(settings):
+    return (
+        str(settings.storage_root),
+        settings.neutral_object_owner_max_bytes,
+        settings.neutral_object_installation_max_bytes,
+        settings.neutral_object_max_files,
+    )
+
+
+@contextmanager
+def _admitted_writer(
+    session,
+    fence,
+    candidate,
+    bootstrap,
+    window,
+    previous,
+    plan,
+    identity,
+    deadline,
+    settings,
+    capacity,
+    amounts,
+):
+    from backend.app.research_lifecycle import require_neutral_transaction
+
+    transaction = session.get_transaction()
+    thread = threading.get_ident()
+    active = True
+    consumed = False
+    write_authorized = False
+    completed = False
+    budget_snapshot = (
+        None
+        if plan is None
+        else copy.deepcopy((plan[0].used, plan[0].reserved, plan[0].limits))
+    )
+
+    def write():
+        nonlocal consumed, write_authorized, completed
+        if consumed or not active:
+            raise ValueError("Preparation admission already consumed")
+        consumed = True
+        if (
+            session.get_transaction() is not transaction
+            or not transaction.is_active
+            or thread != threading.get_ident()
+            or session.new
+            or session.dirty
+            or session.deleted
+        ):
+            raise ValueError("Preparation admission transaction differs")
+        if deadline is not None and time.monotonic() >= deadline:
+            raise ValueError("Preparation admission expired")
+        require_neutral_transaction(session, fence, resource_scope="processes")
+        if (
+            _capacity_settings(settings) != capacity
+            or FLOOR != amounts
+            or (
+                plan is not None
+                and (plan[0].used, plan[0].reserved, plan[0].limits) != budget_snapshot
+            )
+        ):
+            raise ValueError("Preparation admission accounting changed")
+        if previous is not None:
+            completed = True
             return previous.id
-        identity = uuid4()
-        reservation = reserve_budget(
-            session,
-            fence,
-            purpose="process_unit",
-            settings=settings,
-            logical_key=f"oe-native:{identity}:1",
-            amounts=FLOOR,
-        )
-        row = SearchEvaluationPreparation(
-            id=identity,
-            **_scope(fence),
-            epoch_id=candidate.epoch_id,
-            candidate_id=candidate.id,
-            source_sha256=candidate.source_sha256,
-            window_id=window.id,
-            execution_sha256=document_digest(bootstrap.spec.execution),
-            admission_id=uuid4(),
-            reservation_id=reservation.id,
-            logical_ticket_id=uuid4(),
-            physical_ordinal=1,
-        )
-        session.add(row)
-        session.flush()
-    return identity
+        write_authorized = True
+        try:
+            budget, prior_reservation, held = plan
+            reservation = _write_budget_reservation(
+                session,
+                fence,
+                purpose="process_unit",
+                logical_key=f"oe-native:{identity}:1",
+                amounts=amounts,
+                budget=budget,
+                previous=prior_reservation,
+                held=held,
+            )
+            row = SearchEvaluationPreparation(
+                id=identity,
+                **_scope(fence),
+                epoch_id=candidate.epoch_id,
+                candidate_id=candidate.id,
+                source_sha256=candidate.source_sha256,
+                window_id=window.id,
+                execution_sha256=document_digest(bootstrap.spec.execution),
+                admission_id=uuid4(),
+                reservation_id=reservation.id,
+                logical_ticket_id=uuid4(),
+                physical_ordinal=1,
+            )
+            session.add(row)
+            session.flush()
+            completed = True
+            return identity
+        finally:
+            write_authorized = False
+
+    def no_intervening_mutation(*_):
+        if not write_authorized:
+            raise ValueError("Preparation admission must be consumed before mutation")
+
+    def check_statement(_conn, clause, *_args):
+        if not _read_only_statement(clause):
+            no_intervening_mutation()
+
+    def check_driver(_conn, _cursor, _statement, _params, context, _many):
+        if context.compiled is None:
+            no_intervening_mutation()
+
+    connection = session.connection()
+    sqlalchemy_event.listen(connection, "before_cursor_execute", check_driver)
+    sqlalchemy_event.listen(session, "before_flush", no_intervening_mutation)
+    sqlalchemy_event.listen(connection, "before_execute", check_statement)
+    try:
+        yield write
+        if not completed:
+            raise ValueError("Preparation admission did not complete")
+        if session.new or session.dirty or session.deleted:
+            raise ValueError("Mutation after preparation admission")
+    finally:
+        active = False
+        sqlalchemy_event.remove(connection, "before_cursor_execute", check_driver)
+        sqlalchemy_event.remove(session, "before_flush", no_intervening_mutation)
+        sqlalchemy_event.remove(connection, "before_execute", check_statement)
+
+
+def prepare_evaluation(factory, fence, peer, *, event, ticket_key, window_id, settings):
+    # One logical identity across acquisition attempts; no reservation or token
+    # exists until the admitted body runs exactly once.
+    identity = uuid4()
+    with _preparation_admission(
+        factory, fence, peer, event, ticket_key, window_id, settings, identity
+    ) as write:
+        return write()
 
 
 def render_prepared_input(

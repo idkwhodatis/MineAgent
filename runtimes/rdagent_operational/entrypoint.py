@@ -13,11 +13,17 @@ import sys
 import time
 from pathlib import Path
 
+from packages.rdagent_adapter.controller_profile import (
+    COMPOSED_CONTROLLER_PROFILE,
+    LEGACY_CONTROLLER_PROFILE,
+    controller_profile,
+)
 from packages.rdagent_adapter.seeded_bootstrap import (
     RDSeededOperationalBootstrap,
     parse_bootstrap,
 )
 from runtimes.rdagent_operational.client import OperationalHost
+from runtimes.rdagent_operational.deadline import remaining_seconds
 from runtimes.rdagent_operational.rpc import Client, RPCError
 
 
@@ -55,7 +61,7 @@ def read_fixed(path, maximum):
 def main():
     if (
         not sys.flags.isolated
-        or len(sys.argv) != 1
+        or len(sys.argv) not in (1, 3)
         or os.getresuid() != (65533,) * 3
         or os.getresgid() != (65533,) * 3
     ):
@@ -71,6 +77,20 @@ def main():
 
     if canonical_bytes(bootstrap) != raw or bootstrap.config.max_iterations != 1:
         raise RPCError("bootstrap")
+    selected_profile = controller_profile(bootstrap.config)
+    if len(sys.argv) == 1:
+        if selected_profile != LEGACY_CONTROLLER_PROFILE:
+            raise RPCError("controller_profile_mismatch")
+        rpc_deadline = time.monotonic() + 60
+    else:
+        if (
+            sys.argv[1] != COMPOSED_CONTROLLER_PROFILE
+            or selected_profile != sys.argv[1]
+        ):
+            raise RPCError("controller_profile_mismatch")
+        rpc_deadline = time.monotonic() + remaining_seconds(
+            sys.argv[2], time.time_ns() // 1000000, profile=selected_profile
+        )
     ticket = json.loads(read_fixed("/ipc/ticket.json", 256))
     if type(ticket) is not dict or set(ticket) != {"ticket"}:
         raise RPCError("ticket")
@@ -88,7 +108,7 @@ def main():
     with socket.socket(socket.AF_UNIX) as channel:
         channel.settimeout(10)
         channel.connect("/ipc/peer.sock")
-        client = Client(channel, ticket["ticket"], deadline=time.monotonic() + 60)
+        client = Client(channel, ticket["ticket"], deadline=rpc_deadline)
         config = bootstrap.config
         from packages.rdagent_adapter.provider_config import (
             ProviderFactorResearchConfig,

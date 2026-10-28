@@ -13,6 +13,11 @@ from backend.app.rdagent_configured_source import resolve_dataset_preflight
 from backend.app.services import DomainError
 from packages.factors.contracts import digest
 from packages.rdagent_adapter.contracts import FrozenResearchInput
+from packages.rdagent_adapter.controller_profile import (
+    composed_wall_floor,
+    controller_profile,
+    controller_selection_fields,
+)
 from packages.research_runtime.budget_contracts import BudgetVector
 
 CATALOG_REVISION = "configured_rd_single_output_session_v1"
@@ -187,14 +192,39 @@ def preflight(session, owner_id, request, settings):
         runtime, parent = resolve_submission_runtime(settings)
         profile_sha = digest(
             RDServerRuntimeProfile(
-                runtime=runtime, qlib_installed_parent_image_id=parent
+                runtime=runtime,
+                qlib_installed_parent_image_id=parent,
+                **controller_selection_fields(
+                    RDServerRuntimeProfile.model_validate(
+                        settings.rdagent_runtime_profile
+                    )
+                ),
             )
         )
+        selected_profile = RDServerRuntimeProfile.model_validate(
+            settings.rdagent_runtime_profile
+        )
+        if request.budget.wall_milliseconds < composed_wall_floor(
+            controller_profile(selected_profile)
+        ):
+            eligible = False
+            if not any(item.code == "budget_below_profile" for item in reasons):
+                reasons.append(
+                    reason(
+                        "budget_below_profile",
+                        "Budget is below the explicitly selected controller profile floor.",
+                    )
+                )
         if session.scalars(text("SELECT version_num FROM alembic_version")).all() in (
             ["023_rd_submissions"],
             ["024_openevolve_initial"],
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
+        ) and (
+            selected_profile.controller_profile is None
+            or session.scalars(text("SELECT version_num FROM alembic_version")).all()
+            == ["027_rd_controller_v3"]
         ):
             runtime_available = True
         else:

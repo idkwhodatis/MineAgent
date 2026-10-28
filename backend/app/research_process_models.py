@@ -22,7 +22,7 @@ from backend.app.rdagent_persistence_ddl import CONTROLLER_PROFILE_GATE
 PROFILE_GATE = (
     "("
     + CONTROLLER_PROFILE_GATE
-    + ") OR (schema_version='mineagent.process-admission.v2' AND role='rd_orchestrator' AND profile='mineagent.rdagent-orchestrator.v2' AND ipc_policy='host_ticket' AND ticket_sha256 IS NOT NULL AND ticket_sha256 ~ '^[a-f0-9]{64}$')"
+    + ") OR (schema_version='mineagent.process-admission.v2' AND role='rd_orchestrator' AND profile IN ('mineagent.rdagent-orchestrator.v2','mineagent.rdagent-orchestrator.v3') AND ipc_policy='host_ticket' AND ticket_sha256 IS NOT NULL AND ticket_sha256 ~ '^[a-f0-9]{64}$')"
 )
 
 

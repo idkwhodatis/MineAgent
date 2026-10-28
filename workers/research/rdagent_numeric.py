@@ -47,6 +47,7 @@ def require_configured_revision(session):
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         raise ProcessError("configured_numeric_schema_closed")
 

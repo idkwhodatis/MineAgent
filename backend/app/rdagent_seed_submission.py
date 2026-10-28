@@ -28,6 +28,9 @@ from backend.app.rdagent_submission_services import _persist_queued_graph
 from backend.app.research_lifecycle import _try_neutral_lock
 from backend.app.services import DomainError
 from packages.factors.contracts import canonical_bytes, digest
+from packages.rdagent_adapter.controller_profile import (
+    controller_selection_fields,
+)
 from packages.rdagent_adapter.persisted_identity import require_source_identity
 
 
@@ -124,6 +127,7 @@ def validate_saved_seed_binding(row, run, spec, plan, owner_id, key):
                 raise ValueError("Provider request/model/guidance binding")
             profile = RDProviderServerRuntimeProfile(
                 runtime=config.runtime,
+                **controller_selection_fields(config),
                 qlib_installed_parent_image_id=plan.qlib_installed_parent_image_id,
             )
             expected = provider_commitment(
@@ -147,6 +151,7 @@ def validate_saved_seed_binding(row, run, spec, plan, owner_id, key):
                 )
             profile = RDSeededServerRuntimeProfile(
                 runtime=config.runtime,
+                **controller_selection_fields(config),
                 qlib_installed_parent_image_id=plan.qlib_installed_parent_image_id,
             )
             expected = seeded_commitment(
@@ -221,9 +226,10 @@ def existing_seeded_receipt(session, owner_id, key, submitted):
 def submit_seeded_run(session, owner_id, submitted, idempotency_key, settings):
     submitted = RDSeededSubmit.model_validate(submitted)
     validate_key(idempotency_key)
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
-        REVISION
-    ]:
+    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+        [REVISION],
+        ["027_rd_controller_v3"],
+    ):
         raise DomainError(
             "engine_submission_schema_unavailable",
             "Explicit seeded submission schema unavailable",
@@ -267,6 +273,7 @@ def submit_seeded_run(session, owner_id, submitted, idempotency_key, settings):
         profile.runtime,
         profile.qlib_installed_parent_image_id,
         expected_input_sha256=checked.frozen_input_sha256,
+        controller_selection=profile.controller_profile,
     )
     version = session.get(FactorVersion, parent.reference.factor_version_id)
     provenance = canonical_bytes(version.source_provenance)

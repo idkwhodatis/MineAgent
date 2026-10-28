@@ -16,9 +16,9 @@ from packages.rdagent_adapter.seeded_bootstrap import RDSeededOperationalBootstr
 
 def seeded_bootstrap_if_declared(session, fence, *, binding, spec, config):
     # Historical databases have no seeded table; do not query an absent family.
-    if (
-        session.scalar(text("SELECT version_num FROM alembic_version"))
-        != "026_rd_seeded_submissions"
+    if session.scalar(text("SELECT version_num FROM alembic_version")) not in (
+        "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
     ):
         return None
     row = session.scalar(

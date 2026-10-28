@@ -15,7 +15,10 @@ def validate_controller_links(idx, shared, configs):
         require(launch is not None and all(launch[k] == row[k] for k in SCOPE))
         admission = shared["research_process_admissions"].get(launch["admission_id"])
         require(admission is not None)
-        if admission["profile"] == "mineagent.rdagent-orchestrator.v2":
+        if admission["profile"] in {
+            "mineagent.rdagent-orchestrator.v2",
+            "mineagent.rdagent-orchestrator.v3",
+        }:
             receipts = [
                 r
                 for r in shared["research_process_receipts"].values()
@@ -29,7 +32,13 @@ def validate_controller_links(idx, shared, configs):
         actor(witness["controller_launch_id"], witness)
     for observation in idx["factor_generation_observations"].values():
         admission = actor(observation["controller_launch_id"], observation)
-        require(admission["profile"] == "mineagent.rdagent-orchestrator.v2")
+        require(
+            admission["profile"]
+            == (
+                getattr(configs[observation["run_id"]], "controller_profile", None)
+                or "mineagent.rdagent-orchestrator.v2"
+            )
+        )
         start = idx["factor_generation_starts"].get(observation["start_id"])
         require(start is not None and all(start[k] == observation[k] for k in SCOPE))
         sources = [

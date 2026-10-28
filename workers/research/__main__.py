@@ -168,6 +168,7 @@ def main():
                         ["024_openevolve_initial"],
                         ["025_structured_factor_strategy"],
                         ["026_rd_seeded_submissions"],
+                        ["027_rd_controller_v3"],
                     ):
                         recover_stalled_jobs(session, rd=True)
             for attempt_id in rd_ids:

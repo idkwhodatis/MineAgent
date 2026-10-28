@@ -34,6 +34,15 @@ SOURCE_PINS = {
     "packages/rdagent_adapter/response_parser.py": "a6f771c98a7b87be16368a04a5fa957b98b745acb8159f3ec6e0cecb67ae9c5a",
 }
 
+# 027 widens only its explicit admission profile gate. The historical018
+# renderer remains byte-identical; this exact successor source is reviewed.
+SUCCESSOR_SOURCE_PINS = {
+    (
+        "backend/app/research_process_models.py",
+        "da0a3e80abaac7d5b4099debeedfabe9bb3ac4cf1817a91909f24d00265fa65d",
+    ): "38c2e17f65672ec49f1d0ac68b922b669e085b16cbad7d56eaa7a1d2c6aca1ca",
+}
+
 TRIGGER_TABLES = (
     "factor_generation_sources",
     "factor_generation_starts",
@@ -76,7 +85,10 @@ def render_sql(schema="public"):
         path = root / name
         if any(item.is_symlink() for item in (path, *path.parents)):
             raise ValueError("source-pin symlink")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        if hashlib.sha256(path.read_bytes()).hexdigest() not in (
+            expected,
+            SUCCESSOR_SOURCE_PINS.get((name, expected)),
+        ):
             raise ValueError("source-pin drift: " + name)
     q = '"' + schema + '"'
     sc = _scope("s")

@@ -16,6 +16,7 @@ from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
 from backend.app.factor_analysis_models import FactorDirectAnalysisIntent
 from backend.app.factor_models import FactorVersion
 from backend.app.main import create_app
+from script.ci_browser_diagnostics import failure_diagnostic
 from script.ci_process_owner import ProcessOwner
 
 
@@ -86,21 +87,31 @@ def assert_actual_engine_result_browser(
             E2E_FACTOR_VERSION_ID=str(version_id),
             PLAYWRIGHT_JUNIT_OUTPUT_FILE=str(tmp_path / "engine-results-browser.xml"),
         )
-        process.run(
-            [
-                node,
-                str(root / "frontend/node_modules/@playwright/test/cli.js"),
-                "test",
-                "-c",
-                "playwright.engine-results.config.ts",
-                "--reporter=junit",
-                "--output",
-                str(tmp_path / ("browser-" + secrets.token_hex(4))),
-            ],
-            cwd=root / "frontend",
-            env=env,
-            seconds=120,
-        )
+        try:
+            process.run(
+                [
+                    node,
+                    str(root / "frontend/node_modules/@playwright/test/cli.js"),
+                    "test",
+                    "-c",
+                    "playwright.engine-results.config.ts",
+                    "--reporter=junit",
+                    "--output",
+                    str(tmp_path / ("browser-" + secrets.token_hex(4))),
+                ],
+                cwd=root / "frontend",
+                env=env,
+                seconds=120,
+            )
+        except Exception:  # noqa: BLE001 - child output remains private
+            print(
+                failure_diagnostic(
+                    tmp_path / "engine-results-browser.xml",
+                    root,
+                    source_suite="engine-results",
+                )
+            )
+            raise RuntimeError("Actual configured result browser failed") from None
         # A zero exit after filtering/listing/skipping is not acceptance.
         from xml.etree import ElementTree as ET
 

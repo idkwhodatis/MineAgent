@@ -3,6 +3,8 @@
 import os
 from datetime import date
 
+from rd_composed_profile_fixture import COMPOSED_WALL_MS, PROFILE
+
 from backend.app.engine_run_preflight import RECOMMENDED_BUDGET
 from backend.app.engine_run_submission_schemas import RDSubmissionRequest
 from backend.app.rdagent_server_profile import ROLE_LOCKS, RDServerRuntimeProfile
@@ -15,7 +17,9 @@ from packages.rdagent_adapter.contracts import (
 )
 
 
-def profile(*, actual_images):
+def profile(*, actual_images, controller_profile=None):
+    if controller_profile not in (None, PROFILE):
+        raise ValueError("Explicit registered controller selection required")
     if type(actual_images) is not bool:
         raise ValueError("Explicit runtime proof choice")
     images = {
@@ -32,6 +36,11 @@ def profile(*, actual_images):
         else "sha256:" + "5" * 64
     )
     return RDServerRuntimeProfile(
+        **(
+            {}
+            if controller_profile is None
+            else {"controller_profile": controller_profile}
+        ),
         runtime=RuntimePins(
             **{role + "_image": value for role, value in images.items()},
             dependency_locks=tuple(
@@ -43,7 +52,9 @@ def profile(*, actual_images):
     )
 
 
-def body(dataset, policy):
+def body(dataset, policy, *, controller_profile=None):
+    if controller_profile not in (None, PROFILE):
+        raise ValueError("Explicit registered controller selection required")
     window = DateWindow(start=date(2024, 3, 13), end=date(2024, 3, 14))
     return RDSubmissionRequest(
         dataset_version_id=dataset.id,
@@ -68,7 +79,13 @@ def body(dataset, policy):
             minimum_defined_days=1,
             minimum_pairs=3,
         ),
-        budget=RECOMMENDED_BUDGET,
+        budget=(
+            RECOMMENDED_BUDGET
+            if controller_profile is None
+            else RECOMMENDED_BUDGET.model_copy(
+                update={"wall_milliseconds": COMPOSED_WALL_MS}
+            )
+        ),
         max_iterations=1,
         source_policy=policy,
     )

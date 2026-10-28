@@ -114,17 +114,27 @@ def validate_controller_closure_unit(
             "mineagent.research-restore-closure.v6",
             "mineagent.rd-source-restore-closure.v3",
         ),
+        (
+            "mineagent.research-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v6",
+        ),
     }:
         raise ValueError("Explicit research-v5 and RD source closure required")
     from collections.abc import Mapping
 
-    if research_schema == "mineagent.research-restore-closure.v10":
+    if research_schema in {
+        "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v11",
+    }:
         if not isinstance(seed_context, Mapping):
             raise ValueError(
                 "Seed context required before protected controller closure"
             )
     elif seed_context is not None:
         raise ValueError("Historical controller cannot acquire seed authority")
+    from backend.app.rdagent_profile_backup import require_admission_revision
+
+    require_admission_revision(row.get("profile"), research_schema)
     admission = _admission(row)
     scope = lambda other: (
         type(other.get("generation")) is int
@@ -144,7 +154,12 @@ def validate_controller_closure_unit(
     amounts = BudgetVector.model_validate(reservation["amounts"])
     if (
         amounts.process_slots != 1
-        or amounts.wall_milliseconds < 60000
+        or amounts.wall_milliseconds
+        < (
+            120000
+            if admission.profile == "mineagent.rdagent-orchestrator.v3"
+            else 60000
+        )
         or amounts.storage_bytes < STORAGE_FLOOR
         or any(
             getattr(amounts, k) != 0
@@ -222,11 +237,23 @@ def validate_controller_closure_unit(
     run_obj.dataset_version_id = UUID(run["dataset_version_id"])
     run_obj.owner_id = UUID(run["owner_id"])
     if (
-        research_schema != "mineagent.research-restore-closure.v10"
+        research_schema
+        not in {
+            "mineagent.research-restore-closure.v10",
+            "mineagent.research-restore-closure.v11",
+        }
         and run["config"].get("schema_version") != "mineagent.factor-research.v1"
     ):
         raise ValueError("Historical controller config grammar differs")
+    from backend.app.rdagent_profile_backup import require_config_revision
+
+    require_config_revision(run["config"], research_schema=research_schema)
     config = require_source_identity(run_obj)
+    if admission.profile != getattr(config, "controller_profile", None) and (
+        admission.profile == "mineagent.rdagent-orchestrator.v3"
+        or getattr(config, "controller_profile", None) is not None
+    ):
+        raise ValueError("Controller admission differs from selected config profile")
     spec = one(
         tables["factor_research_specs"],
         lambda r: r["run_id"] == row["run_id"] and r["owner_id"] == row["owner_id"],
@@ -259,7 +286,10 @@ def validate_controller_closure_unit(
         "config_sha256": config.sha256,
         "input_sha256": config.input.sha256,
     }
-    if research_schema == "mineagent.research-restore-closure.v10":
+    if research_schema in {
+        "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v11",
+    }:
         from backend.app.rdagent_seed_backup import build_expected_bootstrap
 
         bootstrap = build_expected_bootstrap(

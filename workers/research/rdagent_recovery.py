@@ -70,6 +70,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["024_openevolve_initial"],
                 ["025_structured_factor_strategy"],
                 ["026_rd_seeded_submissions"],
+                ["027_rd_controller_v3"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)
@@ -95,7 +96,10 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
             ]
         for admission_id, profile in admissions:
             try:
-                if profile == "mineagent.rdagent-orchestrator.v2":
+                if profile in (
+                    "mineagent.rdagent-orchestrator.v2",
+                    "mineagent.rdagent-orchestrator.v3",
+                ):
                     from workers.research.rdagent_operational import (
                         recover_controller_unit,
                     )

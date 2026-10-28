@@ -21,7 +21,11 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 from xml.etree import ElementTree as ET
 
 from script.ci_browser_diagnostics import failure_sites
-from script.ci_process_owner import ProcessOwner
+from script.ci_process_owner import (
+    OwnedCommandFailed,
+    ProcessOwner,
+    RequiredServiceExited,
+)
 from script.ci_test_environment import SECRET_FIELDS
 from script.compose_bounds import alarm_deadline, read_capped
 from script.compose_browser_launcher import (
@@ -309,6 +313,34 @@ def benchmark_evidence(content, destination, schema, status):
     destination.write_text(json.dumps(value, sort_keys=True, allow_nan=False) + "\n")
 
 
+def run_benchmark_command(owner, arguments, **options):
+    # Only these two fixed existing workload commands emit this failure grammar.
+    from script.ci_benchmark_failure import PROGRAMS, validate_diagnostic
+
+    if arguments[:2] != [sys.executable, "-m"] or arguments[2] not in PROGRAMS:
+        raise ValueError("Fixed benchmark command required")
+    try:
+        return owner.run(arguments, **options)
+    except OwnedCommandFailed as error:
+        diagnostic = validate_diagnostic(error.diagnostic, arguments[2])
+        if diagnostic is not None:
+            print(
+                "BENCHMARK_FAILURE_V1:"
+                + json.dumps(
+                    {
+                        "phase": "benchmark",
+                        **diagnostic,
+                    },
+                    sort_keys=True,
+                    allow_nan=False,
+                )
+            )
+        raise
+    except RequiredServiceExited:
+        print("BENCHMARK_BOUNDARY_FAILURE_V1:service_exit")
+        raise
+
+
 def exercise(owner, root, source, private, node, mode):
     services = service_environment(source, mode)
     program = commands(root, node)
@@ -388,8 +420,13 @@ def exercise(owner, root, source, private, node, mode):
         "complete",
     )
     # A real second owned worker proves attempt overlap, not merely queued work.
-    owner.spawn(program[2], cwd=root, env=services, service=True)
-    result = owner.run(
+    try:
+        owner.spawn(program[2], cwd=root, env=services, service=True)
+    except BaseException:
+        print("BENCHMARK_BOUNDARY_FAILURE_V1:second_worker_spawn")
+        raise
+    result = run_benchmark_command(
+        owner,
         [
             sys.executable,
             "-m",
@@ -415,7 +452,8 @@ def exercise(owner, root, source, private, node, mode):
     )
     if acceptance_stage(source) == "m6":
         return
-    result = owner.run(
+    result = run_benchmark_command(
+        owner,
         [
             sys.executable,
             "-m",

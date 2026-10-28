@@ -66,6 +66,7 @@ def create_structured_acceptance_run(factory, *, owner_id, program, config, sett
         ).all() not in (
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
         ):
             raise ProcessError("structured_schema_unsupported")
         dataset = session.get(DatasetVersion, config.dataset_version_id)

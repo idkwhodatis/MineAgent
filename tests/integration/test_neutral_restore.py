@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 import test_backup_restore as legacy
 import test_factor_restore as factors
+from cold_failure_diagnostic import diagnose_cold_failure
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 from test_backup_restore import drill_databases as shared_drill_databases
@@ -158,6 +159,7 @@ def _publish_after_restore(engine, storage):
     return ref
 
 
+@diagnose_cold_failure
 def _roundtrip(drill_databases, tmp_path, source, storage, target):
     from backend.app.operations_backup import (
         BackupLimits,

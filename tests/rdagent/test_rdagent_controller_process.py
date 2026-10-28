@@ -280,8 +280,11 @@ def test_integer_cannot_impersonate_stop_boolean(tmp_path, field):
         module.ControllerStop.model_validate_json(json.dumps(payload))
 
 
+@pytest.mark.parametrize(
+    "selected,wall", [(None, 60000), ("mineagent.rdagent-orchestrator.v3", 120000)]
+)
 def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, selected, wall
 ):
     from pydantic import BaseModel
 
@@ -294,7 +297,9 @@ def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
     class Runtime(BaseModel):
         orchestrator_image: str
 
-    class Config(BaseModel):
+    from packages.rdagent_adapter.controller_profile import ControllerProfileSelection
+
+    class Config(ControllerProfileSelection):
         runtime: Runtime
 
     class Bootstrap(BaseModel):
@@ -303,18 +308,23 @@ def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
     launch = records(tmp_path)[0]
     bootstrap = Bootstrap(
         config=Config(
-            runtime=Runtime(orchestrator_image=launch.intent.admission.image_id)
+            **({} if selected is None else {"controller_profile": selected}),
+            runtime=Runtime(orchestrator_image=launch.intent.admission.image_id),
         )
     )
     raw = canonical_bytes(bootstrap)
     admission = launch.intent.admission.model_copy(
-        update={"input_sha256": hashlib.sha256(raw).hexdigest()}
+        update={
+            "input_sha256": hashlib.sha256(raw).hexdigest(),
+            "profile": selected or module.PROFILE,
+        }
     )
     intent = launch.intent.model_copy(
         update={
             "admission": admission,
             "bootstrap_sha256": admission.input_sha256,
             "bootstrap_size_bytes": len(raw),
+            "not_after": launch.intent.issued_at + timedelta(milliseconds=wall),
         }
     )
     fence = SimpleNamespace(
@@ -349,7 +359,7 @@ def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
     assert events[0] == ("fence", "processes")
     assert events[1][0] == "reservation"
     assert events[1][1].storage_bytes == module.STORAGE_FLOOR
-    assert events[1][1].process_slots == 1 and events[1][1].wall_milliseconds == 60000
+    assert events[1][1].process_slots == 1 and events[1][1].wall_milliseconds == wall
     assert events[-1] == ("receipt", "launch_intent")
     events.clear()
     with pytest.raises(ProcessError, match="bootstrap_identity"):
@@ -358,4 +368,22 @@ def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
             fence,
             intent.model_copy(update={"bootstrap_size_bytes": len(raw) + 1}),
         )
+    assert events == [("fence", "processes")]
+    events.clear()
+    wrong_profile = module.PROFILE if selected else "mineagent.rdagent-orchestrator.v3"
+    wrong = intent.model_copy(
+        update={"admission": admission.model_copy(update={"profile": wrong_profile})}
+    )
+    with pytest.raises((ValueError, ProcessError)):
+        service.persist_controller_intent(session, fence, wrong)
+    assert events == [("fence", "processes")]
+    events.clear()
+
+    def insufficient(*args, **kwargs):
+        assert kwargs["minimum"].wall_milliseconds == wall
+        raise ProcessError("budget_insufficient")
+
+    monkeypatch.setattr(broker, "require_reservation", insufficient)
+    with pytest.raises(ProcessError, match="budget_insufficient"):
+        service.persist_controller_intent(session, fence, intent)
     assert events == [("fence", "processes")]

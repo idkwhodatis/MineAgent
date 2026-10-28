@@ -6,23 +6,39 @@ Adding persistence or an image must never implicitly enable the public entry.
 
 from backend.app.engine_run_preflight import RECOMMENDED_BUDGET
 from backend.app.engine_run_schemas import EngineCapabilities, EngineCapability
+from packages.rdagent_adapter.controller_profile import (
+    composed_wall_floor,
+    controller_profile,
+)
 
 
 def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
-    from backend.app.rdagent_submission_services import resolve_submission_runtime
+    from backend.app.rdagent_submission_services import resolve_submission_profile
     from backend.app.services import DomainError
 
+    recommended = RECOMMENDED_BUDGET
     enabled = False
     code = "production_submission_not_enabled"
     if settings is not None:
         try:
-            resolve_submission_runtime(settings)
+            selected = resolve_submission_profile(settings)
+            recommended = RECOMMENDED_BUDGET.model_copy(
+                update={
+                    "wall_milliseconds": composed_wall_floor(
+                        controller_profile(selected)
+                    )
+                }
+            )
             if schema_revision in {
                 "023_rd_submissions",
                 "024_openevolve_initial",
                 "025_structured_factor_strategy",
                 "026_rd_seeded_submissions",
-            }:
+                "027_rd_controller_v3",
+            } and (
+                selected.controller_profile is None
+                or schema_revision == "027_rd_controller_v3"
+            ):
                 enabled, code = True, "configured_fixture_profile_available"
             else:
                 code = "runtime_schema_unavailable"
@@ -40,7 +56,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                 engine="rdagent",
                 can_read_history=True,
                 can_preflight=True,
-                recommended_budget=RECOMMENDED_BUDGET,
+                recommended_budget=recommended,
                 max_output_sessions=1,
                 max_iterations=1,
                 model_profile="fixture.rdagent.v1",

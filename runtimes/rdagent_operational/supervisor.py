@@ -21,6 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
+from packages.rdagent_adapter.controller_profile import (
+    LEGACY_CONTROLLER_PROFILE,
+    controller_wall_seconds,
+)
 from packages.research_runtime.process_contracts import ProcessError, canonical, digest
 from runtimes.factor_execution.attach_stream import AttachStream
 from runtimes.factor_execution.runtime_contract import (
@@ -62,7 +66,7 @@ class SingleUseControllerAuthority:
             raise ProcessError("rd_controller_launch_authority")
         self._intent = ControllerIntent.model_validate(intent)
         remaining = (self.intent.not_after - datetime.now(UTC)).total_seconds()
-        if not 0 < remaining <= 60:
+        if not 0 < remaining <= controller_wall_seconds(self.intent.admission.profile):
             raise ProcessError("rd_controller_deadline")
         self._deadline = time.monotonic() + remaining
         self._used = False
@@ -91,6 +95,13 @@ class SingleUseControllerAuthority:
 def _issue_committed_authority(intent):
     """Trusted DB issuer only, after commit plus fresh fenced verification."""
     return SingleUseControllerAuthority(intent, _issuer=_ISSUER)
+
+
+def controller_command(intent):
+    profile = intent.admission.profile
+    controller_wall_seconds(profile)
+    args = [str(int(intent.not_after.timestamp() * 1000))]
+    return args if profile == LEGACY_CONTROLLER_PROFILE else [*args, profile]
 
 
 def _labels(launch):
@@ -225,7 +236,7 @@ def verify_container(document, launch, operation, inventory, *, container_id=Non
         or config.get("WorkingDir") != "/tmp"
         or config.get("User") != "0:0"
         or config.get("Entrypoint") != list(ENTRYPOINT)
-        or config.get("Cmd") != [str(int(launch.intent.not_after.timestamp() * 1000))]
+        or config.get("Cmd") != controller_command(launch.intent)
         or config.get("Labels") != _labels(launch)
         or config.get("Tty") is not False
         or config.get("OpenStdin") is not False
@@ -560,7 +571,7 @@ class ControllerSupervisor:
                 "--mount",
                 f"type=bind,src={ipc},dst=/ipc,readonly",
                 a.image_id,
-                str(int(intent.not_after.timestamp() * 1000)),
+                *controller_command(intent),
             ]
             try:
                 staged = _staged_binding(root, launch, bootstrap_bytes, ticket)
@@ -605,7 +616,11 @@ class ControllerSupervisor:
                 if document["State"]["Running"] is not True:
                     raise ProcessError("rd_controller_not_running")
                 leader = DaemonIdentityContext(
-                    cid, a.image_id, document["State"]["Pid"], authority.deadline
+                    cid,
+                    a.image_id,
+                    document["State"]["Pid"],
+                    authority.deadline,
+                    a.profile,
                 ).observe(document["State"]["Pid"])
                 identity = ControllerIdentity(
                     schema_version="mineagent.rd-controller-identity.v1",
@@ -655,7 +670,11 @@ class RunningController:
         )
         self.deadline, self.reader, self.listener = deadline, reader, listener
         self.observer_context = DaemonIdentityContext(
-            identity.container_id, identity.image_id, identity.leader.host_pid, deadline
+            identity.container_id,
+            identity.image_id,
+            identity.leader.host_pid,
+            deadline,
+            launch.intent.admission.profile,
         )
         self.reports = ReportStream(reader)
         self.child = None

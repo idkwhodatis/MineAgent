@@ -17,6 +17,9 @@ from backend.app.models import ResearchRun
 from backend.app.rdagent_submission_models import FactorResearchSubmission
 from backend.app.services import DomainError
 from packages.factors.contracts import canonical_bytes, digest
+from packages.rdagent_adapter.controller_profile import (
+    controller_selection_fields,
+)
 from packages.rdagent_adapter.persisted_identity import require_source_identity
 from packages.strategy_sdk import JsonLimits, parse_json
 
@@ -177,6 +180,7 @@ def validate_saved_binding(row, run, plan, owner_id, key):
             profile_sha = digest(
                 RDProviderServerRuntimeProfile(
                     runtime=config.runtime,
+                    **controller_selection_fields(config),
                     qlib_installed_parent_image_id=plan.qlib_installed_parent_image_id,
                 )
             )
@@ -202,6 +206,7 @@ def validate_saved_binding(row, run, plan, owner_id, key):
             profile_sha = digest(
                 RDServerRuntimeProfile(
                     runtime=config.runtime,
+                    **controller_selection_fields(config),
                     qlib_installed_parent_image_id=plan.qlib_installed_parent_image_id,
                 )
             )

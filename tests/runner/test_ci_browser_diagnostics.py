@@ -270,3 +270,88 @@ def test_frontend_and_exporter_share_exact_fixed_vocabulary():
         assert match is not None
         assert set(re.findall(r'"([^"\n]+)"', match[1])) == expected
     assert f'"{NOTE_HTTP_PREFIX}"' in source
+
+
+def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
+    tmp_path,
+):
+    directory = tmp_path / "frontend/tests/engine-results-acceptance"
+    directory.mkdir(parents=True)
+    (directory / "results.spec.ts").write_text("\n" * 30)
+    private = secrets.token_urlsafe(48)
+    source = tmp_path / "report.xml"
+    report = ET.Element("testsuites", name=private)
+    case = ET.SubElement(report, "testcase", name=private)
+    failure = ET.SubElement(case, "failure", message=private)
+    failure.text = (
+        private + " https://private.invalid/secret\n at results.spec.ts:12:5\n"
+        " at results.spec.ts:99999:1 at results.spec.ts:0:1\n"
+        " at evil.spec.ts:1:1 at results.spec.ts:12:99999"
+    )
+    source.write_bytes(ET.tostring(report))
+    assert failure_sites(source, tmp_path)[0]["source_frames"] == []
+    result = failure_sites(source, tmp_path, source_suite="engine-results")
+    assert result == [
+        {
+            "case_index": 0,
+            "outcome": "failed",
+            "source_frames": [{"file": "results.spec.ts", "line": 12, "column": 5}],
+        }
+    ]
+    projected = failure_diagnostic(source, tmp_path, source_suite="engine-results")
+    assert private not in projected and "https" not in projected
+    for suite in ("../engine-results-acceptance", "/tmp", "unknown", None):
+        assert failure_diagnostic(source, tmp_path, source_suite=suite).endswith(
+            ":unavailable"
+        )
+
+
+def test_actual_result_browser_failure_stays_failed_after_safe_projection(
+    tmp_path, capsys
+):
+    import ast
+    from types import SimpleNamespace
+
+    root = Path(__file__).resolve().parents[2]
+    tree = ast.parse((root / "tests/integration/engine_result_browser.py").read_text())
+    guarded = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Try)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Call)
+        and isinstance(node.body[0].value.func, ast.Attribute)
+        and isinstance(node.body[0].value.func.value, ast.Name)
+        and node.body[0].value.func.value.id == "process"
+        and node.body[0].value.func.attr == "run"
+    )
+    calls = []
+    secret = secrets.token_urlsafe(48)
+
+    def fail(arguments, **kwargs):
+        calls.append((arguments, kwargs))
+        raise RuntimeError(secret)
+
+    scope = {
+        "process": SimpleNamespace(run=fail),
+        "node": "node",
+        "root": root,
+        "tmp_path": tmp_path,
+        "env": {},
+        "secrets": secrets,
+        "failure_diagnostic": failure_diagnostic,
+    }
+    with pytest.raises(RuntimeError, match="^Actual configured result browser failed$"):
+        exec(  # noqa: S102 - trusted repository AST only
+            compile(
+                ast.Module(body=[guarded], type_ignores=[]), "browser-gate", "exec"
+            ),
+            scope,
+        )
+    assert calls[0][1]["seconds"] == 120
+    assert "--reporter=junit" in calls[0][0]
+    assert "--list" not in calls[0][0]
+    captured = capsys.readouterr().out
+    assert captured == "BROWSER_SOURCE_DIAGNOSTICS_V1:unavailable\n"
+    assert secret not in captured

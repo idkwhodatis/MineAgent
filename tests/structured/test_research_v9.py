@@ -17,7 +17,7 @@ def test_structured_paths_only_exact_successor(leaf):
         backup.validate_path(path, schema=backup.SCHEMA_V8)
     backup.validate_path(path, schema=backup.SCHEMA_V9)
     with pytest.raises(ValueError):
-        backup.validate_path(path, schema="mineagent.research-restore-closure.v11")
+        backup.validate_path(path, schema="mineagent.research-restore-closure.v12")
 
 
 def test_successor_preserves_oe_binary_grammar_without_new_json_assumption():

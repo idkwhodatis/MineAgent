@@ -17,6 +17,10 @@ from backend.app.research_process_models import (
     ResearchProcessReceipt,
     ResearchProcessState,
 )
+from packages.rdagent_adapter.controller_profile import (
+    controller_profile,
+    controller_wall_milliseconds,
+)
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.process_contracts import ProcessError, digest
 from packages.research_runtime.process_persistence_codec import (
@@ -56,7 +60,8 @@ def persist_controller_intent(session, fence, intent):
 
     raw = canonical_bytes(bootstrap)
     if (
-        admission.logical_operation_id != binding.id
+        admission.profile != controller_profile(bootstrap.config)
+        or admission.logical_operation_id != binding.id
         or admission.image_id != bootstrap.config.runtime.orchestrator_image
         or intent.bootstrap_sha256 != hashlib.sha256(raw).hexdigest()
         or intent.bootstrap_size_bytes != len(raw)
@@ -68,7 +73,9 @@ def persist_controller_intent(session, fence, intent):
         admission.reservation_id,
         purpose="process_unit",
         minimum=BudgetVector(
-            process_slots=1, wall_milliseconds=60000, storage_bytes=STORAGE_FLOOR
+            process_slots=1,
+            wall_milliseconds=controller_wall_milliseconds(admission.profile),
+            storage_bytes=STORAGE_FLOOR,
         ),
     )
     previous = session.scalar(

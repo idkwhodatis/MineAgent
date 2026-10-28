@@ -14,6 +14,11 @@ import signal
 import sys
 import time
 
+from packages.rdagent_adapter.controller_limits import (
+    COMPOSED_CONTROLLER_PROFILE,
+    LEGACY_CONTROLLER_PROFILE,
+    controller_wall_milliseconds,
+)
 from runtimes.hostile_deadline import deadline as lifecycle
 
 PROFILE = "mineagent.rdagent-orchestrator.v2"
@@ -35,7 +40,7 @@ CHILD_ENV = (
 )
 
 
-def remaining_seconds(deadline_ms, now_ms):
+def remaining_seconds(deadline_ms, now_ms, *, profile=LEGACY_CONTROLLER_PROFILE):
     if (
         type(deadline_ms) is not str
         or not deadline_ms.isascii()
@@ -45,12 +50,12 @@ def remaining_seconds(deadline_ms, now_ms):
     ):
         raise ValueError("Exact absolute deadline required")
     remaining = int(deadline_ms) - now_ms
-    if not 0 < remaining <= MAX_WALL_MS:
+    if not 0 < remaining <= controller_wall_milliseconds(profile):
         raise ValueError("Expired or excessive controller deadline")
     return remaining / 1000
 
 
-def controller_child(libc):
+def controller_child(libc, *, profile=LEGACY_CONTROLLER_PROFILE, deadline_ms=None):
     os.setsid()
     os.setgroups([])
     os.setresgid(CHILD_GID, CHILD_GID, CHILD_GID)
@@ -73,7 +78,12 @@ def controller_child(libc):
         os.dup2(null, fd)
     lifecycle.close_fds()
     os.chdir("/tmp")
-    os.execve(sys.executable, [sys.executable, *CHILD_ARGS], dict(CHILD_ENV))
+    args = [sys.executable, *CHILD_ARGS]
+    if profile != LEGACY_CONTROLLER_PROFILE:
+        if profile != COMPOSED_CONTROLLER_PROFILE or deadline_ms is None:
+            raise ValueError("Exact composed controller arguments required")
+        args.extend([profile, deadline_ms])
+    os.execve(sys.executable, args, dict(CHILD_ENV))
 
 
 def child_start_ticks(child):
@@ -141,10 +151,13 @@ def quiesce_and_hold(expires, child, start, code):
 def main():
     if os.getpid() != 1 or os.getresuid() != (0, 0, 0) or os.getresgid() != (0, 0, 0):
         raise RuntimeError("Requires private root PID1")
-    if len(sys.argv) != 2 or not sys.flags.isolated:
+    if len(sys.argv) not in (2, 3) or not sys.flags.isolated:
         raise RuntimeError("Invalid fixed controller entrypoint")
+    profile = LEGACY_CONTROLLER_PROFILE if len(sys.argv) == 2 else sys.argv[2]
+    if len(sys.argv) == 3 and profile != COMPOSED_CONTROLLER_PROFILE:
+        raise RuntimeError("Invalid explicit controller profile")
     expires = time.monotonic() + remaining_seconds(
-        sys.argv[1], time.time_ns() // 1000000
+        sys.argv[1], time.time_ns() // 1000000, profile=profile
     )
     libc = ctypes.CDLL(None, use_errno=True)
     lifecycle.prctl(libc, lifecycle.PR_SET_DUMPABLE, 0)
@@ -156,7 +169,7 @@ def main():
     child = os.fork()
     if child == 0:
         try:
-            controller_child(libc)
+            controller_child(libc, profile=profile, deadline_ms=sys.argv[1])
         except BaseException:  # noqa: BLE001 - no child-controlled output
             os._exit(125)
     start = child_start_ticks(child)

@@ -29,7 +29,10 @@ from backend.app.factor_analysis_reconstruction import reconstruct_direct_input
 from backend.app.factor_native_io import require_native_storage_guard
 from backend.app.models import DatasetVersion
 from backend.app.rdagent_models import FactorResearchSpec
-from backend.app.rdagent_snapshot_config import provider_config_in_session
+from backend.app.rdagent_snapshot_config import (
+    composed_controller_in_session,
+    provider_config_in_session,
+)
 from packages.factors.contracts import canonical_bytes, digest
 from packages.qlib_adapter.direct_wire import read_result
 from packages.qlib_adapter.objective import measure_direct_objective
@@ -161,6 +164,7 @@ def read_historical_direct_analysis(factory, owner_id, analysis_id, settings):
             dataset=row_document(dataset),
             read_bytes=retained_reader(settings.storage_root),
             provider_config=provider_config_in_session(session),
+            composed_controller=composed_controller_in_session(session),
         )
         _, receipts = process_history(session, outcome, outcome.admission_id)
         physical = read_historical_analysis_bytes(

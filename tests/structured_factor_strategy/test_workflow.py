@@ -94,7 +94,7 @@ def test_genuine_browser_is_required_after_history_without_extra_units():
     assert source.rstrip().endswith("assert attempted == []")
 
 
-def test_configured_fixture_initializer_explicitly_preserves_026_only():
+def test_configured_fixture_initializer_preserves_versioned_revision_gate():
     # Check the actual gate, rather than a parallel list of accepted revisions.
     import ast
 
@@ -104,9 +104,22 @@ def test_configured_fixture_initializer_explicitly_preserves_026_only():
         for n in tree.body
         if isinstance(n, ast.FunctionDef) and n.name == "create_configured_run"
     )
-    revision_gate = next(
+    calls = [
         n
         for n in ast.walk(function)
+        if isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Name)
+        and n.func.id == "require_controller_revision"
+    ]
+    assert len(calls) == 2  # Source-read transaction and final write transaction.
+    gate = next(
+        n
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "require_controller_revision"
+    )
+    revision_gate = next(
+        n
+        for n in ast.walk(gate)
         if isinstance(n, ast.Compare) and isinstance(n.ops[0], ast.NotIn)
     )
     allowed = ast.literal_eval(revision_gate.comparators[0])
@@ -116,6 +129,7 @@ def test_configured_fixture_initializer_explicitly_preserves_026_only():
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed

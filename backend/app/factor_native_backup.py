@@ -132,16 +132,32 @@ def validate_closure(
                 "mineagent.research-restore-closure.v8",
                 "mineagent.research-restore-closure.v9",
                 "mineagent.research-restore-closure.v10",
+                "mineagent.research-restore-closure.v11",
             },
         }[closure["schema_version"]]
     ):
         raise ValueError("Native report closure requires research v6")
     if (
         research_closure.get("schema_version")
-        == "mineagent.research-restore-closure.v10"
-        and rd_source_closure.get("schema_version")
-        != "mineagent.rd-source-restore-closure.v5"
-    ):
+        in {
+            "mineagent.research-restore-closure.v10",
+            "mineagent.research-restore-closure.v11",
+        }
+        or rd_source_closure.get("schema_version")
+        == "mineagent.rd-source-restore-closure.v6"
+    ) and (
+        research_closure.get("schema_version"),
+        rd_source_closure.get("schema_version"),
+    ) not in {
+        (
+            "mineagent.research-restore-closure.v10",
+            "mineagent.rd-source-restore-closure.v5",
+        ),
+        (
+            "mineagent.research-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v6",
+        ),
+    }:
         raise ValueError("Seeded native closure requires exact RD v5")
     physical = {row["path"]: row for row in inventory}
     if len(physical) != len(inventory):
@@ -286,16 +302,35 @@ def validate_closure(
         ]
         if len(specs) != 1:
             raise ValueError("Native research spec missing")
+        from backend.app.rdagent_profile_backup import require_config_revision
+
+        require_config_revision(
+            specs[0]["config"],
+            research_schema=research_closure.get("schema_version"),
+            source_schema=rd_source_closure.get("schema_version"),
+        )
         config = parse_snapshot_config(
             specs[0]["config"],
             owner_id=specs[0]["owner_id"],
             provider_config=(
                 closure["schema_version"] == SCHEMA_V3
-                and research_closure.get("schema_version")
-                == "mineagent.research-restore-closure.v10"
-                and rd_source_closure.get("schema_version")
-                == "mineagent.rd-source-restore-closure.v5"
+                and (
+                    research_closure.get("schema_version"),
+                    rd_source_closure.get("schema_version"),
+                )
+                in {
+                    (
+                        "mineagent.research-restore-closure.v10",
+                        "mineagent.rd-source-restore-closure.v5",
+                    ),
+                    (
+                        "mineagent.research-restore-closure.v11",
+                        "mineagent.rd-source-restore-closure.v6",
+                    ),
+                }
             ),
+            composed_controller=research_closure.get("schema_version")
+            == "mineagent.research-restore-closure.v11",
         )
         expected = research_snapshot_input(
             config,

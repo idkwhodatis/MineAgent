@@ -21,8 +21,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_reviewed_source_pin_and_deterministic_schema_qualified_render():
-    source = ROOT / "runtimes/rdagent_operational/process_journal.py"
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == module.JOURNAL_SHA256
+    source = ROOT / "backend/alembic/versions/020_rd_controller.py"
+    tree = ast.parse(source.read_text())
+    frozen = next(
+        ast.literal_eval(n.value)
+        for n in tree.body
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "UPGRADE_SQL" for t in n.targets)
+    )
+    assert (
+        hashlib.sha256(frozen.encode()).hexdigest()
+        == "0356ba7a550b5432fdd9dc675f1b62bf7672b546c1196dfdbc68a9d855a0d069"
+    )
     assert module.render_sql() == module.render_sql()
     sql = module.render_sql("rd_controller_test")
     assert "@S@" not in sql and "@RULES@" not in sql

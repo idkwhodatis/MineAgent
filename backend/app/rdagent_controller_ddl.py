@@ -8,6 +8,7 @@ remain necessary. Fixed receipt-kind sequence uses BEFORE INSERT existence check
 not caller-created timestamp/UUID ordering or fabricated ordinal columns.
 """
 
+import ast
 import hashlib
 import json
 import re
@@ -66,11 +67,22 @@ def _schema(cls):
 def render_sql(schema="public"):
     if type(schema) is not str or re.fullmatch(r"[a-z][a-z0-9_]{0,62}", schema) is None:
         raise ValueError("Exact schema required")
-    source = (
-        Path(__file__).parents[2] / "runtimes/rdagent_operational/process_journal.py"
+    # 020 is historical.027 changes the controller deadline without changing
+    # receipt shape. Pin the frozen020 grammar and compare current structures;
+    # do not pretend the evolved runtime still has the old whole-source hash.
+    historical = Path(__file__).parents[1] / "alembic/versions/020_rd_controller.py"
+    module = ast.parse(historical.read_text())
+    frozen = next(
+        ast.literal_eval(n.value)
+        for n in module.body
+        if isinstance(n, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "UPGRADE_SQL" for t in n.targets)
     )
-    if hashlib.sha256(source.read_bytes()).hexdigest() != JOURNAL_SHA256:
-        raise ValueError("Reviewed controller journal schema drift")
+    if (
+        hashlib.sha256(frozen.encode()).hexdigest()
+        != "0356ba7a550b5432fdd9dc675f1b62bf7672b546c1196dfdbc68a9d855a0d069"
+    ):
+        raise ValueError("Historical020 controller grammar changed")
     choices = []
     for kind, cls in zip(
         KINDS,
@@ -82,7 +94,10 @@ def render_sql(schema="public"):
             sort_keys=True,
             separators=(",", ":"),
         ).replace("'", "''")
-        choices.append(f"WHEN '{kind}' THEN rule := '{raw}'::jsonb;")
+        clause = f"WHEN '{kind}' THEN rule := '{raw}'::jsonb;"
+        if clause not in frozen:
+            raise ValueError("Current receipt shape differs from frozen020 grammar")
+        choices.append(clause)
     alterations = f"""ALTER TABLE research_process_admissions DROP CONSTRAINT ck_process_v2_unregistered,
  ADD CONSTRAINT ck_process_v2_unregistered CHECK (({CONTROLLER_PROFILE_GATE}) OR
  (schema_version='mineagent.process-admission.v2' AND role='rd_orchestrator'

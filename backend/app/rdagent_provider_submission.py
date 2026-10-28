@@ -41,9 +41,10 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
             "request_drift", "Exact model-backed submission required", 422
         )
     validate_key(idempotency_key)
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
-        "026_rd_seeded_submissions"
-    ]:
+    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+    ):
         raise DomainError(
             "engine_submission_schema_unavailable",
             "Configured model schema unavailable",
@@ -94,6 +95,7 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
         profile.runtime,
         profile.qlib_installed_parent_image_id,
         expected_input_sha256=checked.frozen_input_sha256,
+        controller_selection=profile.controller_profile,
         model_binding=checked.model_binding,
         steer_snapshot=checked.steer_snapshot,
     )

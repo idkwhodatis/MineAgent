@@ -141,8 +141,17 @@ def validate_closure(
         or closure["schema_version"] != SCHEMA
         or type(closure["tables"]) is not dict
         or set(closure["tables"]) != set(FIELDS)
-        or rd_source_closure.get("schema_version") != RD
-        or research_closure.get("schema_version") != RESEARCH
+        or (
+            research_closure.get("schema_version"),
+            rd_source_closure.get("schema_version"),
+        )
+        not in {
+            (RESEARCH, RD),
+            (
+                "mineagent.research-restore-closure.v11",
+                "mineagent.rd-source-restore-closure.v6",
+            ),
+        }
         or factor_closure.get("schema_version") != "mineagent.factor-restore-closure.v2"
         or direct_analysis_closure.get("schema_version")
         != "mineagent.direct-analysis-restore-closure.v1"
@@ -156,6 +165,12 @@ def validate_closure(
         or len(canonical_bytes(closure)) > 32_000_000
     ):
         raise ValueError("Seed closure bound")
+    from backend.app.rdagent_profile_backup import require_config_revision
+
+    for run in rd_source_closure.get("external_bindings", {}).get("runs", []):
+        require_config_revision(
+            run["config"], source_schema=rd_source_closure["schema_version"]
+        )
     total = 0
     for name, fields in FIELDS.items():
         rows = closure["tables"][name]

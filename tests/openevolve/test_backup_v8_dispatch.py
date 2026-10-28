@@ -36,7 +36,7 @@ def test_full_revision_declares_separate_domain_closure_not_component_only():
             {"schema_version": backup.SCHEMA_V8}, None, None, 100, inventory=[]
         )
     with pytest.raises(ValueError):
-        backup.closure_fields("mineagent.research-restore-closure.v11")
+        backup.closure_fields("mineagent.research-restore-closure.v12")
 
 
 @pytest.mark.parametrize(

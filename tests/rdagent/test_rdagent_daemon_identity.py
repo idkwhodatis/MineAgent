@@ -201,3 +201,47 @@ def test_context_is_frozen_observation_data_not_peer_authority(observer):
     assert type(observer.value) is module.DaemonIdentityContext
     with pytest.raises(FrozenInstanceError):
         observer.value.container_id = "f" * 64
+
+
+@pytest.mark.parametrize(
+    "profile,seconds",
+    [
+        ("mineagent.rdagent-orchestrator.v2", 60),
+        ("mineagent.rdagent-orchestrator.v3", 120),
+    ],
+)
+def test_profile_bound_observation_uses_original_deadline(
+    observer, monkeypatch, profile, seconds
+):
+    context = module.DaemonIdentityContext(
+        observer.value.container_id,
+        observer.value.image_id,
+        100,
+        10.0 + seconds,
+        profile,
+    )
+    assert context.observe_pair(101)[1].host_pid == 101
+    # Expiry of the same absolute monotonic deadline never grants a fresh window.
+    monkeypatch.setattr(module.time, "monotonic", lambda: 11.0 + seconds)
+    with pytest.raises(ProcessError):
+        context.observe_pair(101)
+
+
+@pytest.mark.parametrize(
+    "profile,seconds",
+    [
+        ("mineagent.rdagent-orchestrator.v2", 61),
+        ("mineagent.rdagent-orchestrator.v3", 121),
+    ],
+)
+def test_profile_excess_rejected_before_daemon_read(observer, profile, seconds):
+    context = module.DaemonIdentityContext(
+        observer.value.container_id,
+        observer.value.image_id,
+        100,
+        10.0 + seconds,
+        profile,
+    )
+    with pytest.raises(ProcessError):
+        context.observe_pair(101)
+    observer.cli._inspect.assert_not_called()

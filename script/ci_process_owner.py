@@ -15,6 +15,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from script.ci_benchmark_failure import decode_failure
 from script.compose_browser_launcher import (
     contain,
     direct_children,
@@ -24,6 +25,16 @@ from script.compose_browser_launcher import (
 GRACE_SECONDS = 5
 CLEANUP_SECONDS = 15
 MAX_ROOTS = 1024
+
+
+class OwnedCommandFailed(RuntimeError):
+    def __init__(self, diagnostic=None):
+        super().__init__("Owned command failed")
+        self.diagnostic = diagnostic
+
+
+class RequiredServiceExited(RuntimeError):
+    pass
 
 
 class OwnedProcess:
@@ -115,7 +126,7 @@ class ProcessOwner:
             child.service and child.process.returncode is not None
             for child in self.children.values()
         ):
-            raise RuntimeError("Required hosted service exited")
+            raise RequiredServiceExited("Required hosted service exited")
 
     def run(self, arguments, *, cwd, env, seconds, maximum=0, cleanup=False):
         """Bound wall time and captured bytes; all diagnostics are discarded."""
@@ -140,7 +151,9 @@ class ProcessOwner:
                         raise TimeoutError("Owned command exceeded its deadline")
                     if child.process.returncode is not None and not selector.get_map():
                         if child.process.returncode != 0:
-                            raise RuntimeError("Owned command failed")
+                            raise OwnedCommandFailed(
+                                decode_failure(arguments, bytes(output))
+                            )
                         return bytes(output)
                     if selector.get_map():
                         for key, _ in selector.select(0.1):

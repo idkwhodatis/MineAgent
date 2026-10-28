@@ -14,6 +14,10 @@ from backend.app.rdagent_seed_runtime_profile import RDSeededServerRuntimeProfil
 from backend.app.rdagent_seed_services import resolve_seed_parent
 from backend.app.services import DomainError
 from packages.factors.contracts import digest
+from packages.rdagent_adapter.controller_profile import (
+    composed_wall_floor,
+    controller_profile,
+)
 from packages.rdagent_adapter.seed_prompt_budget import first_prompt_messages_for_task
 
 REVISION = "026_rd_seeded_submissions"
@@ -107,9 +111,24 @@ def seeded_preflight(session, owner_id, request, settings):
     try:
         profile = resolve_seeded_runtime(settings)
         profile_sha = digest(profile)
-        if session.scalars(text("SELECT version_num FROM alembic_version")).all() == [
-            REVISION
-        ]:
+        if request.budget.wall_milliseconds < composed_wall_floor(
+            controller_profile(profile)
+        ):
+            eligible = False
+            reasons.append(
+                SeedPreflightReason(
+                    code="budget_below_profile",
+                    message="Budget is below selected controller profile floor.",
+                )
+            )
+        if session.scalars(text("SELECT version_num FROM alembic_version")).all() in (
+            [REVISION],
+            ["027_rd_controller_v3"],
+        ) and (
+            profile.controller_profile is None
+            or session.scalars(text("SELECT version_num FROM alembic_version")).all()
+            == ["027_rd_controller_v3"]
+        ):
             available = True
         else:
             reasons.append(

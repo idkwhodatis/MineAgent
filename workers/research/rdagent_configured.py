@@ -1,7 +1,7 @@
 """Configured internal run initialization; default public submission stays closed.
 
 This initial bounded profile supports one declared output session and one CoSTEER
-iteration under the existing immutable60s controller deadline. It is not a generic
+iteration under the explicit immutable controller deadline (legacy60s or composed120s). It is not a generic
 queue/claim/resume implementation. Runtime catalog admission remains separate.
 """
 
@@ -28,6 +28,10 @@ from backend.app.research_lifecycle import neutral_transaction
 from packages.qlib_adapter.objective import DirectObjectiveDeclaration
 from packages.rdagent_adapter.configured_source import ConfiguredSourcePolicy
 from packages.rdagent_adapter.contracts import FactorResearchConfig
+from packages.rdagent_adapter.controller_profile import (
+    composed_wall_floor,
+    controller_profile,
+)
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_runtime.fences import AttemptFence
 from packages.research_runtime.process_contracts import ProcessError
@@ -52,7 +56,9 @@ def validate_configured_work(config, source, objective):
         )
 
         if type(config) is not ProviderFactorResearchConfig or not config.budget.covers(
-            provider_budget_floor(config.model_binding)
+            provider_budget_floor(
+                config.model_binding, profile=controller_profile(config)
+            )
         ):
             raise ProcessError("configured_model_budget_floor")
     if objective.window != config.input.window:
@@ -76,9 +82,25 @@ def validate_configured_work(config, source, objective):
     if (
         config.budget.process_slots < 4
         or config.budget.storage_bytes < 512 * 1024**2
-        or config.budget.wall_milliseconds < 240000
+        or config.budget.wall_milliseconds
+        < composed_wall_floor(controller_profile(config))
     ):
         raise ProcessError("configured_work_budget_floor")
+
+
+def require_controller_revision(session, config):
+    revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
+    if revisions not in (
+        ["022_factor_analysis"],
+        ["023_rd_submissions"],
+        ["024_openevolve_initial"],
+        ["025_structured_factor_strategy"],
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+    ) or (
+        config.controller_profile is not None and revisions != ["027_rd_controller_v3"]
+    ):
+        raise ProcessError("rd_controller_revision")
 
 
 def create_configured_run(
@@ -102,6 +124,7 @@ def create_configured_run(
     ):
         raise ProcessError("configured_owned_dataset")
     with factory.begin() as session:
+        require_controller_revision(session, config)
         source = resolve_dataset_preflight(
             session,
             owner_id=owner_id,
@@ -118,16 +141,7 @@ def create_configured_run(
     run_id, attempt_id, token = uuid4(), uuid4(), uuid4()
     fence = AttemptFence(owner_id, run_id, attempt_id, 1, token)
     with factory.begin() as session:
-        if session.scalars(
-            text("SELECT version_num FROM alembic_version")
-        ).all() not in (
-            ["022_factor_analysis"],
-            ["023_rd_submissions"],
-            ["024_openevolve_initial"],
-            ["025_structured_factor_strategy"],
-            ["026_rd_seeded_submissions"],
-        ):
-            raise ProcessError("rd_controller_revision")
+        require_controller_revision(session, config)
         dataset = session.get(DatasetVersion, dataset_id)
         if (
             session.get(User, owner_id) is None

@@ -10,6 +10,11 @@ import re
 from datetime import date
 from pathlib import Path
 
+from rd_composed_profile_fixture import (
+    COMPOSED_WALL_MS,
+    PROFILE,
+    assert_composed_controller,
+)
 from sqlalchemy.orm import sessionmaker
 
 from packages.factors.contracts import DateWindow
@@ -89,12 +94,13 @@ def _prepare_factor(factory, dataset, source, policy, settings, owner_id, lookba
                 "interpretation": "unsigned",
             },
             "runtime": runtime.model_dump(mode="json"),
+            "controller_profile": PROFILE,
             "budget": BudgetVector(
                 calls=32,
                 tokens=200000,
                 mutation_slots=1,
                 evaluator_executions=1,
-                wall_milliseconds=240000,
+                wall_milliseconds=COMPOSED_WALL_MS,
                 storage_bytes=512 * 1024**2,
                 process_slots=4,
             ).model_dump(),
@@ -219,6 +225,7 @@ def prepare_structured_pair(engine, settings, owner_id):
             )
         with factory() as session:
             assert session.get(ResearchRun, fence.run_id).status == "succeeded"
+            assert_composed_controller(session, fence.run_id)
             units = session.scalars(
                 select(ResearchProcessAdmission).filter_by(run_id=fence.run_id)
             ).all()

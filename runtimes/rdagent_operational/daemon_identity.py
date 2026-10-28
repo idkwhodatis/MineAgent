@@ -17,6 +17,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from packages.rdagent_adapter.controller_profile import (
+    LEGACY_CONTROLLER_PROFILE,
+    controller_wall_seconds,
+)
 from packages.research_runtime.process_contracts import ProcessError
 from runtimes.rdagent_operational.peer import KernelIdentity
 from runtimes.research_supervisor.supervisor import DockerSupervisor
@@ -125,7 +129,15 @@ def _inspect(cli, container_id, image_id, leader_pid):
         _fail()
 
 
-def _observe(*, container_id, image_id, leader_pid, pid, deadline):
+def _observe(
+    *,
+    container_id,
+    image_id,
+    leader_pid,
+    pid,
+    deadline,
+    profile=LEGACY_CONTROLLER_PROFILE,
+):
     """Read exact requested member plus leader, rejecting any known unit/PID drift.
 
     Context must come from independently verified host launch records, never RPC
@@ -147,7 +159,7 @@ def _observe(*, container_id, image_id, leader_pid, pid, deadline):
         _fail()
 
     def current():
-        if not 0 < deadline - time.monotonic() <= 60:
+        if not 0 < deadline - time.monotonic() <= controller_wall_seconds(profile):
             _fail()
 
     try:
@@ -192,8 +204,10 @@ class DaemonIdentityContext:
     image_id: str
     leader_pid: int
     deadline: float
+    profile: str = LEGACY_CONTROLLER_PROFILE
 
     def __post_init__(self):
+        controller_wall_seconds(self.profile)
         if (
             type(self.container_id) is not str
             or re.fullmatch(r"[a-f0-9]{64}", self.container_id) is None
@@ -215,6 +229,7 @@ class DaemonIdentityContext:
             leader_pid=self.leader_pid,
             pid=target,
             deadline=self.deadline,
+            profile=self.profile,
         )
         return values[self.leader_pid], None if controller_pid is None else values[
             target
@@ -227,14 +242,23 @@ class DaemonIdentityContext:
             leader_pid=self.leader_pid,
             pid=pid,
             deadline=self.deadline,
+            profile=self.profile,
         )
         return values[pid]
 
 
-def observe_identity(*, container_id, image_id, leader_pid, pid, deadline):
-    return DaemonIdentityContext(container_id, image_id, leader_pid, deadline).observe(
-        pid
-    )
+def observe_identity(
+    *,
+    container_id,
+    image_id,
+    leader_pid,
+    pid,
+    deadline,
+    profile=LEGACY_CONTROLLER_PROFILE,
+):
+    return DaemonIdentityContext(
+        container_id, image_id, leader_pid, deadline, profile
+    ).observe(pid)
 
 
 # Same exact concrete type; descriptive batch-observer spelling is not authority.

@@ -237,6 +237,44 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
                 and k.value.id == "settings"
                 for k in call.keywords
             ), path
+    # The OE evaluator now separates read-only reservation admission from the
+    # one-shot write. Audit that replacement, rather than silently dropping it.
+    path = Path("backend/app/openevolve_evaluation_admission.py")
+    acquisition = next(
+        n
+        for n in ast.parse(path.read_text()).body
+        if isinstance(n, ast.FunctionDef) and n.name == "_preparation_admission"
+    )
+    calls = [n for n in ast.walk(acquisition) if isinstance(n, ast.Call)]
+    preflight = [
+        n
+        for n in calls
+        if isinstance(n.func, ast.Name) and n.func.id == "_budget_reservation_preflight"
+    ]
+    transaction = [
+        n
+        for n in calls
+        if isinstance(n.func, ast.Name) and n.func.id == "neutral_transaction"
+    ]
+    assert len(preflight) == len(transaction) == 1
+    assert any(
+        k.arg == "resource_scope"
+        and isinstance(k.value, ast.Constant)
+        and k.value.value == "processes"
+        for k in transaction[0].keywords
+    )
+    assert any(
+        k.arg == "settings"
+        and isinstance(k.value, ast.Name)
+        and k.value.id == "settings"
+        for k in preflight[0].keywords
+    )
+    assert (
+        transaction[0].lineno
+        < preflight[0].lineno
+        < min(n.lineno for n in ast.walk(acquisition) if isinstance(n, ast.Yield))
+    )
+    reservations.append((path.name, preflight[0].lineno))
     assert len(reservations) >= 16
     assert any(name == "test_model_broker_accounting.py" for name, _ in reservations)
     path = Path("tests/integration/test_research_process_recovery.py")

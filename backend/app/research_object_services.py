@@ -49,9 +49,9 @@ def _versioned_identity(session, owner, kind, content):
     if kind == "rd_provider_process_receipt":
         from sqlalchemy import text
 
-        if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
-            "026_rd_seeded_submissions"
-        ]:
+        if session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all() not in (["026_rd_seeded_submissions"], ["027_rd_controller_v3"]):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
         if type(content) is not bytes or not 1 <= len(content) <= 65536:
@@ -77,6 +77,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["024_openevolve_initial"],
                 ["025_structured_factor_strategy"],
                 ["026_rd_seeded_submissions"],
+                ["027_rd_controller_v3"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -353,6 +354,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["024_openevolve_initial"],
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -362,6 +364,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["024_openevolve_initial"],
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
         document = parse_document(kind, content)
@@ -389,6 +392,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["024_openevolve_initial"],
             ["025_structured_factor_strategy"],
             ["026_rd_seeded_submissions"],
+            ["027_rd_controller_v3"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

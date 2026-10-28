@@ -21,6 +21,14 @@ class ProviderFactorResearchConfig(FactorResearchConfig):
 
     @model_validator(mode="after")
     def exact_steer(self):
+        if (
+            self.controller_profile is not None
+            and self.budget.wall_milliseconds
+            < 300000 + 32 * self.model_binding.request_deadline_ms
+        ):
+            raise ValueError(
+                "Composed provider budget must cover unchanged model-call bounds"
+            )
         if self.steer_snapshot.sha256 != self.steer_snapshot_sha256:
             raise ValueError("Frozen steer snapshot hash differs")
         return self

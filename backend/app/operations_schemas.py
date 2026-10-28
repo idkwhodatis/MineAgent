@@ -36,6 +36,7 @@ class BackupReceipt(BaseModel):
         "024_openevolve_initial",
         "025_structured_factor_strategy",
         "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
     ]
     manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     backup_created_at: datetime

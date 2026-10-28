@@ -45,6 +45,8 @@ def render_upgrade_sql():
     ):
         schema = _schema(cls)
         if kind == "config":
+            # Explicit controller version is validated by new027, not026.
+            schema["properties"].pop("controller_profile", None)
             # The inherited cross-field budget validator is selected by title
             # in the frozen SQL schema interpreter. This does not change any
             # persisted schema/model-profile value or remove new properties.

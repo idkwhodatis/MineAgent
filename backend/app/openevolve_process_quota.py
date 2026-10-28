@@ -262,6 +262,7 @@ def combined_holds(session, settings):
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         return ()
     from backend.app.openevolve_upload_quota import upload_holds

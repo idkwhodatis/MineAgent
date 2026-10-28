@@ -84,12 +84,21 @@ def validate_closure(closure, *, rd_source_closure, maximum_rows):
         or type(closure["tables"]) is not dict
         or set(closure["tables"]) != set(FIELDS)
         or rd_source_closure.get("schema_version")
-        != "mineagent.rd-source-restore-closure.v5"
+        not in {
+            "mineagent.rd-source-restore-closure.v5",
+            "mineagent.rd-source-restore-closure.v6",
+        }
         or type(maximum_rows) is not int
         or maximum_rows < 1
         or len(canonical_bytes(closure)) > 32_000_000
     ):
         raise ValueError("Steer exact closure grammar differs")
+    from backend.app.rdagent_profile_backup import require_config_revision
+
+    for run in rd_source_closure.get("external_bindings", {}).get("runs", []):
+        require_config_revision(
+            run["config"], source_schema=rd_source_closure["schema_version"]
+        )
     indexes, total = {}, 0
     for name, fields in {**FIELDS, "owners": "id"}.items():
         rows = closure["owners"] if name == "owners" else closure["tables"][name]

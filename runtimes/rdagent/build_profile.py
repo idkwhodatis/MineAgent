@@ -135,6 +135,8 @@ def main():
     adapter_files = (
         "packages/rdagent_adapter/__init__.py",
         "packages/rdagent_adapter/contracts.py",
+        "packages/rdagent_adapter/controller_profile.py",
+        "packages/rdagent_adapter/controller_limits.py",
         "packages/rdagent_adapter/prefix.py",
         "packages/rdagent_adapter/broker_bridge.py",
         "packages/rdagent_adapter/upstream.py",

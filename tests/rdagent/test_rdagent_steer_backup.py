@@ -135,6 +135,24 @@ def test_forged_steer_history_is_not_a_restore_grant(graph, mutation):
     elif mutation == "duplicate":
         versions.append(deepcopy(versions[0]))
     else:
-        rd["schema_version"] = "mineagent.rd-source-restore-closure.v6"
+        rd["schema_version"] = "mineagent.rd-source-restore-closure.v7"
     with pytest.raises(ValueError):
+        backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)
+
+
+@pytest.mark.parametrize("profile", [None, "mineagent.rdagent-orchestrator.v3"])
+def test_new_source_preserves_retained_steer_selection(graph, profile):
+    closure, rd = graph
+    rd["schema_version"] = "mineagent.rd-source-restore-closure.v6"
+    if profile is not None:
+        rd["external_bindings"]["runs"][0]["config"]["controller_profile"] = profile
+    backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)
+
+
+def test_old_source_rejects_new_profile_even_with_valid_steer(graph):
+    closure, rd = graph
+    rd["external_bindings"]["runs"][0]["config"]["controller_profile"] = (
+        "mineagent.rdagent-orchestrator.v3"
+    )
+    with pytest.raises(ValueError, match="Controller profile"):
         backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)

@@ -30,7 +30,10 @@ from backend.app.factor_native_services import decode_intent
 from backend.app.models import ResearchRun
 from backend.app.numeric_historical_io import read_historical_numeric_bytes
 from backend.app.rdagent_models import FactorCutoffExecution
-from backend.app.rdagent_snapshot_config import provider_config_in_session
+from backend.app.rdagent_snapshot_config import (
+    composed_controller_in_session,
+    provider_config_in_session,
+)
 from backend.app.research_broker_models import (
     ResearchBudgetReservation,
     ResearchBudgetSettlement,
@@ -90,6 +93,7 @@ def historical_session(factory, owner_id, settings):
                 ["024_openevolve_initial"],
                 ["025_structured_factor_strategy"],
                 ["026_rd_seeded_submissions"],
+                ["027_rd_controller_v3"],
             ):
                 fail()
             yield session
@@ -342,6 +346,7 @@ def check_configured_history(session, publication, settings):
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document
@@ -412,6 +417,7 @@ def check_configured_history(session, publication, settings):
         read_bytes=retained_reader(settings.storage_root),
         max_rows=10000,
         provider_config=provider_config_in_session(session),
+        composed_controller=composed_controller_in_session(session),
     )
 
 

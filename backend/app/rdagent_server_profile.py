@@ -9,8 +9,8 @@ from typing import Literal
 
 from pydantic import model_validator
 
-from packages.factors.contracts import Contract
 from packages.rdagent_adapter.contracts import ImageDigest, RuntimePins
+from packages.rdagent_adapter.controller_profile import ControllerProfileSelection
 from packages.rdagent_adapter.numeric_profile import (
     CANDIDATE_LOCK_SHA256,
     NORMALIZER_LOCK_SHA256,
@@ -24,7 +24,7 @@ ROLE_LOCKS = {
 }
 
 
-class RDServerRuntimeProfile(Contract):
+class RDServerRuntimeProfile(ControllerProfileSelection):
     schema_version: Literal["mineagent.rdagent-server-profile.v1"] = (
         "mineagent.rdagent-server-profile.v1"
     )

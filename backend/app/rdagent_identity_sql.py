@@ -27,6 +27,21 @@ SOURCE_PINS = {
     "packages/research_runtime/budget_contracts.py": "8bfa31312c8b8116c262c50f55d1c5cdb443809dde210c7cd74f9d08479c0d51",
 }
 
+# 027's explicitly versioned model adds only opt-in controller selection.
+# Keep the original pin visible; allow this exact reviewed successor source only
+# while projecting the legacy schema below. Published migrations stay immutable.
+SUCCESSOR_SOURCE_PINS = {
+    (
+        "packages/rdagent_adapter/contracts.py",
+        "6ae2b4b5490f36ff170401cdfee76af2e9492a57ccf9dccfa656a7abfdef690c",
+    ): "3e67946e368857c87dc47fc5faff9efef01765250a70444b1d0d7dde00648759",
+}
+
+SUCCESSOR_DEPENDENCY_PINS = {
+    "packages/rdagent_adapter/controller_profile.py": "cdf548022edd004f96a3f9b91619a9a6c3687cb6246e3206b5fe21454c900bd8",
+    "packages/rdagent_adapter/controller_limits.py": "650654dff49c8871d3a5ad8d724e1cac0d909b85983795cc260ffe4601a9815d",
+}
+
 # Frozen system IANA inventory: /usr/share/zoneinfo/tzdata.zi, version 2026b.
 TIMEZONE_SOURCE = {
     "version": "2026b",
@@ -650,6 +665,9 @@ def schemas():
             ("embedding", RDEmbeddingRequest),
         )
     }
+    # 018/026 grammars predate explicit controller selection;027 wraps these
+    # frozen predicates instead of rewriting their historical accepted inputs.
+    values["config"]["properties"].pop("controller_profile", None)
     allowed = {
         "$defs",
         "$ref",
@@ -705,8 +723,18 @@ def render_sql(schema="public"):
         source = root / path
         if any(p.is_symlink() for p in (source, *source.parents)):
             raise ValueError("Symlink contract source")
-        if hashlib.sha256(source.read_bytes()).hexdigest() != sha:
+        if hashlib.sha256(source.read_bytes()).hexdigest() not in (
+            sha,
+            SUCCESSOR_SOURCE_PINS.get((path, sha)),
+        ):
             raise ValueError("Contract source drift: " + path)
+    for path, expected in SUCCESSOR_DEPENDENCY_PINS.items():
+        source = root / path
+        if (
+            any(p.is_symlink() for p in (source, *source.parents))
+            or hashlib.sha256(source.read_bytes()).hexdigest() != expected
+        ):
+            raise ValueError("Controller selection dependency drift")
     definitions = schemas()
     zones = list(TIMEZONE_NAMES)
     if not zones or "UTC" not in zones:

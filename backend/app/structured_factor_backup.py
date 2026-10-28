@@ -202,6 +202,7 @@ def validate_closure(
     if RESEARCH_SCHEMA is None or research_closure.get("schema_version") not in {
         RESEARCH_SCHEMA,
         "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v11",
     }:
         raise ValueError("Exact structured research closure version required")
     idx = indexes(closure, maximum_rows)

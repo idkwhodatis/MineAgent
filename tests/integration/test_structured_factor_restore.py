@@ -74,7 +74,7 @@ def test_actual_structured_pair_cold_restore_disclosure_replay(
             )
 
     try:
-        legacy._upgrade(source, "025_structured_factor_strategy")
+        legacy._upgrade(source, "027_rd_controller_v3")
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(source, storage).model_copy(
             update={"lease_seconds": 3600}
@@ -119,9 +119,17 @@ def test_actual_structured_pair_cold_restore_disclosure_replay(
             drill_databases.source.render_as_string(hide_password=False)
         )
         before = source_db.source_snapshot(BackupLimits())
+        assert (
+            before["research_closure"]["schema_version"]
+            == "mineagent.research-restore-closure.v11"
+        )
+        assert (
+            before["rd_source_closure"]["schema_version"]
+            == "mineagent.rd-source-restore-closure.v6"
+        )
         files = _files(storage)
         manifest = _roundtrip(drill_databases, tmp_path, source, storage, target)
-        assert manifest["schema_revision"] == "025_structured_factor_strategy"
+        assert manifest["schema_revision"] == "027_rd_controller_v3"
         assert target.stat().st_ino != storage.stat().st_ino
         assert not (target / ".restore-incomplete").exists()
         assert _files(target) == files
@@ -138,6 +146,18 @@ def test_actual_structured_pair_cold_restore_disclosure_replay(
         for key in closure_keys:
             assert after[key] == before[key]
         assert inventory(restored_factory) == (admission_ids, exposure_ids)
+        from rd_composed_profile_fixture import assert_composed_controller
+
+        with restored_factory() as session:
+            controller_runs = session.scalars(
+                select(ResearchProcessAdmission.run_id).where(
+                    ResearchProcessAdmission.role == "rd_orchestrator"
+                )
+            ).all()
+            assert len(controller_runs) == 2
+            for controller_run in controller_runs:
+                assert_composed_controller(session, controller_run)
+
         for eid, original in zip(execution_ids, originals, strict=True):
             assert (
                 read_historical_structured_execution(

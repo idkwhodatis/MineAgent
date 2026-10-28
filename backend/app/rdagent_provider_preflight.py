@@ -19,6 +19,11 @@ from backend.app.rdagent_seed_services import resolve_seed_parent
 from backend.app.rdagent_steer_services import resolve_steer_snapshot
 from backend.app.services import DomainError
 from packages.factors.contracts import digest
+from packages.rdagent_adapter.controller_profile import (
+    LEGACY_CONTROLLER_PROFILE,
+    composed_wall_floor,
+    controller_profile,
+)
 from packages.rdagent_adapter.provider_prompt import first_provider_messages_for_task
 from packages.rdagent_provider.accounting import INPUT_TOKEN_BOUND, PIPE_PEAK_BYTES
 from packages.rdagent_provider.contracts import DeclaredTokenPricing
@@ -27,7 +32,7 @@ from packages.research_runtime.budget_contracts import BudgetVector
 MODEL_CALL_BOUND = 32
 
 
-def provider_budget_floor(binding):
+def provider_budget_floor(binding, *, profile=LEGACY_CONTROLLER_PROFILE):
     if type(binding.pricing) is not DeclaredTokenPricing:
         raise ValueError("Declared price estimate required")
     price = binding.pricing
@@ -42,7 +47,8 @@ def provider_budget_floor(binding):
         tokens=MODEL_CALL_BOUND * (INPUT_TOKEN_BOUND + binding.max_output_tokens),
         cost_microunits=MODEL_CALL_BOUND * ((per_call + 999999) // 1000000),
         process_slots=4 + MODEL_CALL_BOUND,
-        wall_milliseconds=240000 + MODEL_CALL_BOUND * binding.request_deadline_ms,
+        wall_milliseconds=composed_wall_floor(profile)
+        + MODEL_CALL_BOUND * binding.request_deadline_ms,
         storage_bytes=RECOMMENDED_BUDGET.storage_bytes
         + MODEL_CALL_BOUND * PIPE_PEAK_BYTES,
     )
@@ -105,7 +111,14 @@ def provider_preflight(
     if (
         binding is not None
         and isinstance(binding.pricing, DeclaredTokenPricing)
-        and not request.budget.covers(provider_budget_floor(binding))
+        and not request.budget.covers(
+            provider_budget_floor(
+                binding,
+                profile=controller_profile(runtime)
+                if runtime is not None
+                else LEGACY_CONTROLLER_PROFILE,
+            )
+        )
     ):
         reasons.append(
             ProviderPreflightReason(
@@ -141,9 +154,15 @@ def provider_preflight(
                     message="Complete task, selected guidance and parent exceed the fixed model message limit; nothing is truncated.",
                 )
             )
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() != [
-        "026_rd_seeded_submissions"
-    ]:
+    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+        ["026_rd_seeded_submissions"],
+        ["027_rd_controller_v3"],
+    ) or (
+        runtime is not None
+        and runtime.controller_profile is not None
+        and session.scalars(text("SELECT version_num FROM alembic_version")).all()
+        != ["027_rd_controller_v3"]
+    ):
         reasons.append(
             ProviderPreflightReason(
                 code="runtime_schema_unavailable",

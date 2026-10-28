@@ -18,7 +18,10 @@ def test_source_pinned_deterministic_disabled_fragment():
     assert "DISABLE TRIGGER" not in first and "CREATE TABLE" not in first
     root = Path(sql.__file__).resolve().parents[2]
     for name, expected in sql.SOURCE_PINS.items():
-        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == expected
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() in (
+            expected,
+            sql.SUCCESSOR_SOURCE_PINS.get((name, expected)),
+        )
 
 
 @pytest.mark.parametrize(
