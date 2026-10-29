@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.main import create_app
-from script.ci_process_owner import ProcessOwner
+from script.ci_process_owner import OwnedCommandFailed, ProcessOwner
+from script.oe_browser_diagnostic import browser_failure
 
 HISTORY_CASE = "actual workflow history preserves frozen stages and provenance without new authority"
 CREATE_CASE = "actual workflow entry creates exactly one retained request"
@@ -217,23 +218,31 @@ def _run_browser(engine, settings, owner, other, tmp_path, case, additions):
             PLAYWRIGHT_JUNIT_OUTPUT_FILE=str(tmp_path / "workflow-history-browser.xml"),
         )
         env.update(additions)
-        process.run(
-            [
-                node,
-                str(root / "frontend/node_modules/@playwright/test/cli.js"),
-                "test",
-                "-c",
-                "playwright.workflow-history.config.ts",
-                "--grep",
-                re.escape(case) + "$",
-                "--reporter=junit",
-                "--output",
-                str(tmp_path / ("browser-" + secrets.token_hex(4))),
-            ],
-            cwd=root / "frontend",
-            env=env,
-            seconds=120,
-        )
+        try:
+            process.run(
+                [
+                    node,
+                    str(root / "frontend/node_modules/@playwright/test/cli.js"),
+                    "test",
+                    "-c",
+                    "playwright.workflow-history.config.ts",
+                    "--grep",
+                    re.escape(case) + "$",
+                    "--reporter=junit",
+                    "--output",
+                    str(tmp_path / ("browser-" + secrets.token_hex(4))),
+                ],
+                cwd=root / "frontend",
+                env=env,
+                seconds=120,
+            )
+        except OwnedCommandFailed:
+            diagnostic = browser_failure(
+                tmp_path / "workflow-history-browser.xml", root
+            )
+            raise RuntimeError(
+                "WORKFLOW_BROWSER_FAILURE_V1:" + json.dumps(diagnostic, sort_keys=True)
+            ) from None
         # A zero exit after filtering/listing/skipping is not acceptance.
         from xml.etree import ElementTree as ET
 

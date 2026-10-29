@@ -151,6 +151,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
             )
             settings = legacy._note_settings(engine, storage).model_copy(
                 update={
+                    "factor_library_enabled": True,
                     "rdagent_research_enabled": True,
                     "rdagent_provider_runtime_profile": runtime,
                     "rdagent_provider_profiles": (operator,),

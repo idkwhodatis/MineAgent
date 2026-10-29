@@ -36,7 +36,8 @@ from backend.app.oe_structured_provider_submission import (
 )
 from backend.app.structured_demo_routes import StructuredDemoReceipt
 from packages.factors.contracts import canonical_bytes
-from script.ci_process_owner import ProcessOwner
+from script.ci_process_owner import OwnedCommandFailed, ProcessOwner
+from script.oe_browser_diagnostic import browser_failure
 
 NAMES = {
     "normal_notes_edit": "actual workflow normal notes retain exact released rows and restore boundaries",
@@ -299,23 +300,31 @@ def _browser(engine, settings, account, other, observation):
                 env.update(
                     E2E_OTHER_EMAIL=other.user.email, E2E_OTHER_PASSWORD=other.password
                 )
-            process.run(
-                [
-                    node,
-                    str(root / "frontend/node_modules/@playwright/test/cli.js"),
-                    "test",
-                    "-c",
-                    "playwright.oe-normal.config.ts",
-                    "--grep",
-                    NAMES[observation["mode"]],
-                    "--reporter=junit",
-                    "--output",
-                    str(private / ("browser-" + secrets.token_hex(4))),
-                ],
-                cwd=root / "frontend",
-                env=env,
-                seconds=120,
-            )
+            try:
+                process.run(
+                    [
+                        node,
+                        str(root / "frontend/node_modules/@playwright/test/cli.js"),
+                        "test",
+                        "-c",
+                        "playwright.oe-normal.config.ts",
+                        "--grep",
+                        NAMES[observation["mode"]],
+                        "--reporter=junit",
+                        "--output",
+                        str(private / ("browser-" + secrets.token_hex(4))),
+                    ],
+                    cwd=root / "frontend",
+                    env=env,
+                    seconds=120,
+                )
+            except OwnedCommandFailed:
+                # Private JUnit is deleted by TemporaryDirectory; emit only the
+                # closed source-frame projection, never browser stdout or values.
+                diagnostic = browser_failure(junit, root)
+                raise RuntimeError(
+                    "OE_BROWSER_FAILURE_V1:" + json.dumps(diagnostic, sort_keys=True)
+                ) from None
             cases = ET.parse(junit).getroot().findall(".//testcase")
             assert (
                 len(cases) == 1 and cases[0].get("name") == NAMES[observation["mode"]]

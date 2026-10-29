@@ -36,9 +36,9 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
     from backend.app.factor_analysis_models import FactorDirectAnalysisOutcome
     from backend.app.main import create_app
     from backend.app.models import ExecutionAttempt, ResearchRun, User
+    from backend.app.rdagent_boundary_models import FactorGenerationBoundary
     from backend.app.rdagent_models import (
         FactorEvaluationOutcome,
-        FactorGenerationBoundary,
         FactorGenerationOutcome,
         FactorGenerationSource,
         FactorUpstreamCall,
@@ -51,8 +51,8 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
         ResearchBudgetReservation,
         ResearchBudgetSettlement,
         ResearchModelTransport,
-        ResearchObject,
     )
+    from backend.app.research_object_models import ResearchObject
     from backend.app.research_process_models import (
         ResearchProcessAdmission,
         ResearchProcessReceipt,

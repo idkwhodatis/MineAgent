@@ -33,6 +33,12 @@ pytestmark = pytest.mark.postgres
 
 
 @pytest.fixture
+def settings(settings):
+    """Explicit opt-in for this upload publication acceptance module only."""
+    return settings.model_copy(update={"factor_library_enabled": True})
+
+
+@pytest.fixture
 def uploaded_sources(migrated_engine, settings):
     sources = (source(), source(1))
     with Session(migrated_engine) as session:

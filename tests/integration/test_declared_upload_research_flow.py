@@ -21,6 +21,12 @@ from test_backup_restore import drill_databases as drill_databases  # noqa: PLC0
 pytestmark = pytest.mark.postgres
 
 
+@pytest.fixture
+def settings(settings):
+    """Explicit opt-in for this upload publication acceptance module only."""
+    return settings.model_copy(update={"factor_library_enabled": True})
+
+
 def test_actual_upload_api_and_data_worker_preserve_declared_originals(
     api, owner_headers, owner, migrated_engine, settings
 ):
@@ -175,6 +181,7 @@ def _run_upload_flow(migrated_engine, settings, monkeypatch):
         )
         configured = settings.model_copy(
             update={
+                "factor_library_enabled": True,
                 "rdagent_research_enabled": True,
                 "rdagent_provider_runtime_profile": RDProviderServerRuntimeProfile(
                     controller_profile=PROFILE,

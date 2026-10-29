@@ -130,6 +130,7 @@ def actual_environment(engine, settings, monkeypatch):
         )
         configured = settings.model_copy(
             update={
+                "factor_library_enabled": True,
                 "rdagent_research_enabled": True,
                 "rdagent_provider_runtime_profile": RDProviderServerRuntimeProfile(
                     controller_profile=PROFILE,
