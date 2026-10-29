@@ -95,7 +95,9 @@ def prepare_workflow(session, owner_id, request, settings):
         "request_sha256": request.sha256,
         "plan_sha256": plan.sha256,
         "provider_preflight_sha256": prepared.preflight.preflight_sha256,
-        "resolved_inputs_sha256": digest(resolved),
+        "resolved_inputs_sha256": digest(
+            [item.model_dump(mode="json") for item in resolved]
+        ),
         "runtime_profile_sha256": digest(profile),
     }
     return PreparedWorkflow(

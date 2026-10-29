@@ -10,8 +10,10 @@ import hashlib
 import json
 import os
 import re
+import stat
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from backend.app.rdagent_provider_profile import RDProviderServerRuntimeProfile
 from backend.app.rdagent_server_profile import ROLE_LOCKS
@@ -90,22 +92,38 @@ def verify_prepared_inputs():
 
 
 def _docker(args, *, capture=False, timeout=1800):
-    return subprocess.run(
-        [
-            "docker",
-            "--config",
-            "/nonexistent",
-            "--host",
-            "unix:///var/run/docker.sock",
-            *args,
-        ],
-        cwd=ROOT,
-        check=True,
-        timeout=timeout,
-        capture_output=capture,
-        text=capture,
-        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/nonexistent"},
-    )
+    # Buildx writes local builder metadata even for an offline local-image build.
+    # Never load the operator's Docker config/credentials, and never persist this
+    # per-command metadata. Image authority remains the explicit daemon + IID.
+    with TemporaryDirectory(prefix="mineagent-build-docker-config-") as directory:
+        config = Path(directory)
+        info = config.lstat()
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o700
+            or any(config.iterdir())
+        ):
+            raise ValueError("Empty private owned Docker build config required")
+        return subprocess.run(
+            [
+                "docker",
+                "--config",
+                str(config),
+                "--host",
+                "unix:///var/run/docker.sock",
+                *args,
+            ],
+            cwd=ROOT,
+            check=True,
+            timeout=timeout,
+            capture_output=capture,
+            text=capture,
+            env={
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "HOME": "/nonexistent",
+            },
+        )
 
 
 def _verify_parent_tag(tag, iid):

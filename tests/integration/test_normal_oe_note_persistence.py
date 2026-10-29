@@ -12,7 +12,9 @@ def test_normal_note_rejects_unbacked_references_and_preserves_legacy(migrated_e
         transaction = connection.begin()
         try:
             for statement in rejection_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "NORMAL_NOTE_032_REJECTION_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -25,7 +27,9 @@ def test_normal_note_identity_case_and_space_match_python(migrated_engine):
         transaction = connection.begin()
         try:
             for statement in unicode_identity_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "NORMAL_NOTE_UNICODE_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -38,7 +42,9 @@ def test_note_dataset_identity_predicate_matches_typed_python_domain(migrated_en
         transaction = connection.begin()
         try:
             for statement in identity_dataset_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "NORMAL_NOTE_DATASET_IDENTITY_MATRIX_COMPLETE"
         finally:
             transaction.rollback()

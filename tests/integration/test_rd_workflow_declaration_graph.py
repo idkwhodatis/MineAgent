@@ -13,7 +13,9 @@ def test_workflow_manual_declaration_and_deferred_forgery_guards_actual_pg(
         transaction = connection.begin()
         try:
             for statement in probe_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "WORKFLOW_POPULATED_DECLARATION_MATRIX_COMPLETE"
         finally:
             transaction.rollback()

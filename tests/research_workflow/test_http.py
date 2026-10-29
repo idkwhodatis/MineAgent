@@ -348,3 +348,36 @@ def test_unknown_or_uninstalled_workflow_capability_is_closed(http, monkeypatch)
         not response.json()["can_read"] and not response.json()["preflight_available"]
     )
     assert "commit" not in http.events
+
+
+def test_preflight_http_uses_real_nonempty_resolved_dto(http, monkeypatch):
+    from hashlib import sha256
+
+    from backend.app import research_workflow_public as service
+    from packages.factors.contracts import digest
+    from packages.research_inputs.contracts import InputVersionRef
+    from packages.research_inputs.resolved import ResolvedInputVersion
+
+    item = ResolvedInputVersion(
+        ref=InputVersionRef(
+            origin="manual_user_submission",
+            record_id=uuid4(),
+            version_id=uuid4(),
+            content_sha256="a" * 64,
+        ),
+        kind="direction",
+        title="User direction",
+        text="Keep exact guidance",
+        text_sha256=sha256(b"Keep exact guidance").hexdigest(),
+    )
+    request = http.f.request.model_copy(update={"refs": (item.ref,)})
+    monkeypatch.setattr(routes, "prepare_workflow", service.prepare_workflow)
+    monkeypatch.setattr(service, "resolve_model_input_versions", lambda *a: (item,))
+    response = http.client.post(
+        "/research-workflows/preflight", json=request.model_dump(mode="json")
+    )
+    assert response.status_code == 200
+    assert response.json()["resolved_inputs_sha256"] == digest(
+        [item.model_dump(mode="json")]
+    )
+    assert "commit" not in http.events

@@ -93,7 +93,7 @@ def prepare_actual_generation(engine, settings, owner_id):
         is_synthetic=True,
         content_sha256=sample.dataset.content_sha256,
         manifest=manifest,
-        storage_key="datasets/maintained-" + str(dataset_id),
+        storage_key=f"datasets/{owner_id}/{dataset_id}",
     )
     dataset_dir = settings.storage_root / dataset.storage_key
     dataset_dir.mkdir(parents=True, exist_ok=False)

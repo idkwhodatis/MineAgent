@@ -10,6 +10,7 @@ import time
 from sqlalchemy import select
 
 from backend.app.core.maintenance import shared_lifecycle
+from backend.app.declared_upload_capacity import dataset_inventory_enabled
 from backend.app.factor_native_io import (
     native_storage_guard,
     publish_candidate_bytes,
@@ -232,6 +233,7 @@ def _capacity(session, fence, settings, factor_fd, *, extra=(0, 0)):
         native=True,
         native_entries=entries,
         storage_root=settings.storage_root,
+        include_dataset_inventory=dataset_inventory_enabled(session),
     )
     verify_native_journals(session, entries, settings)
     pending_total, pending_owned, pending_count = pending_native_usage(

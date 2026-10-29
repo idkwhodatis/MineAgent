@@ -360,10 +360,11 @@ def publication(
                 native = native_capability(session)
                 # At the new dataset capability every writer shares the same
                 # conservative pool, not merely the basket HTTP caller.
-                revisions = session.scalars(
-                    text("SELECT version_num FROM alembic_version")
-                ).all()
-                dataset_capability = revisions == ["030_declared_upload_basket"]
+                from backend.app.declared_upload_capacity import (
+                    dataset_inventory_enabled,
+                )
+
+                dataset_capability = dataset_inventory_enabled(session)
                 if include_dataset_inventory and not dataset_capability:
                     raise DomainError(
                         "schema_version",

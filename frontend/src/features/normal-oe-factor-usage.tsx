@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { ErrorState, Loading, Panel } from "@/components/common";
 import { deploymentUrl } from "@/lib/deployment";
-import { factorRequest } from "@/lib/factor-api";
+import { completeFactorRead, factorRequest } from "@/lib/factor-api";
 import type {
   StructuredExecutionRecords,
   StructuredExecutionRecord,
@@ -32,6 +32,24 @@ export function normalOEUsageLink(
   );
 }
 
+export const normalOEUsageOptions = (
+  factorId: string,
+  versionId: string,
+  offset: number,
+) =>
+  queryOptions({
+    queryKey: ["factor-normal-oe-usage", factorId, versionId, offset],
+    // Like other factor reads, finish the bounded body across observer remounts.
+    // Unmount is not proof that the server-side read transaction has ended.
+    queryFn: () =>
+      completeFactorRead(() =>
+        factorRequest<StructuredExecutionRecords>(
+          normalOEUsagePath(factorId, versionId, offset),
+        ),
+      ),
+    retry: false,
+  });
+
 export function NormalOEFactorUsage({
   factorId,
   versionId,
@@ -40,15 +58,7 @@ export function NormalOEFactorUsage({
   versionId: string;
 }) {
   const [offset, setOffset] = useState(0);
-  const records = useQuery({
-    queryKey: ["factor-normal-oe-usage", factorId, versionId, offset],
-    queryFn: ({ signal }) =>
-      factorRequest<StructuredExecutionRecords>(
-        normalOEUsagePath(factorId, versionId, offset),
-        { signal },
-      ),
-    retry: false,
-  });
+  const records = useQuery(normalOEUsageOptions(factorId, versionId, offset));
   return (
     <Panel title="Normal OpenEvolve strategy usage — metadata only">
       <p>
@@ -62,7 +72,7 @@ export function NormalOEFactorUsage({
       ) : records.error ? (
         <ErrorState
           error={records.error}
-          retry={() => void records.refetch()}
+          retry={() => void records.refetch({ cancelRefetch: false })}
         />
       ) : (
         <>

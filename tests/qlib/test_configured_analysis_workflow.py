@@ -11,7 +11,7 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     assert 'MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED: "1"' in text
     assert 'MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"' in text
     assert "python -m pytest tests/research_workflow tests/research_inputs" in text
-    assert "assert len(cases)==825" in text
+    assert "assert len(cases)==833" in text
     assert "assert len(cases)==132" in text
     assert "assert len(names)==132" in text
     assert "test_actual_child_template_comparison_preserves_layout_only[" in text

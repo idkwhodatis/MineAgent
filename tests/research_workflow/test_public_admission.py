@@ -171,3 +171,120 @@ def test_accepted_replay_uses_original_plan_before_current_profile_or_active_ref
     )
     with pytest.raises(DomainError):
         service.submit_workflow(f.session, f.p.owner_id, changed, None)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_real_resolved_models_bind_json_and_retained_submission(
+    declaration, monkeypatch, count
+):
+    import json
+    from hashlib import sha256
+
+    from packages.research_inputs.contracts import InputVersionRef
+    from packages.research_inputs.resolved import ResolvedInputVersion
+
+    f = declaration
+    resolved = tuple(
+        ResolvedInputVersion(
+            ref=InputVersionRef(
+                origin="manual_user_submission",
+                record_id=uuid4(),
+                version_id=uuid4(),
+                content_sha256=str(i + 1) * 64,
+            ),
+            kind="direction",
+            title="User direction",
+            text=f"Exact guidance {i}\r\n",
+            text_sha256=sha256(f"Exact guidance {i}\r\n".encode()).hexdigest(),
+        )
+        for i in range(count)
+    )
+    request = f.request.model_copy(
+        update={"refs": tuple(item.ref for item in resolved)}
+    )
+    monkeypatch.setattr(service, "resolve_model_input_versions", lambda *a: resolved)
+    prepared = service.prepare_workflow(f.session, f.p.owner_id, request, None)
+    # Independently encode each complete validated DTO: UUIDs, text bytes and
+    # provenance remain bound, without a generic string fallback.
+    projection = [json.loads(canonical_bytes(item)) for item in resolved]
+    assert prepared.preflight.resolved_inputs_sha256 == digest(projection)
+    if not count:
+        assert prepared.preflight.resolved_inputs_sha256 == digest(())
+    body = WorkflowSubmit(
+        idempotency_key="real-inputs",
+        request=request,
+        preflight_sha256=prepared.preflight.preflight_sha256,
+    )
+    monkeypatch.setattr(
+        service, "create_workflow", lambda session, owner, value, settings: value
+    )
+    retained = service.submit_workflow(f.session, f.p.owner_id, body, None)
+    assert retained.refs == request.refs
+    assert retained.public_submission_canonical == canonical_bytes(body).decode()
+    assert retained.plan == prepared.plan
+    f.session.scalar = lambda *a: NS(
+        owner_id=f.p.owner_id,
+        creation_key=body.idempotency_key,
+        creation_canonical=canonical_bytes(retained).decode(),
+        creation_sha256=digest(retained),
+    )
+    monkeypatch.setattr(
+        service,
+        "resolve_model_input_versions",
+        lambda *a: pytest.fail("resolve on replay"),
+    )
+    assert service.submit_workflow(f.session, f.p.owner_id, body, None) == retained
+
+
+@pytest.mark.parametrize("mutation", ["order", "text", "title", "identity"])
+def test_nonempty_resolved_commitment_changes_reject_before_write(
+    declaration, monkeypatch, mutation
+):
+    from hashlib import sha256
+
+    from packages.research_inputs.contracts import InputVersionRef
+    from packages.research_inputs.resolved import ResolvedInputVersion
+
+    f = declaration
+    values = [
+        ResolvedInputVersion(
+            ref=InputVersionRef(
+                origin="manual_user_submission",
+                record_id=uuid4(),
+                version_id=uuid4(),
+                content_sha256="a" * 64,
+            ),
+            kind="direction",
+            title="Direction",
+            text=str(i),
+            text_sha256=sha256(str(i).encode()).hexdigest(),
+        )
+        for i in range(2)
+    ]
+    request = f.request.model_copy(update={"refs": tuple(v.ref for v in values)})
+    monkeypatch.setattr(
+        service, "resolve_model_input_versions", lambda *a: tuple(values)
+    )
+    prepared = service.prepare_workflow(f.session, f.p.owner_id, request, None)
+    body = WorkflowSubmit(
+        idempotency_key="changed-inputs",
+        request=request,
+        preflight_sha256=prepared.preflight.preflight_sha256,
+    )
+    if mutation == "order":
+        values.reverse()
+    else:
+        data = values[0].model_dump(mode="json")
+        if mutation == "text":
+            data.update(text="changed", text_sha256=sha256(b"changed").hexdigest())
+        elif mutation == "title":
+            data["title"] = "Changed title"
+        else:
+            data["ref"]["version_id"] = str(uuid4())
+        values[0] = ResolvedInputVersion.model_validate(data)
+    monkeypatch.setattr(
+        service, "create_workflow", lambda *a: pytest.fail("write with stale quote")
+    )
+    with pytest.raises(DomainError) as error:
+        service.submit_workflow(f.session, f.p.owner_id, body, None)
+    assert error.value.code == "workflow_preflight_changed"

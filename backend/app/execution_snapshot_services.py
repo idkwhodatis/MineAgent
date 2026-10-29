@@ -10,6 +10,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from backend.app.declared_upload_capacity import dataset_inventory_enabled
 from backend.app.execution_snapshot_assembly import resolve_snapshot_materialization
 from backend.app.execution_snapshot_io import (
     inventory,
@@ -135,6 +136,7 @@ def _capacity(session, fence, settings, fd, *, extra=(0, 0)):
         native=True,
         native_entries=native_entries,
         storage_root=settings.storage_root,
+        include_dataset_inventory=dataset_inventory_enabled(session),
     )
     verify_native_journals(session, native_entries, settings)
     for reader in (pending_native_usage, pending_source_usage, pending_snapshot_usage):

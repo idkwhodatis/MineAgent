@@ -150,7 +150,7 @@ jobs:
           source=Path('var/numeric-private/workflow-contracts.xml')
           summarize(source,Path('var/numeric-proof/workflow-contract-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==825
+          assert len(cases)==833
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYWORKFLOW
           test "$status" = 0

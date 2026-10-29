@@ -1,5 +1,7 @@
 """Packaged source/startup contracts; not Docker or provider acceptance."""
 
+import os
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -174,10 +176,14 @@ def test_build_targets_force_local_daemon_and_do_not_inherit_provider_environmen
         from types import SimpleNamespace
 
         calls.append((command, kwargs))
+        config = Path(command[2])
+        info = config.lstat()
+        assert stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o700
+        assert info.st_uid == os.getuid() and not list(config.iterdir())
         assert command[:5] == [
             "docker",
             "--config",
-            "/nonexistent",
+            str(config),
             "--host",
             "unix:///var/run/docker.sock",
         ]
@@ -213,6 +219,7 @@ def test_build_targets_force_local_daemon_and_do_not_inherit_provider_environmen
     monkeypatch.setattr(builder.subprocess, "run", run)
     path = builder.build(tmp_path / "new-build")
     assert path.is_file() and len(builds) == 5 and len(calls) == 8
+    assert all(not Path(command[2]).exists() for command, _ in calls)
     assert [c[0][5] for c in calls] == ["build"] * 4 + [
         "tag",
         "image",

@@ -121,7 +121,7 @@ def numeric_source(migrated_engine, settings, owner):
             is_synthetic=True,
             content_sha256=sample.dataset.content_sha256,
             manifest=manifest,
-            storage_key="datasets/maintained-" + str(dataset_id),
+            storage_key=f"datasets/{owner.user.id}/{dataset_id}",
         )
         session.add(dataset)
         session.commit()

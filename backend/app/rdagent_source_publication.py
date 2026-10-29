@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from backend.app.core.atomic_storage import _open_directory
 from backend.app.core.storage_barrier import storage_guard
+from backend.app.declared_upload_capacity import dataset_inventory_enabled
 from backend.app.factor_models import FactorVersion
 from backend.app.factor_services import physical_inventory
 from backend.app.rdagent_models import (
@@ -59,6 +60,7 @@ def _native_aware_inventory(session, fd, fence, settings):
         native=native,
         native_entries=entries,
         storage_root=settings.storage_root,
+        include_dataset_inventory=dataset_inventory_enabled(session),
     )
     if native:
         verify_native_journals(session, entries, settings)

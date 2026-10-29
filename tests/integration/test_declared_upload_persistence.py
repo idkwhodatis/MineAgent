@@ -11,7 +11,9 @@ def test_declared_upload_owner_lineage_and_qualification_constraints(migrated_en
         transaction = connection.begin()
         try:
             for statement in probe_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "DECLARED_UPLOAD_030_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -24,7 +26,9 @@ def test_actual_declared_source_builder_matches_production_sql(migrated_engine):
         transaction = connection.begin()
         try:
             for statement in actual_basket_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "ACTUAL_DECLARED_BASKET_SQL_COMPLETE"
         finally:
             transaction.rollback()
@@ -37,7 +41,9 @@ def test_declared_upload_retained_input_versions_are_distinct(migrated_engine):
         transaction = connection.begin()
         try:
             for statement in qualification_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "DECLARED_UPLOAD_QUALIFICATION_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -50,7 +56,9 @@ def test_installed_numeric_bounds_match_strict_python_fields(migrated_engine):
         transaction = connection.begin()
         try:
             for statement in numeric_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "DECLARED_UPLOAD_NUMERIC_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -65,7 +73,9 @@ def test_installed_signed_child_exit_preserves_unsigned_identity_fields(
         transaction = connection.begin()
         try:
             for statement in signed_statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "DECLARED_UPLOAD_SIGNED_MATRIX_COMPLETE"
         finally:
             transaction.rollback()
@@ -78,7 +88,9 @@ def test_workflow_optional_controller_matches_retained_canonical(migrated_engine
         transaction = connection.begin()
         try:
             for statement in statements():
-                result = connection.exec_driver_sql(statement)
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
             assert result.scalar() == "WORKFLOW_CONTROLLER_SELECTOR_COMPLETE"
         finally:
             transaction.rollback()
