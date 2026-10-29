@@ -30,12 +30,13 @@ from packages.strategy_sdk import (
     canonical_json,
     hash_json,
 )
-from runtimes.evaluator.portable_runner import (
-    PortableDockerEvaluator,
-    safe_policy_manifest,
-)
+from runtimes.evaluator.portable_runner import safe_policy_manifest
 from runtimes.evaluator.runner import IsolationUnavailable
 from runtimes.portable_engine.runtime import profile_sha256
+from tests.portable.availability_diagnostics import (
+    DiagnosticPortableDockerEvaluator,
+    assert_available,
+)
 from tests.portable.diagnostics import assert_rejection, assert_status, safe_diagnostic
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -249,12 +250,10 @@ def affordable_reference_data(market, kind):
 
 @pytest.fixture
 def evaluator(tmp_path):
-    runner = PortableDockerEvaluator(
+    runner = DiagnosticPortableDockerEvaluator(
         state_dir=tmp_path / "runner-state", timeout=60, decision_timeout=15
     )
-    assert runner.available(), (
-        "Actual paired portable images and Docker isolation are required, never substitute a host process"
-    )
+    assert_available(runner)
     return runner
 
 

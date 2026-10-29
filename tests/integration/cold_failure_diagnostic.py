@@ -21,6 +21,10 @@ _MODULES = (
     "backend.app.openevolve_process_backup",
     "backend.app.openevolve_backup",
     "backend.app.structured_factor_backup",
+    "backend.app.factor_analysis_operations",
+    "backend.app.factor_analysis_backup",
+    "backend.app.factor_analysis_reconstruction",
+    "backend.app.rdagent_configured_exposure_backup",
 )
 
 

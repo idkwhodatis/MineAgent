@@ -1,5 +1,7 @@
 """Cold exact local exposure links; incomplete external history remains unknown."""
 
+import re
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from backend.app.experiment_services import dataset_identities
@@ -7,6 +9,29 @@ from backend.app.rdagent_configured_exposure import PURPOSE, exposure_provenance
 from packages.factors.contracts import SnapshotInput, canonical_bytes, digest
 
 EXPOSURE_FIELDS = "id owner_id experiment_id split_version_id run_id dataset_version_id source_key identities start_date end_date purpose provenance created_at"
+
+
+def _retained_exposure_digest(row):
+    """Rebuild only the ORM timestamp rendering committed by the live writer.
+
+    PostgreSQL to_jsonb(timestamptz) trims trailing fractional zeroes, whereas
+    datetime.isoformat emits six digits for nonzero microseconds. Other fields
+    remain untouched; this is not a generic JSON/string coercion or hash fallback.
+    """
+    stamp = row["created_at"]
+    if (
+        type(stamp) is not str
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?\+00:00",
+            stamp,
+        )
+        is None
+    ):
+        raise ValueError("Exact UTC exposure timestamp required")
+    parsed = datetime.fromisoformat(stamp)
+    if parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise ValueError("Exact UTC exposure timestamp required")
+    return digest({**row, "created_at": parsed.isoformat()})
 
 
 def validate_configured_exposure_links(
@@ -86,7 +111,7 @@ def validate_configured_exposure_links(
                 if (
                     row is None
                     or row["owner_id"] != plan["owner_id"]
-                    or claim.evidence_sha256 != digest(row)
+                    or claim.evidence_sha256 != _retained_exposure_digest(row)
                     or claim.purpose != row["purpose"]
                     or claim.window.model_dump(mode="json")
                     != {"start": row["start_date"], "end": row["end_date"]}
