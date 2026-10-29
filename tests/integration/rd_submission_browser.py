@@ -4,6 +4,7 @@ import os
 import secrets
 import shutil
 import socket
+import stat
 import threading
 import time
 from pathlib import Path
@@ -14,7 +15,74 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.main import create_app
-from script.ci_process_owner import ProcessOwner
+from script.ci_process_owner import OwnedCommandFailed, ProcessOwner
+
+_BROWSER_CASE = "actual configured entry creates one queued run and survives reload"
+_DIAGNOSTIC_LIMIT = 64 * 1024
+
+
+def _browser_failure_category(directory):
+    """Return constants only; never expose XML attributes, text or exception strings."""
+    from xml.etree import ElementTree as ET
+
+    unavailable = "diagnostic_unavailable"
+    directory_fd = file_fd = None
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        file_fd = os.open(
+            "engine-create-browser.xml",
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(file_fd)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or not 0 < before.st_size <= _DIAGNOSTIC_LIMIT
+        ):
+            return unavailable
+        raw = os.read(file_fd, _DIAGNOSTIC_LIMIT + 1)
+        after = os.fstat(file_fd)
+        if len(raw) != before.st_size or (
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            return unavailable
+        document = raw.decode("utf-8", errors="strict")
+        if "<!" in document or "\x00" in document:
+            return unavailable
+        cases = ET.fromstring(document).findall(".//testcase")
+        if len(cases) != 1 or cases[0].get("name") != _BROWSER_CASE:
+            return unavailable
+        failure = cases[0].find("failure") is not None
+        error = cases[0].find("error") is not None
+        if failure and error:
+            return "expected_case_failure_and_error"
+        if failure:
+            return "expected_case_failure"
+        if error:
+            return "expected_case_error"
+        return unavailable
+    except (OSError, ValueError, ET.ParseError):
+        return unavailable
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+
+
+def _run_browser(process, *args, diagnostic_directory, **kwargs):
+    try:
+        return process.run(*args, **kwargs)
+    except OwnedCommandFailed:
+        try:
+            category = _browser_failure_category(diagnostic_directory)
+            print("RD browser phase=browser_exit category=" + category)
+        except Exception:  # noqa: BLE001, S110 -- never log untrusted exceptions
+            # Diagnostics must not replace the original failure or cleanup path.
+            pass
+        raise
 
 
 def create_queued_submission_browser(settings, engine, account, dataset, request):
@@ -73,7 +141,8 @@ def _browser(settings, engine, account, dataset, request, tmp_path):
             E2E_RD_DATASET_ID=str(dataset.id),
             PLAYWRIGHT_JUNIT_OUTPUT_FILE=str(tmp_path / "engine-create-browser.xml"),
         )
-        process.run(
+        _run_browser(
+            process,
             [
                 node,
                 str(root / "frontend/node_modules/@playwright/test/cli.js"),
@@ -87,6 +156,7 @@ def _browser(settings, engine, account, dataset, request, tmp_path):
             cwd=root / "frontend",
             env=env,
             seconds=120,
+            diagnostic_directory=tmp_path,
         )
         # A zero exit after filtering/listing/skipping is not acceptance.
         from xml.etree import ElementTree as ET

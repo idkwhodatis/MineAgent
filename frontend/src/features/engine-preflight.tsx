@@ -98,8 +98,14 @@ function EngineEntryForm({
   const budget =
     mode === "fixture"
       ? profile?.recommended_budget
-      : selectedModel?.recommended_budget;
-  const canCreate = generationCanCreate(mode, profile, selectedModel);
+      : parentVersionId
+        ? selectedModel?.seeded_recommended_budget
+        : selectedModel?.recommended_budget;
+  const canCreate =
+    generationCanCreate(mode, profile, selectedModel) &&
+    (mode !== "configured" ||
+      !parentVersionId ||
+      selectedModel?.seeded_can_create === true);
   const matchesSelection = preflightMatchesSelection(
     result,
     mode,
@@ -396,7 +402,13 @@ function EngineEntryForm({
                         {selectedModel.billing_status}. Operator-declared prices
                         are not a verified provider bill; unknown is not zero.
                       </p>
-                      <p>Availability: {selectedModel.reason_code}</p>
+                      <p>
+                        Availability:{" "}
+                        {parentVersionId
+                          ? (selectedModel.seeded_reason_code ??
+                            "seeded_runtime_unavailable")
+                          : selectedModel.reason_code}
+                      </p>
                     </>
                   )}
                   <label>

@@ -10522,6 +10522,15 @@ export type RdModelProfileOption = {
     reason_code: string;
     recommended_budget: BudgetVector | null;
     /**
+     * Seeded Can Create
+     */
+    seeded_can_create?: boolean;
+    /**
+     * Seeded Reason Code
+     */
+    seeded_reason_code?: string;
+    seeded_recommended_budget?: BudgetVector | null;
+    /**
      * Synthetic
      */
     synthetic: boolean;

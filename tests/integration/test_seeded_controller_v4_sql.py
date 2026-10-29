@@ -33,7 +33,7 @@ def test_seeded_v4_binding_rejects_wrong_parent_owner_and_fresh(migrated_engine)
     )[0].replace("@SCHEMA@", "pg_temp")
     with migrated_engine.connect() as c:
         c.exec_driver_sql(TABLES)
-        c.exec_driver_sql(function)
+        c.exec_driver_sql(function, execution_options={"no_parameters": True})
         c.exec_driver_sql(BASE)
         c.execute(text(CALL))
         mutations = [

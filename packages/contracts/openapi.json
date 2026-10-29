@@ -19490,6 +19490,26 @@
               }
             ]
           },
+          "seeded_can_create": {
+            "default": false,
+            "title": "Seeded Can Create",
+            "type": "boolean"
+          },
+          "seeded_reason_code": {
+            "default": "seeded_runtime_unavailable",
+            "title": "Seeded Reason Code",
+            "type": "string"
+          },
+          "seeded_recommended_budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetVector"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "synthetic": {
             "title": "Synthetic",
             "type": "boolean"

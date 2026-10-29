@@ -7,12 +7,14 @@ def provider_options(settings, owner_id, revision):
     from backend.app.engine_run_schemas import RDModelProfileOption
     from backend.app.rdagent_provider_preflight import provider_budget_floor
     from backend.app.rdagent_provider_profile import (
+        provider_seed_controller_profile,
         resolve_provider_declaration,
         resolve_provider_runtime,
     )
     from backend.app.services import DomainError
     from packages.rdagent_adapter.controller_profile import (
         LEGACY_CONTROLLER_PROFILE,
+        SEEDED_CONTROLLER_PROFILE,
         controller_profile,
     )
     from packages.rdagent_provider.contracts import DeclaredTokenPricing
@@ -57,6 +59,20 @@ def provider_options(settings, owner_id, revision):
                 reason, enabled = "runtime_schema_unavailable", False
         except DomainError as error:
             reason, enabled = error.code, False
+        seeded_runtime = None
+        seeded_enabled, seeded_reason = enabled, reason
+        if enabled:
+            try:
+                seeded_runtime = resolve_provider_runtime(settings, seeded=True)
+                if (
+                    provider_seed_controller_profile(seeded_runtime)
+                    == SEEDED_CONTROLLER_PROFILE
+                    and revision != "027c_seeded_controller_v4"
+                ):
+                    seeded_enabled = False
+                    seeded_reason = "runtime_schema_unavailable"
+            except DomainError as error:
+                seeded_enabled, seeded_reason = False, error.code
         result.append(
             RDModelProfileOption(
                 id=profile_id,
@@ -73,6 +89,17 @@ def provider_options(settings, owner_id, revision):
                 )
                 if isinstance(binding.pricing, DeclaredTokenPricing)
                 else None,
+                seeded_recommended_budget=provider_budget_floor(
+                    binding,
+                    profile=provider_seed_controller_profile(seeded_runtime)
+                    or LEGACY_CONTROLLER_PROFILE,
+                )
+                if seeded_enabled
+                and seeded_runtime is not None
+                and isinstance(binding.pricing, DeclaredTokenPricing)
+                else None,
+                seeded_can_create=seeded_enabled,
+                seeded_reason_code=seeded_reason,
                 can_create=enabled,
                 reason_code=reason,
             )

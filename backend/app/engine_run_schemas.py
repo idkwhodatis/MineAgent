@@ -19,6 +19,9 @@ class RDModelProfileOption(BaseModel):
     pricing_status: Literal["unavailable", "operator_declared"]
     billing_status: Literal["unknown"] = "unknown"
     recommended_budget: BudgetVector | None
+    seeded_recommended_budget: BudgetVector | None = None
+    seeded_can_create: bool = False
+    seeded_reason_code: str = "seeded_runtime_unavailable"
     can_create: bool
     reason_code: str
 
