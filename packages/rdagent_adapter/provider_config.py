@@ -2,15 +2,25 @@
 
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from packages.factors.contracts import Sha256
 from packages.rdagent_adapter.contracts import FactorResearchConfig
+from packages.rdagent_adapter.controller_profile import (
+    composed_wall_floor,
+    controller_profile,
+)
 from packages.rdagent_adapter.steer import SteerSnapshot
 from packages.rdagent_provider.contracts import RDModelBinding
 
 
 class ProviderFactorResearchConfig(FactorResearchConfig):
+    controller_profile: (
+        Literal[
+            "mineagent.rdagent-orchestrator.v3", "mineagent.rdagent-orchestrator.v4"
+        ]
+        | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
     schema_version: Literal["mineagent.factor-research.v2"] = (
         "mineagent.factor-research.v2"
     )
@@ -24,7 +34,8 @@ class ProviderFactorResearchConfig(FactorResearchConfig):
         if (
             self.controller_profile is not None
             and self.budget.wall_milliseconds
-            < 300000 + 32 * self.model_binding.request_deadline_ms
+            < composed_wall_floor(controller_profile(self))
+            + 32 * self.model_binding.request_deadline_ms
         ):
             raise ValueError(
                 "Composed provider budget must cover unchanged model-call bounds"

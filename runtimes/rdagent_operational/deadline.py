@@ -17,6 +17,7 @@ import time
 from packages.rdagent_adapter.controller_limits import (
     COMPOSED_CONTROLLER_PROFILE,
     LEGACY_CONTROLLER_PROFILE,
+    SEEDED_CONTROLLER_PROFILE,
     controller_wall_milliseconds,
 )
 from runtimes.hostile_deadline import deadline as lifecycle
@@ -80,7 +81,10 @@ def controller_child(libc, *, profile=LEGACY_CONTROLLER_PROFILE, deadline_ms=Non
     os.chdir("/tmp")
     args = [sys.executable, *CHILD_ARGS]
     if profile != LEGACY_CONTROLLER_PROFILE:
-        if profile != COMPOSED_CONTROLLER_PROFILE or deadline_ms is None:
+        if (
+            profile not in (COMPOSED_CONTROLLER_PROFILE, SEEDED_CONTROLLER_PROFILE)
+            or deadline_ms is None
+        ):
             raise ValueError("Exact composed controller arguments required")
         args.extend([profile, deadline_ms])
     os.execve(sys.executable, args, dict(CHILD_ENV))
@@ -154,7 +158,10 @@ def main():
     if len(sys.argv) not in (2, 3) or not sys.flags.isolated:
         raise RuntimeError("Invalid fixed controller entrypoint")
     profile = LEGACY_CONTROLLER_PROFILE if len(sys.argv) == 2 else sys.argv[2]
-    if len(sys.argv) == 3 and profile != COMPOSED_CONTROLLER_PROFILE:
+    if len(sys.argv) == 3 and profile not in (
+        COMPOSED_CONTROLLER_PROFILE,
+        SEEDED_CONTROLLER_PROFILE,
+    ):
         raise RuntimeError("Invalid explicit controller profile")
     expires = time.monotonic() + remaining_seconds(
         sys.argv[1], time.time_ns() // 1000000, profile=profile

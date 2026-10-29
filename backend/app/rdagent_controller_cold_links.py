@@ -18,6 +18,7 @@ def validate_controller_links(idx, shared, configs):
         if admission["profile"] in {
             "mineagent.rdagent-orchestrator.v2",
             "mineagent.rdagent-orchestrator.v3",
+            "mineagent.rdagent-orchestrator.v4",
         }:
             receipts = [
                 r

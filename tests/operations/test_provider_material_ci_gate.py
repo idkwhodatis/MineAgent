@@ -81,3 +81,37 @@ def test_provider_material_gate_requires_exact_success_without_skip():
     for cases in invalid:
         with pytest.raises(AssertionError):
             exec(code, {"cases": cases})  # noqa: S102 - checked-in assertions only
+
+
+def test_seeded_v4_gate_requires_both_real_sql_tests_without_skip():
+    source = (ROOT / ".github/workflows/v1-validation.yml").read_text()
+    generic = _run_block(
+        source, "Validate real PostgreSQL transactions and Procrastinate schema"
+    )
+    assert "--ignore=tests/integration/test_seeded_controller_v4_sql.py" not in generic
+    gate = _run_block(
+        source,
+        "Require real seeded v4 profile and parent binding proof without skips",
+        unconditional=True,
+    )
+    body = gate.split("PYSEEDED'\n", 1)[1].rsplit("PYSEEDED", 1)[0]
+    tree = ast.parse(body)
+    checks = [n for n in tree.body if isinstance(n, ast.Assert)]
+    assert len(checks) == 3
+    code = compile(
+        ast.Module(body=checks, type_ignores=[]), "<seeded-v4-required>", "exec"
+    )
+    names = (
+        "test_seeded_v4_binding_rejects_wrong_parent_owner_and_fresh",
+        "test_v4_provider_only_profile_and_exact_wall_floor",
+    )
+    valid = [ET.Element("testcase", name=name) for name in names]
+    exec(code, {"cases": valid})  # noqa: S102 - checked-in assertions only
+    invalid = [[], valid[:1], valid + valid[:1], [valid[0], valid[0]]]
+    for tag in ("failure", "error", "skipped"):
+        cases = [ET.Element("testcase", name=name) for name in names]
+        ET.SubElement(cases[1], tag)
+        invalid.append(cases)
+    for cases in invalid:
+        with pytest.raises(AssertionError):
+            exec(code, {"cases": cases})  # noqa: S102 - checked-in assertions only

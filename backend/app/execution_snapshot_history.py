@@ -33,6 +33,7 @@ from backend.app.rdagent_models import FactorCutoffExecution
 from backend.app.rdagent_snapshot_config import (
     composed_controller_in_session,
     provider_config_in_session,
+    seeded_controller_in_session,
 )
 from backend.app.research_broker_models import (
     ResearchBudgetReservation,
@@ -96,6 +97,7 @@ def historical_session(factory, owner_id, settings):
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
+                ["027c_seeded_controller_v4"],
             ):
                 fail()
             yield session
@@ -351,6 +353,7 @@ def check_configured_history(session, publication, settings):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document
@@ -422,6 +425,7 @@ def check_configured_history(session, publication, settings):
         max_rows=10000,
         provider_config=provider_config_in_session(session),
         composed_controller=composed_controller_in_session(session),
+        seeded_controller=seeded_controller_in_session(session),
     )
 
 

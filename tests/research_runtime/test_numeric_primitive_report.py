@@ -440,6 +440,7 @@ def test_resolved_report_api_returns_exact_immutable_context_with_authority_doub
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     ],
 )
 def test_report_capability_inherits_only_installed_exact_successor_pairs(revision):
@@ -478,7 +479,7 @@ def test_report_capability_refuses_old_unknown_or_ambiguous_installation(revisio
             "mineagent.execution-snapshot-restore-closure.v1",
         ),
         ("native_closure_schema", "mineagent.native-hdf-restore-closure.v2"),
-        ("research_closure_schema", "mineagent.research-restore-closure.v12"),
+        ("research_closure_schema", "mineagent.research-restore-closure.v13"),
     ],
 )
 def test_report_capability_refuses_mixed_or_future_capability_tuple(

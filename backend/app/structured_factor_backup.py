@@ -203,6 +203,7 @@ def validate_closure(
         RESEARCH_SCHEMA,
         "mineagent.research-restore-closure.v10",
         "mineagent.research-restore-closure.v11",
+        "mineagent.research-restore-closure.v12",
     }:
         raise ValueError("Exact structured research closure version required")
     idx = indexes(closure, maximum_rows)

@@ -97,6 +97,7 @@ def require_maintained_revision(session):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -220,12 +221,19 @@ def _execute_controller(factory, fence, settings, *, handler_type):
             _, bootstrap = expected_operational_bootstrap(session, fence)
             if controller_profile(
                 bootstrap.config
+            ) == "mineagent.rdagent-orchestrator.v4" and session.scalars(
+                text("SELECT version_num FROM alembic_version")
+            ).all() != ["027c_seeded_controller_v4"]:
+                raise ProcessError("rd_controller_seeded_revision")
+            if controller_profile(
+                bootstrap.config
             ) == "mineagent.rdagent-orchestrator.v3" and session.scalars(
                 text("SELECT version_num FROM alembic_version")
             ).all() not in (
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
+                ["027c_seeded_controller_v4"],
             ):
                 raise ProcessError("rd_controller_composed_revision")
         from backend.app.rdagent_seed_controller import reread_bootstrap_parent

@@ -132,6 +132,7 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed

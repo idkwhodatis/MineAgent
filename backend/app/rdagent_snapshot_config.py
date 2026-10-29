@@ -21,11 +21,13 @@ def parse_snapshot_config(
     provider_config=False,
     json_mode=False,
     composed_controller=False,
+    seeded_controller=False,
 ):
     if (
         type(provider_config) is not bool
         or type(json_mode) is not bool
         or type(composed_controller) is not bool
+        or type(seeded_controller) is not bool
     ):
         raise ValueError("Explicit snapshot config dispatch required")
     if not provider_config:
@@ -36,6 +38,11 @@ def parse_snapshot_config(
         )
     else:
         config = parse_research_config(value)
+    if (
+        config.controller_profile == "mineagent.rdagent-orchestrator.v4"
+        and not seeded_controller
+    ):
+        raise ValueError("Seeded controller is unavailable in historical schema")
     if config.controller_profile is not None and not composed_controller:
         raise ValueError("Composed controller is unavailable in historical schema")
     if config.model_profile == "configured.rdagent.v1" and str(
@@ -57,6 +64,7 @@ def provider_config_in_session(session):
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     }:
         raise ValueError("Unsupported historical snapshot revision")
     return revisions in (
@@ -64,6 +72,7 @@ def provider_config_in_session(session):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     )
 
 
@@ -73,4 +82,12 @@ def composed_controller_in_session(session):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     )
+
+
+def seeded_controller_in_session(session):
+    provider_config_in_session(session)
+    return session.scalars(text("SELECT version_num FROM alembic_version")).all() == [
+        "027c_seeded_controller_v4"
+    ]

@@ -13,6 +13,7 @@ from packages.factors.contracts import Contract
 from packages.rdagent_adapter.controller_limits import (
     COMPOSED_CONTROLLER_PROFILE,
     LEGACY_CONTROLLER_PROFILE,
+    SEEDED_CONTROLLER_PROFILE,
     composed_wall_floor,
     controller_wall_milliseconds,
     controller_wall_seconds,
@@ -21,6 +22,7 @@ from packages.rdagent_adapter.controller_limits import (
 __all__ = [
     "COMPOSED_CONTROLLER_PROFILE",
     "LEGACY_CONTROLLER_PROFILE",
+    "SEEDED_CONTROLLER_PROFILE",
     "ControllerProfileSelection",
     "composed_wall_floor",
     "controller_profile",

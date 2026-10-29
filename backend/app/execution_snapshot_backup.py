@@ -205,6 +205,11 @@ def validate_closure(
                 "mineagent.rd-source-restore-closure.v6",
                 "mineagent.native-hdf-restore-closure.v3",
             ),
+            (
+                "mineagent.research-restore-closure.v12",
+                "mineagent.rd-source-restore-closure.v7",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
         },
     }.get(closure.get("schema_version"))
     if (
@@ -318,9 +323,18 @@ def validate_closure(
                     "mineagent.research-restore-closure.v11",
                     "mineagent.rd-source-restore-closure.v6",
                 ),
+                (
+                    "mineagent.research-restore-closure.v12",
+                    "mineagent.rd-source-restore-closure.v7",
+                ),
             },
             composed_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v11",
+            in {
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v12",
+            },
+            seeded_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v12",
         )
         from backend.app.rdagent_complete_evaluation import maintained_calendar
 

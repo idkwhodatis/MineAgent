@@ -16,7 +16,12 @@ def session(revisions):
 
 @pytest.mark.parametrize(
     "revision",
-    ["027_rd_controller_v3", "027a_contract_repairs", "027b_provider_material"],
+    [
+        "027_rd_controller_v3",
+        "027a_contract_repairs",
+        "027b_provider_material",
+        "027c_seeded_controller_v4",
+    ],
 )
 def test_exact_maintenance_has_same_composed_capability(revision):
     assert provider_config_in_session(session([revision])) is True
@@ -69,6 +74,7 @@ def test_seed_bootstrap_never_reads_family_under_unknown_or_multirow_head(revisi
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     ],
 )
 def test_seed_bootstrap_exact_head_still_requires_saved_receipt(revision):

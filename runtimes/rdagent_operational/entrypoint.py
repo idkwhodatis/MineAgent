@@ -16,6 +16,7 @@ from pathlib import Path
 from packages.rdagent_adapter.controller_profile import (
     COMPOSED_CONTROLLER_PROFILE,
     LEGACY_CONTROLLER_PROFILE,
+    SEEDED_CONTROLLER_PROFILE,
     controller_profile,
 )
 from packages.rdagent_adapter.seeded_bootstrap import (
@@ -84,7 +85,7 @@ def main():
         rpc_deadline = time.monotonic() + 60
     else:
         if (
-            sys.argv[1] != COMPOSED_CONTROLLER_PROFILE
+            sys.argv[1] not in (COMPOSED_CONTROLLER_PROFILE, SEEDED_CONTROLLER_PROFILE)
             or selected_profile != sys.argv[1]
         ):
             raise RPCError("controller_profile_mismatch")

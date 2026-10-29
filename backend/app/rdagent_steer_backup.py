@@ -87,6 +87,7 @@ def validate_closure(closure, *, rd_source_closure, maximum_rows):
         not in {
             "mineagent.rd-source-restore-closure.v5",
             "mineagent.rd-source-restore-closure.v6",
+            "mineagent.rd-source-restore-closure.v7",
         }
         or type(maximum_rows) is not int
         or maximum_rows < 1

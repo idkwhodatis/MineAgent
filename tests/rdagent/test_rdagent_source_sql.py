@@ -117,3 +117,9 @@ def test_selected_chain_and_witness_fields_not_payload_claims():
     assert "w.raw_text" not in text.replace("w.raw_text_bytes", "")
     assert "w.normalized_json" not in text
     assert "pg_read_file" not in text and "COPY " not in text
+
+
+def test_seeded_profile_model_pin_does_not_rewrite_historical_source_sql():
+    assert hashlib.sha256(sql.render_sql().encode()).hexdigest() == (
+        "3b7242168ed968c778057f1eebebc78e09da49e2e7ffffb991f07498736d1938"
+    )

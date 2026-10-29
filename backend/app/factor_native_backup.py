@@ -133,6 +133,7 @@ def validate_closure(
                 "mineagent.research-restore-closure.v9",
                 "mineagent.research-restore-closure.v10",
                 "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v12",
             },
         }[closure["schema_version"]]
     ):
@@ -142,9 +143,13 @@ def validate_closure(
         in {
             "mineagent.research-restore-closure.v10",
             "mineagent.research-restore-closure.v11",
+            "mineagent.research-restore-closure.v12",
         }
         or rd_source_closure.get("schema_version")
-        == "mineagent.rd-source-restore-closure.v6"
+        in {
+            "mineagent.rd-source-restore-closure.v6",
+            "mineagent.rd-source-restore-closure.v7",
+        }
     ) and (
         research_closure.get("schema_version"),
         rd_source_closure.get("schema_version"),
@@ -156,6 +161,10 @@ def validate_closure(
         (
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
+        ),
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
         ),
     }:
         raise ValueError("Seeded native closure requires exact RD v5")
@@ -327,10 +336,19 @@ def validate_closure(
                         "mineagent.research-restore-closure.v11",
                         "mineagent.rd-source-restore-closure.v6",
                     ),
+                    (
+                        "mineagent.research-restore-closure.v12",
+                        "mineagent.rd-source-restore-closure.v7",
+                    ),
                 }
             ),
             composed_controller=research_closure.get("schema_version")
-            == "mineagent.research-restore-closure.v11",
+            in {
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v12",
+            },
+            seeded_controller=research_closure.get("schema_version")
+            == "mineagent.research-restore-closure.v12",
         )
         expected = research_snapshot_input(
             config,

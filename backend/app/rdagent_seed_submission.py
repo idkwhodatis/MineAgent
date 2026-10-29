@@ -111,6 +111,7 @@ def validate_saved_seed_binding(row, run, spec, plan, owner_id, key):
         if isinstance(config, ProviderFactorResearchConfig):
             from backend.app.rdagent_provider_profile import (
                 RDProviderServerRuntimeProfile,
+                provider_runtime_selection_fields,
             )
             from backend.app.rdagent_provider_submission_contracts import (
                 RDProviderSeedReceipt,
@@ -127,7 +128,7 @@ def validate_saved_seed_binding(row, run, spec, plan, owner_id, key):
                 raise ValueError("Provider request/model/guidance binding")
             profile = RDProviderServerRuntimeProfile(
                 runtime=config.runtime,
-                **controller_selection_fields(config),
+                **provider_runtime_selection_fields(config),
                 qlib_installed_parent_image_id=plan.qlib_installed_parent_image_id,
             )
             expected = provider_commitment(
@@ -231,6 +232,7 @@ def submit_seeded_run(session, owner_id, submitted, idempotency_key, settings):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

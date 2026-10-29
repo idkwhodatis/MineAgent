@@ -192,6 +192,10 @@ def validate_closure(
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
         ),
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
     } or execution_closure.get(
         "schema_version"
     ) != "mineagent.execution-snapshot-restore-closure.v2":
@@ -207,6 +211,10 @@ def validate_closure(
         (
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
+        ),
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
         ),
     }
     own = indexes(closure, maximum_rows)
@@ -273,7 +281,12 @@ def validate_closure(
             owner_id=spec["owner_id"],
             provider_config=provider_config,
             composed_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v11",
+            in {
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v12",
+            },
+            seeded_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v12",
         )
         objective = read_objective(plan)
         policy = ConfiguredSourcePolicy.model_validate(plan["source_policy"])
@@ -336,7 +349,12 @@ def validate_closure(
         max_rows=maximum_rows,
         provider_config=provider_config,
         composed_controller=research_closure["schema_version"]
-        == "mineagent.research-restore-closure.v11",
+        in {
+            "mineagent.research-restore-closure.v11",
+            "mineagent.research-restore-closure.v12",
+        },
+        seeded_controller=research_closure["schema_version"]
+        == "mineagent.research-restore-closure.v12",
     )
     inputs = {}
     pairs = set()
@@ -360,7 +378,12 @@ def validate_closure(
             read_bytes=read_bytes,
             provider_config=provider_config,
             composed_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v11",
+            in {
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v12",
+            },
+            seeded_controller=research_closure["schema_version"]
+            == "mineagent.research-restore-closure.v12",
         )
     # Every retained analysis admission, including stopped/no-result attempts,
     # must bind a real declared input; outcome-only checks miss pending authority.

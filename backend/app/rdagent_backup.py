@@ -40,6 +40,7 @@ SCHEMA_V3 = "mineagent.rd-source-restore-closure.v3"
 SCHEMA_V4 = "mineagent.rd-source-restore-closure.v4"
 SCHEMA_V5 = "mineagent.rd-source-restore-closure.v5"
 SCHEMA_V6 = "mineagent.rd-source-restore-closure.v6"
+SCHEMA_V7 = "mineagent.rd-source-restore-closure.v7"
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 MAX_BYTES = 32_000_000
 # Literal inventory: changing a model never silently widens a backup grammar.
@@ -79,7 +80,11 @@ FIELDS_V5 = {
 
 
 def closure_fields(schema):
-    if schema in {SCHEMA_V5, SCHEMA_V6}:
+    if schema in {
+        SCHEMA_V5,
+        SCHEMA_V6,
+        SCHEMA_V7,
+    }:
         return FIELDS_V5
     if schema == SCHEMA_V4:
         return FIELDS_V4
@@ -1121,7 +1126,15 @@ def _require(value, reason):
 def read_closure(connection, maximum_rows, *, revision, maximum_bytes=MAX_BYTES):
     _require(
         capabilities_for(revision).rd_source_closure_schema
-        in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6},
+        in {
+            SCHEMA,
+            SCHEMA_V2,
+            SCHEMA_V3,
+            SCHEMA_V4,
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+        },
         "revision capability",
     )
     _require(
@@ -1182,7 +1195,15 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
         and set(closure)
         == {"schema_version", "tables", "consumer_claims", "external_bindings"}
         and closure["schema_version"]
-        in {SCHEMA, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6},
+        in {
+            SCHEMA,
+            SCHEMA_V2,
+            SCHEMA_V3,
+            SCHEMA_V4,
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+        },
         "schema",
     )
     _require(
@@ -1259,7 +1280,13 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
                 - (
                     {"factor_generation_outcomes"}
                     if closure["schema_version"]
-                    in {SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}
+                    in {
+                        SCHEMA_V3,
+                        SCHEMA_V4,
+                        SCHEMA_V5,
+                        SCHEMA_V6,
+                        SCHEMA_V7,
+                    }
                     else set()
                 )
             )
@@ -1289,18 +1316,34 @@ def validate_closure(
     """
     from collections.abc import Mapping
 
-    if closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}:
+    if closure["schema_version"] in {
+        SCHEMA_V5,
+        SCHEMA_V6,
+        SCHEMA_V7,
+    }:
         if not isinstance(seed_context, Mapping):
             raise ValueError("Seed context required before RD domain closure")
     elif seed_context is not None:
         raise ValueError("Historical RD closure cannot acquire seed authority")
     idx = _indexes(closure, maximum_rows)
-    if closure["schema_version"] in {SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}:
+    if closure["schema_version"] in {
+        SCHEMA_V4,
+        SCHEMA_V5,
+        SCHEMA_V6,
+        SCHEMA_V7,
+    }:
         _require(
             configured_inputs_pending is True, "configured input closure must follow"
         )
     if (
-        closure["schema_version"] in {SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}
+        closure["schema_version"]
+        in {
+            SCHEMA_V3,
+            SCHEMA_V4,
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+        }
         and idx["factor_generation_outcomes"]
     ):
         _require(
@@ -1315,6 +1358,7 @@ def validate_closure(
             SCHEMA_V3: {"mineagent.research-restore-closure.v6"},
             SCHEMA_V5: {"mineagent.research-restore-closure.v10"},
             SCHEMA_V6: {"mineagent.research-restore-closure.v11"},
+            SCHEMA_V7: {"mineagent.research-restore-closure.v12"},
             SCHEMA_V4: {
                 "mineagent.research-restore-closure.v7",
                 "mineagent.research-restore-closure.v8",
@@ -1424,7 +1468,12 @@ def validate_closure(
         values["dataset_version_id"] = UUID(values["dataset_version_id"])
         values["owner_id"] = UUID(values["owner_id"])
         _require(
-            closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}
+            closure["schema_version"]
+            in {
+                SCHEMA_V5,
+                SCHEMA_V6,
+                SCHEMA_V7,
+            }
             or run["config"].get("schema_version") == "mineagent.factor-research.v1",
             "historical config grammar",
         )
@@ -1443,7 +1492,11 @@ def validate_closure(
         )
         _require(control["limits"] == config.budget.model_dump(), "config budget")
         configs[run["id"]] = config
-    if closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}:
+    if closure["schema_version"] in {
+        SCHEMA_V5,
+        SCHEMA_V6,
+        SCHEMA_V7,
+    }:
         from backend.app.rdagent_provider_backup import (
             validate_operation_membership,
             validate_receipts,
@@ -1468,7 +1521,12 @@ def validate_closure(
 
     def model_codec(run_id):
         provider = (
-            closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}
+            closure["schema_version"]
+            in {
+                SCHEMA_V5,
+                SCHEMA_V6,
+                SCHEMA_V7,
+            }
             and configs[run_id].model_profile == "configured.rdagent.v1"
         )
         if provider:
@@ -1515,7 +1573,11 @@ def validate_closure(
             config_sha256=spec["config_sha256"],
             input_sha256=spec["input_sha256"],
         )
-        if closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}:
+        if closure["schema_version"] in {
+            SCHEMA_V5,
+            SCHEMA_V6,
+            SCHEMA_V7,
+        }:
             from backend.app.rdagent_seed_backup import build_expected_bootstrap
 
             expected = build_expected_bootstrap(
@@ -1542,14 +1604,26 @@ def validate_closure(
                 (
                     admission["profile"]
                     if closure["schema_version"]
-                    in {SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6}
+                    in {
+                        SCHEMA_V2,
+                        SCHEMA_V3,
+                        SCHEMA_V4,
+                        SCHEMA_V5,
+                        SCHEMA_V6,
+                        SCHEMA_V7,
+                    }
                     and admission["profile"]
                     in {
                         "mineagent.rdagent-orchestrator.v1",
                         "mineagent.rdagent-orchestrator.v2",
                         *(
                             {"mineagent.rdagent-orchestrator.v3"}
-                            if closure["schema_version"] == SCHEMA_V6
+                            if closure["schema_version"] in {SCHEMA_V6, SCHEMA_V7}
+                            else set()
+                        ),
+                        *(
+                            {"mineagent.rdagent-orchestrator.v4"}
+                            if closure["schema_version"] == SCHEMA_V7
                             else set()
                         ),
                     }
@@ -1562,11 +1636,16 @@ def validate_closure(
             "controller admission",
         )
         _require(
-            (admission["profile"] == "mineagent.rdagent-orchestrator.v3")
-            == (
-                getattr(bootstrap.config, "controller_profile", None)
-                == "mineagent.rdagent-orchestrator.v3"
-            ),
+            (
+                admission["profile"]
+                if admission["profile"]
+                in {
+                    "mineagent.rdagent-orchestrator.v3",
+                    "mineagent.rdagent-orchestrator.v4",
+                }
+                else None
+            )
+            == getattr(bootstrap.config, "controller_profile", None),
             "controller selected profile",
         )
     starts = idx["factor_generation_starts"]
@@ -1594,7 +1673,12 @@ def validate_closure(
             and start["parent_factor_version_id"]
             == (
                 str(seed_context[start["run_id"]].parent.reference.factor_version_id)
-                if closure["schema_version"] in {SCHEMA_V5, SCHEMA_V6}
+                if closure["schema_version"]
+                in {
+                    SCHEMA_V5,
+                    SCHEMA_V6,
+                    SCHEMA_V7,
+                }
                 and start["run_id"] in seed_context
                 else None
             ),
@@ -1992,6 +2076,7 @@ def validate_closure(
         SCHEMA_V4,
         SCHEMA_V5,
         SCHEMA_V6,
+        SCHEMA_V7,
     }:
         from backend.app.rdagent_controller_cold_links import validate_controller_links
 

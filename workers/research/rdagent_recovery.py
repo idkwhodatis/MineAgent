@@ -73,6 +73,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
+                ["027c_seeded_controller_v4"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)
@@ -101,6 +102,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 if profile in (
                     "mineagent.rdagent-orchestrator.v2",
                     "mineagent.rdagent-orchestrator.v3",
+                    "mineagent.rdagent-orchestrator.v4",
                 ):
                     from workers.research.rdagent_operational import (
                         recover_controller_unit,

@@ -50,7 +50,7 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
 
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "027b_provider_material")
+        legacy._upgrade(engine, "027c_seeded_controller_v4")
         storage = tmp_path / "rd-user-flow"
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(engine, storage).model_copy(
@@ -200,17 +200,17 @@ def test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay(
         ).source_snapshot(BackupLimits())
         assert (
             before["research_closure"]["schema_version"]
-            == "mineagent.research-restore-closure.v11"
+            == "mineagent.research-restore-closure.v12"
         )
         assert (
             before["rd_source_closure"]["schema_version"]
-            == "mineagent.rd-source-restore-closure.v6"
+            == "mineagent.rd-source-restore-closure.v7"
         )
         files = _files(storage)
         target = tmp_path / "restored-user-flow"
         manifest = _roundtrip(drill_databases, tmp_path, engine, storage, target)
         assert (
-            manifest["schema_revision"] == "027b_provider_material"
+            manifest["schema_revision"] == "027c_seeded_controller_v4"
             and _files(target) == files
         )
         after = PostgresDatabase(

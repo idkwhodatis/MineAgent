@@ -5,6 +5,7 @@ from sqlalchemy import text
 from backend.app.engine_run_preflight import RECOMMENDED_BUDGET, preflight
 from backend.app.rdagent_configured_source import resolve_dataset_preflight
 from backend.app.rdagent_provider_profile import (
+    provider_seed_controller_profile,
     resolve_provider_declaration,
     resolve_provider_runtime,
 )
@@ -100,7 +101,9 @@ def provider_preflight(
         _, binding = resolve_provider_declaration(
             settings, owner_id, request.model_profile_id
         )
-        runtime = resolve_provider_runtime(settings)
+        runtime = resolve_provider_runtime(
+            settings, seeded=isinstance(request, RDProviderSeedRequest)
+        )
     except DomainError as exc:
         code = {
             "engine_submission_not_enabled": "runtime_disabled",
@@ -114,7 +117,12 @@ def provider_preflight(
         and not request.budget.covers(
             provider_budget_floor(
                 binding,
-                profile=controller_profile(runtime)
+                profile=(
+                    provider_seed_controller_profile(runtime)
+                    or LEGACY_CONTROLLER_PROFILE
+                )
+                if runtime is not None and isinstance(request, RDProviderSeedRequest)
+                else controller_profile(runtime)
                 if runtime is not None
                 else LEGACY_CONTROLLER_PROFILE,
             )
@@ -159,6 +167,7 @@ def provider_preflight(
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -167,12 +176,26 @@ def provider_preflight(
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         )
     ):
         reasons.append(
             ProviderPreflightReason(
                 code="runtime_schema_unavailable",
                 message="The versioned model-backed submission schema is not installed.",
+            )
+        )
+    if (
+        runtime is not None
+        and isinstance(request, RDProviderSeedRequest)
+        and runtime.seeded_controller_profile is not None
+        and session.scalars(text("SELECT version_num FROM alembic_version")).all()
+        != ["027c_seeded_controller_v4"]
+    ):
+        reasons.append(
+            ProviderPreflightReason(
+                code="runtime_schema_unavailable",
+                message="Explicit seeded controller schema is not installed.",
             )
         )
     profile_sha = None if runtime is None else digest(runtime)

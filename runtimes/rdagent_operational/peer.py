@@ -16,6 +16,7 @@ from pathlib import Path
 from packages.rdagent_adapter.controller_profile import (
     COMPOSED_CONTROLLER_PROFILE,
     LEGACY_CONTROLLER_PROFILE,
+    SEEDED_CONTROLLER_PROFILE,
 )
 from packages.research_runtime.process_contracts import ProcessError
 from packages.research_runtime.process_declarations_v2 import (
@@ -193,7 +194,11 @@ def _validated_controller_claim(admission, *, binding, supplied_ticket):
         if (
             admission.role != "rd_orchestrator"
             or admission.profile
-            not in (LEGACY_CONTROLLER_PROFILE, COMPOSED_CONTROLLER_PROFILE)
+            not in (
+                LEGACY_CONTROLLER_PROFILE,
+                COMPOSED_CONTROLLER_PROFILE,
+                SEEDED_CONTROLLER_PROFILE,
+            )
             or type(admission.ipc) is not HostTicketIPC
             or type(supplied_ticket) is not str
             or len(supplied_ticket) != 64

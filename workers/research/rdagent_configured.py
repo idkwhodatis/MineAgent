@@ -90,6 +90,11 @@ def validate_configured_work(config, source, objective):
 
 def require_controller_revision(session, config):
     revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
+    if (
+        config.controller_profile == "mineagent.rdagent-orchestrator.v4"
+        and revisions != ["027c_seeded_controller_v4"]
+    ):
+        raise ProcessError("rd_controller_revision")
     if revisions not in (
         ["022_factor_analysis"],
         ["023_rd_submissions"],
@@ -99,6 +104,7 @@ def require_controller_revision(session, config):
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ) or (
         config.controller_profile is not None
         and revisions
@@ -106,6 +112,7 @@ def require_controller_revision(session, config):
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         )
     ):
         raise ProcessError("rd_controller_revision")

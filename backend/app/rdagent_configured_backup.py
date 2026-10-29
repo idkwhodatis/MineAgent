@@ -28,6 +28,7 @@ def validate_configured_input_closure(
     max_rows=100000,
     provider_config=False,
     composed_controller=False,
+    seeded_controller=False,
 ):
     """read_bytes(storage_key, maximum) must reject unsafe paths/oversized files.
 
@@ -92,6 +93,7 @@ def validate_configured_input_closure(
             owner_id=spec["owner_id"],
             provider_config=provider_config,
             composed_controller=composed_controller,
+            seeded_controller=seeded_controller,
             json_mode=True,
         )
         policy = ConfiguredSourcePolicy.model_validate_json(

@@ -78,5 +78,10 @@ def require_report_capability(session):
             "mineagent.native-hdf-restore-closure.v3",
             "mineagent.research-restore-closure.v11",
         ),
+        (
+            "mineagent.execution-snapshot-restore-closure.v2",
+            "mineagent.native-hdf-restore-closure.v3",
+            "mineagent.research-restore-closure.v12",
+        ),
     }:
         raise ProcessError("numeric_report_schema_unsupported")

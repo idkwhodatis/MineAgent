@@ -235,6 +235,16 @@ jobs:
           assert cases[0].attrib.get("name") == "test_material_matches_frozen_public_oracles"
           assert not any(case.find(tag) is not None for case in cases for tag in ("failure", "error", "skipped"))
           PYPROVIDER
+      - name: Require real seeded v4 profile and parent binding proof without skips
+        run: |
+          python - <<'PYSEEDED'
+          from xml.etree import ElementTree as ET
+          cases = [case for case in ET.parse("m1-m2-postgres-junit.xml").getroot().iter("testcase")
+                   if case.attrib.get("classname") == "tests.integration.test_seeded_controller_v4_sql"]
+          assert len(cases) == 2
+          assert {case.attrib.get("name") for case in cases} == {"test_seeded_v4_binding_rejects_wrong_parent_owner_and_fresh", "test_v4_provider_only_profile_and_exact_wall_floor"}
+          assert not any(case.find(tag) is not None for case in cases for tag in ("failure", "error", "skipped"))
+          PYSEEDED
       - name: Observe disposable database capacity after real integration tests
         if: always()
         run: python script/ci_postgres_resources.py --phase after-integration

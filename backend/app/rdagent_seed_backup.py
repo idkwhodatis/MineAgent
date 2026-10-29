@@ -151,6 +151,10 @@ def validate_closure(
                 "mineagent.research-restore-closure.v11",
                 "mineagent.rd-source-restore-closure.v6",
             ),
+            (
+                "mineagent.research-restore-closure.v12",
+                "mineagent.rd-source-restore-closure.v7",
+            ),
         }
         or factor_closure.get("schema_version") != "mineagent.factor-restore-closure.v2"
         or direct_analysis_closure.get("schema_version")
@@ -327,6 +331,13 @@ def validate_closure(
         keys.add(key)
         used_runs.add(row["run_id"])
         used_plans.add(row["analysis_plan_id"])
+    if not {
+        identity
+        for identity, run in runs.items()
+        if run["config"].get("controller_profile")
+        == "mineagent.rdagent-orchestrator.v4"
+    } <= set(prepared):
+        raise ValueError("Seeded controller v4 lacks retained parent declaration")
     if set(outboxes) != set(prepared):
         raise ValueError("Unreferenced seed outbox")
     return MappingProxyType(prepared)
@@ -336,6 +347,11 @@ def seeded_bootstrap(base, seed_context):
     """Pure expected bootstrap reconstruction; no physical/launch authority."""
     prepared = seed_context.get(str(base.run_id))
     if prepared is None:
+        if (
+            getattr(base.config, "controller_profile", None)
+            == "mineagent.rdagent-orchestrator.v4"
+        ):
+            raise ValueError("Seeded controller v4 lacks retained parent declaration")
         return base
     if type(prepared) is not PreparedSeed:
         raise ValueError("Exact prepared seed data required")
@@ -348,6 +364,12 @@ def build_expected_bootstrap(*, seed_context, **values):
     from packages.rdagent_adapter.provider_bootstrap import build_operational_bootstrap
 
     prepared = seed_context.get(str(values["run_id"]))
+    if (
+        prepared is None
+        and getattr(values["config"], "controller_profile", None)
+        == "mineagent.rdagent-orchestrator.v4"
+    ):
+        raise ValueError("Seeded controller v4 lacks retained parent declaration")
     if prepared is not None and type(prepared) is not PreparedSeed:
         raise ValueError("Exact prepared seed data required")
     return build_operational_bootstrap(

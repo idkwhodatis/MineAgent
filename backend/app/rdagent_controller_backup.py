@@ -118,6 +118,10 @@ def validate_controller_closure_unit(
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
         ),
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
     }:
         raise ValueError("Explicit research-v5 and RD source closure required")
     from collections.abc import Mapping
@@ -125,6 +129,7 @@ def validate_controller_closure_unit(
     if research_schema in {
         "mineagent.research-restore-closure.v10",
         "mineagent.research-restore-closure.v11",
+        "mineagent.research-restore-closure.v12",
     }:
         if not isinstance(seed_context, Mapping):
             raise ValueError(
@@ -156,7 +161,9 @@ def validate_controller_closure_unit(
         amounts.process_slots != 1
         or amounts.wall_milliseconds
         < (
-            120000
+            180000
+            if admission.profile == "mineagent.rdagent-orchestrator.v4"
+            else 120000
             if admission.profile == "mineagent.rdagent-orchestrator.v3"
             else 60000
         )
@@ -241,6 +248,7 @@ def validate_controller_closure_unit(
         not in {
             "mineagent.research-restore-closure.v10",
             "mineagent.research-restore-closure.v11",
+            "mineagent.research-restore-closure.v12",
         }
         and run["config"].get("schema_version") != "mineagent.factor-research.v1"
     ):
@@ -250,7 +258,8 @@ def validate_controller_closure_unit(
     require_config_revision(run["config"], research_schema=research_schema)
     config = require_source_identity(run_obj)
     if admission.profile != getattr(config, "controller_profile", None) and (
-        admission.profile == "mineagent.rdagent-orchestrator.v3"
+        admission.profile
+        in {"mineagent.rdagent-orchestrator.v3", "mineagent.rdagent-orchestrator.v4"}
         or getattr(config, "controller_profile", None) is not None
     ):
         raise ValueError("Controller admission differs from selected config profile")
@@ -289,6 +298,7 @@ def validate_controller_closure_unit(
     if research_schema in {
         "mineagent.research-restore-closure.v10",
         "mineagent.research-restore-closure.v11",
+        "mineagent.research-restore-closure.v12",
     }:
         from backend.app.rdagent_seed_backup import build_expected_bootstrap
 

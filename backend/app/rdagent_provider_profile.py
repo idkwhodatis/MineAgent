@@ -4,12 +4,47 @@ import os
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field, model_validator
+
 from backend.app.rdagent_server_profile import RDServerRuntimeProfile
+from packages.rdagent_adapter.controller_profile import (
+    COMPOSED_CONTROLLER_PROFILE,
+    SEEDED_CONTROLLER_PROFILE,
+    controller_selection_fields,
+)
 from packages.rdagent_provider.contracts import PricingUnavailable
 from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
 
 
 class RDProviderServerRuntimeProfile(RDServerRuntimeProfile):
+    seeded_controller_profile: Literal["mineagent.rdagent-orchestrator.v4"] | None = (
+        Field(default=None, exclude_if=lambda value: value is None)
+    )
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def exact_seeded_selection(cls, value, handler):
+        if isinstance(value, cls):
+            if (
+                "seeded_controller_profile" in value.model_fields_set
+                and value.seeded_controller_profile is None
+            ):
+                raise ValueError("Explicit seeded controller null is not omission")
+            value = value.model_dump(mode="python")
+        if (
+            isinstance(value, dict)
+            and "seeded_controller_profile" in value
+            and value["seeded_controller_profile"] is None
+        ):
+            raise ValueError("Explicit seeded controller null is not omission")
+        result = handler(value)
+        if (
+            result.seeded_controller_profile is not None
+            and result.controller_profile != COMPOSED_CONTROLLER_PROFILE
+        ):
+            raise ValueError("Seeded v4 requires explicit fresh v3 profile")
+        return result
+
     schema_version: Literal["mineagent.rdagent-provider-server-profile.v1"] = (
         "mineagent.rdagent-provider-server-profile.v1"
     )
@@ -60,7 +95,20 @@ def resolve_provider_declaration(
     return profile, binding
 
 
-def resolve_provider_runtime(settings):
+def provider_seed_controller_profile(profile):
+    return profile.seeded_controller_profile or profile.controller_profile
+
+
+def provider_runtime_selection_fields(config):
+    if config.controller_profile == SEEDED_CONTROLLER_PROFILE:
+        return {
+            "controller_profile": COMPOSED_CONTROLLER_PROFILE,
+            "seeded_controller_profile": SEEDED_CONTROLLER_PROFILE,
+        }
+    return controller_selection_fields(config)
+
+
+def resolve_provider_runtime(settings, *, seeded=False):
     from backend.app.services import DomainError
 
     if getattr(settings, "rdagent_research_enabled", False) is not True:
@@ -87,7 +135,12 @@ def resolve_provider_runtime(settings):
             409,
         )
     try:
-        return RDProviderServerRuntimeProfile.model_validate(raw)
+        profile = RDProviderServerRuntimeProfile.model_validate(raw)
+        if not seeded and profile.seeded_controller_profile is not None:
+            value = profile.model_dump(mode="python")
+            value.pop("seeded_controller_profile")
+            profile = RDProviderServerRuntimeProfile.model_validate(value)
+        return profile
     except ValueError:
         raise DomainError(
             "engine_runtime_unsupported",

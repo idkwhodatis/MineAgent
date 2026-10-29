@@ -11,7 +11,10 @@ from sqlalchemy import text
 from backend.app.factor_models import FactorVersion
 from backend.app.models import OutboxEvent
 from backend.app.rdagent_provider_preflight import provider_preflight
-from backend.app.rdagent_provider_profile import resolve_provider_runtime
+from backend.app.rdagent_provider_profile import (
+    provider_seed_controller_profile,
+    resolve_provider_runtime,
+)
 from backend.app.rdagent_provider_submission_contracts import (
     CATALOG,
     RDProviderSeedSubmit,
@@ -46,6 +49,7 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -76,7 +80,7 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
             "Model-backed declaration is not currently eligible",
             409,
         )
-    profile = resolve_provider_runtime(settings)
+    profile = resolve_provider_runtime(settings, seeded=seeded)
     if digest(profile) != checked.runtime_profile_sha256:
         raise DomainError("runtime_profile_changed", "Server runtime changed", 409)
     parent = (
@@ -97,7 +101,9 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
         profile.runtime,
         profile.qlib_installed_parent_image_id,
         expected_input_sha256=checked.frozen_input_sha256,
-        controller_selection=profile.controller_profile,
+        controller_selection=provider_seed_controller_profile(profile)
+        if seeded
+        else profile.controller_profile,
         model_binding=checked.model_binding,
         steer_snapshot=checked.steer_snapshot,
     )

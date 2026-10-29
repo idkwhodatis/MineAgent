@@ -38,6 +38,8 @@ SOURCE_PINS = {
 # renderer remains byte-identical; these exact successor sources are reviewed.
 # 027a removes only the obsolete NULL-parent CHECK; historical projection below
 # remains explicit and does not accept arbitrary ORM source changes.
+# 027c adds only the explicitly seeded v4 admission profile; rendered historical
+# SQL stays byte-identical, while the exact reviewed model pin advances.
 SUCCESSOR_SOURCE_PINS = {
     (
         "backend/app/rdagent_models.py",
@@ -46,7 +48,7 @@ SUCCESSOR_SOURCE_PINS = {
     (
         "backend/app/research_process_models.py",
         "da0a3e80abaac7d5b4099debeedfabe9bb3ac4cf1817a91909f24d00265fa65d",
-    ): "38c2e17f65672ec49f1d0ac68b922b669e085b16cbad7d56eaa7a1d2c6aca1ca",
+    ): "b1e6bbf3edb3a4f0bf4a13e550cfe060a78058f16afb06cfcd49d6a36c8fe99b",
 }
 
 TRIGGER_TABLES = (

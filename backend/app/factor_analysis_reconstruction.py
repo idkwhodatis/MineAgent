@@ -31,6 +31,7 @@ def reconstruct_direct_input(
     read_bytes,
     provider_config=False,
     composed_controller=False,
+    seeded_controller=False,
 ):
     """Return data-only complete input after actual retained dataset/row rereads."""
     objective = read_objective(plan)
@@ -40,6 +41,7 @@ def reconstruct_direct_input(
         owner_id=spec["owner_id"],
         provider_config=provider_config,
         composed_controller=composed_controller,
+        seeded_controller=seeded_controller,
     )
     manifest = ExecutionSnapshotManifest.model_validate(publication["manifest"])
     owner = str(plan["owner_id"])

@@ -32,6 +32,7 @@ from backend.app.rdagent_models import FactorResearchSpec
 from backend.app.rdagent_snapshot_config import (
     composed_controller_in_session,
     provider_config_in_session,
+    seeded_controller_in_session,
 )
 from packages.factors.contracts import canonical_bytes, digest
 from packages.qlib_adapter.direct_wire import read_result
@@ -165,6 +166,7 @@ def read_historical_direct_analysis(factory, owner_id, analysis_id, settings):
             read_bytes=retained_reader(settings.storage_root),
             provider_config=provider_config_in_session(session),
             composed_controller=composed_controller_in_session(session),
+            seeded_controller=seeded_controller_in_session(session),
         )
         _, receipts = process_history(session, outcome, outcome.admission_id)
         physical = read_historical_analysis_bytes(

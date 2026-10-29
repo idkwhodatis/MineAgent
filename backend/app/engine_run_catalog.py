@@ -37,6 +37,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                 "027_rd_controller_v3",
                 "027a_contract_repairs",
                 "027b_provider_material",
+                "027c_seeded_controller_v4",
             } and (
                 selected.controller_profile is None
                 or schema_revision
@@ -44,6 +45,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                     "027_rd_controller_v3",
                     "027a_contract_repairs",
                     "027b_provider_material",
+                    "027c_seeded_controller_v4",
                 )
             ):
                 enabled, code = True, "configured_fixture_profile_available"

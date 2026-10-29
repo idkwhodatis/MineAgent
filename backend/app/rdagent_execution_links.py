@@ -38,6 +38,7 @@ def validate_execution_generation_links(
         "mineagent.rd-source-restore-closure.v4",
         "mineagent.rd-source-restore-closure.v5",
         "mineagent.rd-source-restore-closure.v6",
+        "mineagent.rd-source-restore-closure.v7",
     }
     require(
         (
@@ -71,6 +72,11 @@ def validate_execution_generation_links(
                     "mineagent.rd-source-restore-closure.v6",
                     "mineagent.execution-snapshot-restore-closure.v2",
                     "mineagent.research-restore-closure.v11",
+                ),
+                (
+                    "mineagent.rd-source-restore-closure.v7",
+                    "mineagent.execution-snapshot-restore-closure.v2",
+                    "mineagent.research-restore-closure.v12",
                 ),
             }
             if configured

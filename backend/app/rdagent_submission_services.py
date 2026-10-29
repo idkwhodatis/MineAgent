@@ -83,6 +83,7 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -150,6 +151,7 @@ def _persist_queued(
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
         ["027b_provider_material"],
+        ["027c_seeded_controller_v4"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -247,6 +249,17 @@ def _persist_queued_graph(
     """
     from workers.research.rdagent_configured import validate_configured_work
 
+    if controller_selection == "mineagent.rdagent-orchestrator.v4":
+        from backend.app.rdagent_provider_submission_contracts import (
+            RDProviderSeedRequest,
+        )
+
+        if type(request) is not RDProviderSeedRequest or model_binding is None:
+            raise DomainError(
+                "seeded_controller_required",
+                "Seeded v4 requires exact provider seed request",
+                409,
+            )
     validate_key(key)
     _try_neutral_lock(session, f"submit:{owner_id}")
     source = resolve_dataset_preflight(

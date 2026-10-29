@@ -13,7 +13,11 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from rd_composed_profile_fixture import PROFILE, assert_composed_controller
+from rd_composed_profile_fixture import (
+    PROFILE,
+    SEEDED_PROFILE,
+    assert_composed_controller,
+)
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_pg_diagnostic import diagnose_provider_functions
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
@@ -74,7 +78,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
     assert sdk.is_absolute() and sdk.is_file()
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "027b_provider_material")
+        legacy._upgrade(engine, "027c_seeded_controller_v4")
         storage = tmp_path / "provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)
@@ -90,6 +94,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
         base = profile(actual_images=True, controller_profile=PROFILE)
         runtime = RDProviderServerRuntimeProfile(
             controller_profile=PROFILE,
+            seeded_controller_profile=SEEDED_PROFILE,
             runtime=base.runtime,
             qlib_installed_parent_image_id=base.qlib_installed_parent_image_id,
         )
@@ -312,6 +317,9 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                     **declaration,
                     "schema_version": "mineagent.rdagent-provider-seeded-submission.v1",
                     "parent_factor_version_id": str(parent_id),
+                    "budget": provider_budget_floor(
+                        operator.public_binding(user.id), profile=SEEDED_PROFILE
+                    ).model_dump(mode="json"),
                     "selected_steer_version_ids": [
                         selected.json()["current"]["version_id"]
                     ],
@@ -360,7 +368,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                     )
                 with factory() as session:
                     assert session.get(ResearchRun, child_run_id).status == "succeeded"
-                    assert_composed_controller(session, child_run_id)
+                    assert_composed_controller(session, child_run_id, seeded=True)
                     child_source = session.scalars(
                         select(FactorGenerationSource).filter_by(run_id=child_run_id)
                     ).one()

@@ -1092,6 +1092,7 @@ def _validate_references(
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
                         "mineagent.rd-source-restore-closure.v6",
+                        "mineagent.rd-source-restore-closure.v7",
                     }
                     else {}
                 ),
@@ -1102,6 +1103,7 @@ def _validate_references(
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
                         "mineagent.rd-source-restore-closure.v6",
+                        "mineagent.rd-source-restore-closure.v7",
                     }
                     else {}
                 ),

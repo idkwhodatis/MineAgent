@@ -276,6 +276,7 @@ def reconcile_attempt_units(session, run_id, attempt_id, generation):
         if row.schema_version == "mineagent.process-admission.v2" and row.profile in (
             "mineagent.rdagent-orchestrator.v2",
             "mineagent.rdagent-orchestrator.v3",
+            "mineagent.rdagent-orchestrator.v4",
         ):
             from backend.app.rdagent_controller_stop import controller_stop_committed
 

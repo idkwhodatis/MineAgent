@@ -27,19 +27,19 @@ SOURCE_PINS = {
     "packages/research_runtime/budget_contracts.py": "8bfa31312c8b8116c262c50f55d1c5cdb443809dde210c7cd74f9d08479c0d51",
 }
 
-# 027's explicitly versioned model adds only opt-in controller selection.
+# 027/027c explicitly versioned models add opt-in controller selections.
 # Keep the original pin visible; allow this exact reviewed successor source only
 # while projecting the legacy schema below. Published migrations stay immutable.
 SUCCESSOR_SOURCE_PINS = {
     (
         "packages/rdagent_adapter/contracts.py",
         "6ae2b4b5490f36ff170401cdfee76af2e9492a57ccf9dccfa656a7abfdef690c",
-    ): "3e67946e368857c87dc47fc5faff9efef01765250a70444b1d0d7dde00648759",
+    ): "f34eadb8c73ef1bf5acb7ba33b56e924d469f307a3b472bccabf5fe621df0027",
 }
 
 SUCCESSOR_DEPENDENCY_PINS = {
-    "packages/rdagent_adapter/controller_profile.py": "cdf548022edd004f96a3f9b91619a9a6c3687cb6246e3206b5fe21454c900bd8",
-    "packages/rdagent_adapter/controller_limits.py": "650654dff49c8871d3a5ad8d724e1cac0d909b85983795cc260ffe4601a9815d",
+    "packages/rdagent_adapter/controller_profile.py": "47110f9dda399444f4d78d1458401d08408ad007fb6b75da5b6af51e5797bdb0",
+    "packages/rdagent_adapter/controller_limits.py": "8861a64a54bcf0d6692e7516622f6396d270765b70ad643f6b1d4b084cdf6475",
 }
 
 # Frozen system IANA inventory: /usr/share/zoneinfo/tzdata.zi, version 2026b.

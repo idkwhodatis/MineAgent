@@ -307,3 +307,13 @@ def test_source_pin_drift_fails_render(monkeypatch):
     )
     with pytest.raises(ValueError, match="Contract source drift"):
         module.render_sql()
+
+
+def test_seeded_successor_preserves_exact_historical_identity_sql():
+    import hashlib
+
+    from backend.app.rdagent_identity_sql import render_sql
+
+    assert hashlib.sha256(render_sql().encode()).hexdigest() == (
+        "360b5ad619aba3d6cdf06f4ee9064f68797c7af210213ed01476683bbd72a3fa"
+    )

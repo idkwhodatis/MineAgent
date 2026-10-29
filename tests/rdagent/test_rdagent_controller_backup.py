@@ -3,7 +3,7 @@
 import copy
 import hashlib
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from test_rdagent_contracts import research_dict
@@ -22,7 +22,8 @@ from packages.research_runtime.process_persistence_codec import encode_row
 
 @pytest.fixture
 def retained(tmp_path, request):
-    composed = getattr(request, "param", None) == "v3"
+    seeded = getattr(request, "param", None) == "v4"
+    composed = getattr(request, "param", None) in {"v3", "v4"}
     launch, identity, child, stop = records(tmp_path)
     a = launch.intent.admission
     configdata = research_dict()
@@ -36,7 +37,31 @@ def retained(tmp_path, request):
         a = a.model_copy(update={"profile": configdata["controller_profile"]})
     config = FactorResearchConfig.model_validate(configdata)
     specid = uuid4()
-    bootstrap = RDOperationalBootstrap(
+    seed_context = {}
+    if seeded:
+        from backend.app.rdagent_seed_backup import (
+            build_expected_bootstrap,
+            validate_closure,
+        )
+
+        case, config = request.getfixturevalue("provider_seed")
+        seed_context = validate_closure(case.closure, **case.kwargs)
+        saved = case.closure["tables"]["factor_seeded_submissions"][0]
+        specid = UUID(saved["spec_id"])
+        a = a.model_copy(
+            update={
+                "profile": "mineagent.rdagent-orchestrator.v4",
+                "owner_id": UUID(saved["owner_id"]),
+                "run_id": UUID(saved["run_id"]),
+                "image_id": config.runtime.orchestrator_image,
+            }
+        )
+    constructor = (
+        (lambda **kw: build_expected_bootstrap(seed_context=seed_context, **kw))
+        if seeded
+        else RDOperationalBootstrap
+    )
+    bootstrap = constructor(
         owner_id=a.owner_id,
         run_id=a.run_id,
         attempt_id=a.attempt_id,
@@ -52,7 +77,10 @@ def retained(tmp_path, request):
         update={
             "admission": a,
             **(
-                {"not_after": launch.intent.issued_at + timedelta(seconds=120)}
+                {
+                    "not_after": launch.intent.issued_at
+                    + timedelta(seconds=180 if seeded else 120)
+                }
                 if composed
                 else {}
             ),
@@ -85,7 +113,7 @@ def retained(tmp_path, request):
     scope = {k: row[k] for k in module.SCOPE}
     amounts = BudgetVector(
         process_slots=1,
-        wall_milliseconds=120000 if composed else 60000,
+        wall_milliseconds=180000 if seeded else 120000 if composed else 60000,
         storage_bytes=module.STORAGE_FLOOR,
     ).model_dump()
     reservation = {
@@ -141,7 +169,9 @@ def retained(tmp_path, request):
         **dict.fromkeys(LEGACY_ONLY_FIELDS),
     }
     rd = {
-        "schema_version": "mineagent.rd-source-restore-closure.v6"
+        "schema_version": "mineagent.rd-source-restore-closure.v7"
+        if seeded
+        else "mineagent.rd-source-restore-closure.v6"
         if composed
         else module.RD_SCHEMA,
         "tables": {name: [] for name in FIELDS},
@@ -215,10 +245,12 @@ def retained(tmp_path, request):
             "read_bytes": read,
             "allowed": set(),
             "reservation_ids": set(),
-            "research_schema": "mineagent.research-restore-closure.v11"
+            "research_schema": "mineagent.research-restore-closure.v12"
+            if seeded
+            else "mineagent.research-restore-closure.v11"
             if composed
             else module.SCHEMA,
-            **({"seed_context": {}} if composed else {}),
+            **({"seed_context": seed_context} if composed else {}),
         }
         args.update(changes)
         return module.validate_controller_closure_unit(**args)
@@ -395,3 +427,14 @@ def test_composed_controller_cannot_be_relabelled_as_old_closure(retained):
         retained["validate"](
             research_schema="mineagent.research-restore-closure.v10", seed_context={}
         )
+
+
+@pytest.mark.parametrize("retained", [None, "v3"], indirect=True)
+def test_new_seeded_closure_retains_existing_60_and_120_controller_bytes(retained):
+    before = copy.deepcopy(retained["rd"])
+    retained["rd"]["schema_version"] = "mineagent.rd-source-restore-closure.v7"
+    retained["validate"](
+        research_schema="mineagent.research-restore-closure.v12", seed_context={}
+    )
+    assert retained["rd"]["tables"] == before["tables"]
+    assert retained["rd"]["external_bindings"] == before["external_bindings"]

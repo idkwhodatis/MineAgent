@@ -19,6 +19,13 @@ class RDProviderOperationalBootstrap(RDOperationalBootstrap):
 
     @model_validator(mode="after")
     def exact_steer_owner(self):
+        if (
+            self.config.controller_profile == "mineagent.rdagent-orchestrator.v4"
+            and type(self) is not RDProviderSeededBootstrap
+        ):
+            raise ValueError(
+                "Seeded controller requires exact retained parent bootstrap"
+            )
         if self.config.steer_snapshot.owner_id != self.owner_id:
             raise ValueError("Frozen steer owner differs from controller owner")
         return self

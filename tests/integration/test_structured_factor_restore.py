@@ -74,7 +74,7 @@ def test_actual_structured_pair_cold_restore_disclosure_replay(
             )
 
     try:
-        legacy._upgrade(source, "027b_provider_material")
+        legacy._upgrade(source, "027c_seeded_controller_v4")
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(source, storage).model_copy(
             update={"lease_seconds": 3600}
@@ -121,15 +121,15 @@ def test_actual_structured_pair_cold_restore_disclosure_replay(
         before = source_db.source_snapshot(BackupLimits())
         assert (
             before["research_closure"]["schema_version"]
-            == "mineagent.research-restore-closure.v11"
+            == "mineagent.research-restore-closure.v12"
         )
         assert (
             before["rd_source_closure"]["schema_version"]
-            == "mineagent.rd-source-restore-closure.v6"
+            == "mineagent.rd-source-restore-closure.v7"
         )
         files = _files(storage)
         manifest = _roundtrip(drill_databases, tmp_path, source, storage, target)
-        assert manifest["schema_revision"] == "027b_provider_material"
+        assert manifest["schema_revision"] == "027c_seeded_controller_v4"
         assert target.stat().st_ino != storage.stat().st_ino
         assert not (target / ".restore-incomplete").exists()
         assert _files(target) == files

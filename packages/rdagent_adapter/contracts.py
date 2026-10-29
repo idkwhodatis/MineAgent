@@ -23,7 +23,11 @@ from packages.factors.contracts import (
     Sha256,
     digest,
 )
-from packages.rdagent_adapter.controller_profile import ControllerProfileSelection
+from packages.rdagent_adapter.controller_profile import (
+    ControllerProfileSelection,
+    composed_wall_floor,
+    controller_profile,
+)
 from packages.research_runtime.budget_contracts import BudgetVector
 
 RDAGENT_COMMIT = "484776c211e4fbbeef03e0ec00d6bbee7362a4f4"
@@ -158,7 +162,9 @@ class FactorResearchConfig(ControllerProfileSelection):
         if self.controller_profile is not None:
             if self.max_iterations != 1:
                 raise ValueError("Composed controller profile requires one iteration")
-            if self.budget.wall_milliseconds < 300000:
+            if self.budget.wall_milliseconds < composed_wall_floor(
+                controller_profile(self)
+            ):
                 raise ValueError(
                     "Composed controller budget must cover controller and three children"
                 )

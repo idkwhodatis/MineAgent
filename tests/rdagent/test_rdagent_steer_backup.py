@@ -135,7 +135,7 @@ def test_forged_steer_history_is_not_a_restore_grant(graph, mutation):
     elif mutation == "duplicate":
         versions.append(deepcopy(versions[0]))
     else:
-        rd["schema_version"] = "mineagent.rd-source-restore-closure.v7"
+        rd["schema_version"] = "mineagent.rd-source-restore-closure.v8"
     with pytest.raises(ValueError):
         backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)
 

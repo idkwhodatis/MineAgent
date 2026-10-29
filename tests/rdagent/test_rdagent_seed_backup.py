@@ -322,7 +322,15 @@ def test_new_config_bootstrap_preserves_explicit_model_and_unknown_pricing(
 
 @pytest.mark.parametrize(
     "research_version,source_version,allowed",
-    [(10, 5, True), (11, 6, True), (10, 6, False), (11, 5, False)],
+    [
+        (10, 5, True),
+        (11, 6, True),
+        (12, 7, True),
+        (10, 6, False),
+        (11, 5, False),
+        (11, 7, False),
+        (12, 6, False),
+    ],
 )
 def test_seed_parent_closure_versions_are_exact_pairs(
     cold, research_version, source_version, allowed

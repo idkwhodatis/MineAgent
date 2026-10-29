@@ -42,7 +42,7 @@ def test_v6_empty_schema_is_explicit_not_unknown_future_fallback():
     )
     assert research.closure_fields(research.SCHEMA_V10)
     for unknown in (
-        "mineagent.research-restore-closure.v12",
+        "mineagent.research-restore-closure.v13",
         "mineagent.research-restore-closure.v999",
     ):
         with pytest.raises(ValueError):

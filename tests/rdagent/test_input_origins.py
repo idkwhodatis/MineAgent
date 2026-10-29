@@ -294,3 +294,54 @@ def test_conflicting_fresh_and_seeded_receipts_never_establish_user_origin(monke
     with pytest.raises(DomainError) as caught:
         routes.read_inputs(run.id, NS(id=run.owner_id), session, 0)
     assert caught.value.code == "input_provenance_inconsistent"
+
+
+@pytest.mark.parametrize(
+    "source_schema,expected",
+    [
+        ("mineagent.rd-source-restore-closure.v7", "agent_generated"),
+        ("mineagent.rd-source-restore-closure.v8", "unknown"),
+        ("mineagent.rd-source-restore-closure.unknown", "unknown"),
+    ],
+)
+def test_seeded_head_preserves_exact_source_witness_only(
+    source_graph, monkeypatch, source_schema, expected
+):
+    from dataclasses import replace
+
+    g = source_graph
+    g.run.created_at = g.source.created_at
+    monkeypatch.setattr(routes, "owned_engine_run", lambda *args: g.run)
+    monkeypatch.setattr(
+        routes,
+        "rd_config",
+        lambda run: NS(schema_version="mineagent.factor-research.v1", sha256="f" * 64),
+    )
+    capabilities = routes.capabilities_for("027c_seeded_controller_v4")
+    assert (
+        capabilities.rd_source_closure_schema
+        == "mineagent.rd-source-restore-closure.v7"
+    )
+    monkeypatch.setattr(
+        routes,
+        "capabilities_for",
+        lambda revision: replace(capabilities, rd_source_closure_schema=source_schema),
+    )
+    scalar_rows = iter([None, None, g.witness])
+    rows = iter([["027c_seeded_controller_v4"], [g.source], [g.part]])
+    g.session.scalar = lambda statement: next(scalar_rows)
+    g.session.scalars = lambda statement: NS(all=lambda: next(rows))
+    result = routes.read_inputs(g.run.id, NS(id=g.run.owner_id), g.session, 0)
+    item = next(item for item in result.items if item.id == g.source.id)
+    assert item.origin == expected
+    assert not item.default_pinned
+    assert len(item.operations) == (1 if expected == "agent_generated" else 0)
+
+
+def test_unknown_input_history_revision_is_rejected(source_graph, monkeypatch):
+    g = source_graph
+    monkeypatch.setattr(routes, "owned_engine_run", lambda *args: g.run)
+    g.session.scalars = lambda statement: NS(all=lambda: ["027d_unknown"])
+    with pytest.raises(DomainError) as caught:
+        routes.read_inputs(g.run.id, NS(id=g.run.owner_id), g.session, 0)
+    assert caught.value.code == "input_history_schema_unavailable"

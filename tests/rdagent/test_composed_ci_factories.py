@@ -106,11 +106,11 @@ def test_new_actual_gate_explicitly_migrates_027(file):
         and n.func.attr == "_upgrade"
     ]
     assert len(upgrades) == 1
-    assert upgrades[0].args[1].value == "027b_provider_material"
+    assert upgrades[0].args[1].value == "027c_seeded_controller_v4"
     if "restore" in file or file == "test_rdagent_user_flow.py":
-        assert 'manifest["schema_revision"] == "027b_provider_material"' in source
-        assert '"mineagent.research-restore-closure.v11"' in source
-        assert '"mineagent.rd-source-restore-closure.v6"' in source
+        assert 'manifest["schema_revision"] == "027c_seeded_controller_v4"' in source
+        assert '"mineagent.research-restore-closure.v12"' in source
+        assert '"mineagent.rd-source-restore-closure.v7"' in source
 
 
 @pytest.mark.parametrize(
@@ -151,16 +151,25 @@ def test_normal_queues_select_server_profile_and_assert_persisted_contract(file)
             and isinstance(n.func, ast.Name)
             and n.func.id == "provider_budget_floor"
         ]
-        assert len(floors) == 1
+        assert len(floors) == 2
+        assert {
+            k.value.id
+            for floor in floors
+            for k in floor.keywords
+            if k.arg == "profile" and isinstance(k.value, ast.Name)
+        } == {"PROFILE", "SEEDED_PROFILE"}
         assert any(
-            k.arg == "profile"
-            and isinstance(k.value, ast.Name)
-            and k.value.id == "PROFILE"
-            for k in floors[0].keywords
+            k.arg == "seeded"
+            and isinstance(k.value, ast.Constant)
+            and k.value.value is True
+            for call in assertions
+            for k in call.keywords
         )
 
 
-@pytest.mark.parametrize("provider", [False, True])
+@pytest.mark.parametrize(
+    "provider,seeded", [(False, False), (True, False), (True, True)]
+)
 @pytest.mark.parametrize(
     "fault",
     [
@@ -175,28 +184,40 @@ def test_normal_queues_select_server_profile_and_assert_persisted_contract(file)
     ],
 )
 def test_persisted_assertion_rejects_mixed_profile_evidence(
-    monkeypatch, fault, provider
+    monkeypatch, fault, provider, seeded
 ):
     from backend.app.models import ResearchRun
     from backend.app.rdagent_models import FactorControllerLaunch
-    from backend.app.research_broker_models import ResearchBudgetReservation
+    from backend.app.research_broker_models import (
+        ResearchBudgetReservation,
+        ResearchBudgetSettlement,
+    )
     from backend.app.research_process_models import ResearchProcessAdmission
 
     fixture = load(monkeypatch, "rd_composed_profile_fixture")
     rid, aid, bid = uuid4(), uuid4(), uuid4()
+    selected = fixture.SEEDED_PROFILE if seeded else PROFILE
+    wall = 180000 if seeded else 120000
     run = NS(
         config={
-            "controller_profile": PROFILE,
+            "controller_profile": selected,
             "max_iterations": 1,
-            "budget": {"wall_milliseconds": 300000},
+            "budget": {"wall_milliseconds": 360000 if seeded else 300000},
         }
     )
     if provider:
         run.config["model_binding"] = {"request_deadline_ms": 8000}
         run.config["budget"]["wall_milliseconds"] += 32 * 8000
-    admission = NS(id=aid, profile=PROFILE, reservation_id=bid)
+    admission = NS(id=aid, profile=selected, reservation_id=bid)
     budget = NS(
-        purpose="process_unit", run_id=rid, amounts={"wall_milliseconds": 120000}
+        id=bid,
+        state="settled",
+        purpose="process_unit",
+        run_id=rid,
+        amounts={"wall_milliseconds": wall},
+    )
+    settled = NS(
+        run_id=rid, charge={"wall_milliseconds": wall}, outcome="conservative_unknown"
     )
     child_rows = [
         NS(role=role, profile=profile, reservation_id=uuid4())
@@ -218,7 +239,9 @@ def test_persisted_assertion_rejects_mixed_profile_evidence(
         child_budgets[child_rows[0].reservation_id].amounts["wall_milliseconds"] = (
             120000
         )
-    launch = NS(admission_id=aid, bootstrap={"config": {"controller_profile": PROFILE}})
+    launch = NS(
+        admission_id=aid, bootstrap={"config": {"controller_profile": selected}}
+    )
     if fault == "config":
         run.config["controller_profile"] = "mineagent.rdagent-orchestrator.v2"
     if fault == "floor":
@@ -231,6 +254,14 @@ def test_persisted_assertion_rejects_mixed_profile_evidence(
         launch.bootstrap["config"]["controller_profile"] = (
             "mineagent.rdagent-orchestrator.v2"
         )
+    if fault == "settlement_state":
+        budget.state = "held"
+    if fault == "settlement_charge":
+        settled.charge["wall_milliseconds"] = 120000
+    if fault == "settlement_scope":
+        settled.run_id = uuid4()
+    if fault == "settlement_outcome":
+        settled.outcome = "measured"
 
     class Session:
         def get(self, model, key):
@@ -245,14 +276,15 @@ def test_persisted_assertion_rejects_mixed_profile_evidence(
                 one=lambda: {
                     ResearchProcessAdmission: admission,
                     FactorControllerLaunch: launch,
+                    ResearchBudgetSettlement: settled,
                 }[query.column_descriptions[0]["entity"]],
             )
 
     if fault:
         with pytest.raises(AssertionError):
-            fixture.assert_composed_controller(Session(), rid)
+            fixture.assert_composed_controller(Session(), rid, seeded=seeded)
     else:
-        fixture.assert_composed_controller(Session(), rid)
+        fixture.assert_composed_controller(Session(), rid, seeded=seeded)
 
 
 def test_historical_controller_gate_remains_explicit_sixty_seconds():
@@ -263,3 +295,13 @@ def test_historical_controller_gate_remains_explicit_sixty_seconds():
     assert "wall_milliseconds=60000" in source
     legacy = (ROOT / "tests/integration/rd_controller_fixture.py").read_text()
     assert '"controller_profile"' not in legacy
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["settlement_state", "settlement_charge", "settlement_scope", "settlement_outcome"],
+)
+def test_seeded_assertion_requires_exact_conservative_settlement(monkeypatch, fault):
+    test_persisted_assertion_rejects_mixed_profile_evidence(
+        monkeypatch, fault, True, True
+    )

@@ -21,6 +21,7 @@ from workers.research import rdagent_configured as module
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     ],
 )
 @pytest.mark.parametrize("selected", [False, True])
@@ -79,6 +80,7 @@ def test_actual_configured_writer_profile_revision_and_frozen_config(
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     ):
         with pytest.raises(ProcessError, match="rd_controller_revision"):
             module.create_configured_run(factory, **args)

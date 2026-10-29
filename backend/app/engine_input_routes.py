@@ -351,6 +351,7 @@ def read_inputs(
         "mineagent.rd-source-restore-closure.v4",
         "mineagent.rd-source-restore-closure.v5",
         "mineagent.rd-source-restore-closure.v6",
+        "mineagent.rd-source-restore-closure.v7",
     }
     rows.extend(
         source_item(session, run, source, witnesses_available=witnesses_available)

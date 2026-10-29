@@ -56,6 +56,7 @@ def _versioned_identity(session, owner, kind, content):
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         ):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
@@ -85,6 +86,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
+                ["027c_seeded_controller_v4"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -364,6 +366,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -376,6 +379,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
         document = parse_document(kind, content)
@@ -406,6 +410,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
             ["027b_provider_material"],
+            ["027c_seeded_controller_v4"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

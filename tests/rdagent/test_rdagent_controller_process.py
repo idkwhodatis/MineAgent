@@ -281,7 +281,12 @@ def test_integer_cannot_impersonate_stop_boolean(tmp_path, field):
 
 
 @pytest.mark.parametrize(
-    "selected,wall", [(None, 60000), ("mineagent.rdagent-orchestrator.v3", 120000)]
+    "selected,wall",
+    [
+        (None, 60000),
+        ("mineagent.rdagent-orchestrator.v3", 120000),
+        ("mineagent.rdagent-orchestrator.v4", 180000),
+    ],
 )
 def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
     tmp_path, monkeypatch, selected, wall
@@ -297,9 +302,19 @@ def test_admission_requires_fenced_resources_exact_bootstrap_and_floor(
     class Runtime(BaseModel):
         orchestrator_image: str
 
+    from typing import Literal
+
+    from pydantic import Field
+
     from packages.rdagent_adapter.controller_profile import ControllerProfileSelection
 
     class Config(ControllerProfileSelection):
+        controller_profile: (
+            Literal[
+                "mineagent.rdagent-orchestrator.v3", "mineagent.rdagent-orchestrator.v4"
+            ]
+            | None
+        ) = Field(default=None, exclude_if=lambda value: value is None)
         runtime: Runtime
 
     class Bootstrap(BaseModel):

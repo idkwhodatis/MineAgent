@@ -27,6 +27,7 @@ def configured_analysis_run(session, fence):
         "027_rd_controller_v3",
         "027a_contract_repairs",
         "027b_provider_material",
+        "027c_seeded_controller_v4",
     }:
         return False
     return (

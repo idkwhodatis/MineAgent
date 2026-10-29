@@ -2,6 +2,7 @@
 
 LEGACY_CONTROLLER_PROFILE = "mineagent.rdagent-orchestrator.v2"
 COMPOSED_CONTROLLER_PROFILE = "mineagent.rdagent-orchestrator.v3"
+SEEDED_CONTROLLER_PROFILE = "mineagent.rdagent-orchestrator.v4"
 
 
 def controller_wall_milliseconds(profile):
@@ -11,6 +12,8 @@ def controller_wall_milliseconds(profile):
         return 60000
     if profile == COMPOSED_CONTROLLER_PROFILE:
         return 120000
+    if profile == SEEDED_CONTROLLER_PROFILE:
+        return 180000
     raise ValueError("Unsupported controller profile")
 
 
