@@ -82,6 +82,7 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -148,6 +149,7 @@ def _persist_queued(
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

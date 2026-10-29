@@ -16,7 +16,12 @@ from workers.research import rdagent_configured as module
 
 @pytest.mark.parametrize(
     "revision",
-    ["026_rd_seeded_submissions", "027_rd_controller_v3", "027a_contract_repairs"],
+    [
+        "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
+        "027a_contract_repairs",
+        "027b_provider_material",
+    ],
 )
 @pytest.mark.parametrize("selected", [False, True])
 def test_actual_configured_writer_profile_revision_and_frozen_config(
@@ -70,7 +75,11 @@ def test_actual_configured_writer_profile_revision_and_frozen_config(
         "qlib_installed_parent_image_id": "sha256:" + "e" * 64,
         "settings": s.settings,
     }
-    if selected and revision not in ("027_rd_controller_v3", "027a_contract_repairs"):
+    if selected and revision not in (
+        "027_rd_controller_v3",
+        "027a_contract_repairs",
+        "027b_provider_material",
+    ):
         with pytest.raises(ProcessError, match="rd_controller_revision"):
             module.create_configured_run(factory, **args)
         assert rows == []

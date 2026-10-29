@@ -72,6 +72,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["026_rd_seeded_submissions"],
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
+                ["027b_provider_material"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)

@@ -49,6 +49,7 @@ def require_configured_revision(session):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise ProcessError("configured_numeric_schema_closed")
 

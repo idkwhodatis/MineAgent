@@ -3,7 +3,7 @@
 from sqlalchemy import select
 
 PROFILE = "mineagent.rdagent-orchestrator.v3"
-REVISION = "027a_contract_repairs"
+REVISION = "027b_provider_material"
 CONTROLLER_WALL_MS = 120000
 COMPOSED_WALL_MS = 300000
 

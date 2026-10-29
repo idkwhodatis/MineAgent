@@ -95,6 +95,7 @@ def historical_session(factory, owner_id, settings):
                 ["026_rd_seeded_submissions"],
                 ["027_rd_controller_v3"],
                 ["027a_contract_repairs"],
+                ["027b_provider_material"],
             ):
                 fail()
             yield session
@@ -349,6 +350,7 @@ def check_configured_history(session, publication, settings):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document

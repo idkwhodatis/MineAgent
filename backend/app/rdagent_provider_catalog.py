@@ -42,9 +42,15 @@ def provider_options(settings, owner_id, revision):
                 "026_rd_seeded_submissions",
                 "027_rd_controller_v3",
                 "027a_contract_repairs",
+                "027b_provider_material",
             ) or (
                 runtime.controller_profile is not None
-                and revision not in ("027_rd_controller_v3", "027a_contract_repairs")
+                and revision
+                not in (
+                    "027_rd_controller_v3",
+                    "027a_contract_repairs",
+                    "027b_provider_material",
+                )
             ):
                 reason, enabled = "runtime_schema_unavailable", False
         except DomainError as error:

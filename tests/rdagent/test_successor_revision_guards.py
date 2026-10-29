@@ -49,6 +49,7 @@ def test_unknown_revisions_do_not_claim_dispatch_or_cancel(versions, monkeypatch
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     ],
 )
 def test_successor_dispatch_reaches_exact_outbox_check_not_new_authority(
@@ -71,6 +72,7 @@ def test_successor_dispatch_reaches_exact_outbox_check_not_new_authority(
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     ],
 )
 def test_successor_control_still_requires_real_submission_receipt(revision):
@@ -112,7 +114,7 @@ def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
     ]
     assert len(exact) == 1
     items = exact[0].test.comparators[0].elts
-    assert len(items) == 6
+    assert len(items) == 7
     assert isinstance(items[0].elts[0], ast.Name) and items[0].elts[0].id == "REVISION"
     assert [ast.literal_eval(x) for x in items[1:]] == [
         ["024_openevolve_initial"],
@@ -120,6 +122,7 @@ def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ]
 
 
@@ -134,6 +137,7 @@ def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     ],
 )
 def test_original_maintained_fixture_remains_supported_on_explicit_successors(revision):

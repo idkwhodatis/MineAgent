@@ -469,6 +469,26 @@ def validate_closure(
                 raise ValueError("Structured actual indexed result count differs")
             actual_by = {tuple(r[k] for k in KEYS[table]): r for r in actual}
             for row in expected:
+                # result_graph is a SQL publisher projection with typed UUIDs.
+                # Normalize only its declared identity columns for the retained
+                # JSON row comparison; record bytes/hashes remain unchanged.
+                identity_fields = {
+                    "factor_strategy_decisions": (
+                        "execution_id",
+                        "owner_id",
+                        "run_id",
+                        "attempt_id",
+                    ),
+                    "factor_strategy_orders": (
+                        "execution_id",
+                        "owner_id",
+                        "listing_id",
+                    ),
+                    "factor_strategy_fills": ("execution_id", "owner_id"),
+                }[table]
+                if any(type(row[key]) is not UUID for key in identity_fields):
+                    raise ValueError("Structured projected identity type differs")
+                row = {**row, **{key: str(row[key]) for key in identity_fields}}
                 row = json.loads(canonical_bytes(row))
                 stored = actual_by[tuple(row[k] for k in KEYS[table])]
                 if any(stored[k] != v for k, v in row.items()):

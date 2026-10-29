@@ -14,7 +14,10 @@ def session(revisions):
     return SimpleNamespace(scalars=lambda sql: SimpleNamespace(all=lambda: revisions))
 
 
-@pytest.mark.parametrize("revision", ["027_rd_controller_v3", "027a_contract_repairs"])
+@pytest.mark.parametrize(
+    "revision",
+    ["027_rd_controller_v3", "027a_contract_repairs", "027b_provider_material"],
+)
 def test_exact_maintenance_has_same_composed_capability(revision):
     assert provider_config_in_session(session([revision])) is True
     assert composed_controller_in_session(session([revision])) is True
@@ -61,7 +64,12 @@ def test_seed_bootstrap_never_reads_family_under_unknown_or_multirow_head(revisi
 
 @pytest.mark.parametrize(
     "revision",
-    ["026_rd_seeded_submissions", "027_rd_controller_v3", "027a_contract_repairs"],
+    [
+        "026_rd_seeded_submissions",
+        "027_rd_controller_v3",
+        "027a_contract_repairs",
+        "027b_provider_material",
+    ],
 )
 def test_seed_bootstrap_exact_head_still_requires_saved_receipt(revision):
     from uuid import uuid4

@@ -93,6 +93,7 @@ def composed_snapshot(revision):
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     ],
 )
 def test_full_empty_cold_dispatch_preserves_exact_registered_tuples(tmp_path, revision):
@@ -134,6 +135,7 @@ def test_full024_rejects_unknown_or_historical_mixed_tuple(tmp_path, field, sche
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     ],
 )
 def test_actual_source_snapshot_envelope_survives_full_cold_validation(

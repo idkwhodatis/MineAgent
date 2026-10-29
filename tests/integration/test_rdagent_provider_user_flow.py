@@ -74,7 +74,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
     assert sdk.is_absolute() and sdk.is_file()
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "027a_contract_repairs")
+        legacy._upgrade(engine, "027b_provider_material")
         storage = tmp_path / "provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)

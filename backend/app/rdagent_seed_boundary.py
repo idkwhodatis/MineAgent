@@ -17,6 +17,7 @@ def seeded_boundary_id(session, run, revisions):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         return None
     row = session.scalar(

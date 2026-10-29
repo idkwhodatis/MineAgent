@@ -106,9 +106,9 @@ def test_new_actual_gate_explicitly_migrates_027(file):
         and n.func.attr == "_upgrade"
     ]
     assert len(upgrades) == 1
-    assert upgrades[0].args[1].value == "027a_contract_repairs"
+    assert upgrades[0].args[1].value == "027b_provider_material"
     if "restore" in file or file == "test_rdagent_user_flow.py":
-        assert 'manifest["schema_revision"] == "027a_contract_repairs"' in source
+        assert 'manifest["schema_revision"] == "027b_provider_material"' in source
         assert '"mineagent.research-restore-closure.v11"' in source
         assert '"mineagent.rd-source-restore-closure.v6"' in source
 

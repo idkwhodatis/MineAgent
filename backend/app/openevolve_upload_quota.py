@@ -93,6 +93,7 @@ def upload_holds(session):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload

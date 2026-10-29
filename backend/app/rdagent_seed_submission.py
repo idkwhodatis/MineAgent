@@ -230,6 +230,7 @@ def submit_seeded_run(session, owner_id, submitted, idempotency_key, settings):
         [REVISION],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

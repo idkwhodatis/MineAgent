@@ -225,6 +225,16 @@ jobs:
           --ignore=tests/integration/test_structured_factor_runtime.py
           --ignore=tests/integration/test_structured_factor_restore.py
           --junitxml=m1-m2-postgres-junit.xml
+      - name: Require real provider material differential proof without skips
+        run: |
+          python - <<'PYPROVIDER'
+          from xml.etree import ElementTree as ET
+          cases = [case for case in ET.parse("m1-m2-postgres-junit.xml").getroot().iter("testcase")
+                   if case.attrib.get("classname") == "tests.integration.test_provider_material_sql_postgres"]
+          assert len(cases) == 1
+          assert cases[0].attrib.get("name") == "test_material_matches_frozen_public_oracles"
+          assert not any(case.find(tag) is not None for case in cases for tag in ("failure", "error", "skipped"))
+          PYPROVIDER
       - name: Observe disposable database capacity after real integration tests
         if: always()
         run: python script/ci_postgres_resources.py --phase after-integration

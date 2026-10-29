@@ -98,9 +98,15 @@ def require_controller_revision(session, config):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ) or (
         config.controller_profile is not None
-        and revisions not in (["027_rd_controller_v3"], ["027a_contract_repairs"])
+        and revisions
+        not in (
+            ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
+            ["027b_provider_material"],
+        )
     ):
         raise ProcessError("rd_controller_revision")
 

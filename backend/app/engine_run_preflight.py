@@ -222,10 +222,15 @@ def preflight(session, owner_id, request, settings):
             ["026_rd_seeded_submissions"],
             ["027_rd_controller_v3"],
             ["027a_contract_repairs"],
+            ["027b_provider_material"],
         ) and (
             selected_profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
-            in (["027_rd_controller_v3"], ["027a_contract_repairs"])
+            in (
+                ["027_rd_controller_v3"],
+                ["027a_contract_repairs"],
+                ["027b_provider_material"],
+            )
         ):
             runtime_available = True
         else:

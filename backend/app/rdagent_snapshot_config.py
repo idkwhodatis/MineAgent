@@ -56,12 +56,14 @@ def provider_config_in_session(session):
         "026_rd_seeded_submissions",
         "027_rd_controller_v3",
         "027a_contract_repairs",
+        "027b_provider_material",
     }:
         raise ValueError("Unsupported historical snapshot revision")
     return revisions in (
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     )
 
 
@@ -70,4 +72,5 @@ def composed_controller_in_session(session):
     return session.scalars(text("SELECT version_num FROM alembic_version")).all() in (
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     )

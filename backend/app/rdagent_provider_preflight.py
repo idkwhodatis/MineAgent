@@ -158,11 +158,16 @@ def provider_preflight(
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
         and session.scalars(text("SELECT version_num FROM alembic_version")).all()
-        not in (["027_rd_controller_v3"], ["027a_contract_repairs"])
+        not in (
+            ["027_rd_controller_v3"],
+            ["027a_contract_repairs"],
+            ["027b_provider_material"],
+        )
     ):
         reasons.append(
             ProviderPreflightReason(

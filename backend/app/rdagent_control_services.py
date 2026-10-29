@@ -22,6 +22,7 @@ def controls_for(session, run):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         return DisabledActions()
     receipt = session.scalar(
@@ -54,6 +55,7 @@ def request_cancel(session, owner_id, run_id):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise DomainError(
             "engine_control_not_enabled", "RD control schema is unavailable", 409

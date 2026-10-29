@@ -27,6 +27,7 @@ def test_analysis_revision_preserves_exact_historical_capabilities():
             "026_rd_seeded_submissions",
             "027_rd_controller_v3",
             "027a_contract_repairs",
+            "027b_provider_material",
         }:
             assert historical.direct_analysis_schema is None
     old = capabilities_for("021_execution_snapshots")

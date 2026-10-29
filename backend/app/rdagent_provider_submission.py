@@ -45,6 +45,7 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

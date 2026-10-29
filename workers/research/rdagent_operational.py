@@ -96,6 +96,7 @@ def require_maintained_revision(session):
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],
+        ["027b_provider_material"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -221,7 +222,11 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 bootstrap.config
             ) == "mineagent.rdagent-orchestrator.v3" and session.scalars(
                 text("SELECT version_num FROM alembic_version")
-            ).all() not in (["027_rd_controller_v3"], ["027a_contract_repairs"]):
+            ).all() not in (
+                ["027_rd_controller_v3"],
+                ["027a_contract_repairs"],
+                ["027b_provider_material"],
+            ):
                 raise ProcessError("rd_controller_composed_revision")
         from backend.app.rdagent_seed_controller import reread_bootstrap_parent
         from packages.rdagent_adapter.seeded_bootstrap import (
