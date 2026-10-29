@@ -187,18 +187,73 @@ def _assert_actual_runtime_partition():
             ),
         ),
     }
+    groups["normal-027"] = (
+        ("oe_structured_normal_flow", "rdagent_provider_rejection"),
+        (
+            "MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED",
+            "MINEAGENT_OE_NORMAL_BROWSER_REQUIRED",
+            "MINEAGENT_RD_REJECTION_FLOW_REQUIRED",
+        ),
+    )
+    groups["workflow-028"] = (
+        ("rdagent_workflow_user_flow",),
+        (
+            "MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED",
+            "MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED",
+        ),
+    )
+    groups["declared-upload-030"] = (
+        ("declared_upload_research_flow",),
+        (
+            "MINEAGENT_DECLARED_UPLOAD_FLOW_REQUIRED",
+            "MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED",
+            "MINEAGENT_OE_NORMAL_BROWSER_REQUIRED",
+        ),
+    )
+    groups["workflow-031"] = (
+        ("workflow_structured_stage_flow",),
+        (
+            "MINEAGENT_WORKFLOW_STRUCTURED_FLOW_REQUIRED",
+            "MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED",
+            "MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED",
+            "MINEAGENT_OE_NORMAL_BROWSER_REQUIRED",
+        ),
+    )
     result = []
-    for file, (modules, flags) in groups.items():
+    for group, (modules, flags) in groups.items():
+        file = {
+            "normal-027": "mineagent-structured-factor.yml",
+            "workflow-028": "mineagent-configured-analysis.yml",
+            "declared-upload-030": "mineagent-structured-factor.yml",
+            "workflow-031": "mineagent-structured-factor.yml",
+        }.get(group, group)
         workflow = (root / ".github/workflows" / file).read_text()
         assert "push:" in workflow and "branches: [master]" in workflow
         assert "uses: actions/checkout@" in workflow and "ref:" not in workflow
         assert not re.search(r"^    if:", workflow, re.MULTILINE)
         for flag in flags:
-            assert re.findall(rf"{flag}: [\"']([^\"']+)[\"']", workflow) == ["1"]
+            expected = (
+                3
+                if flag
+                in {
+                    "MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED",
+                    "MINEAGENT_OE_NORMAL_BROWSER_REQUIRED",
+                }
+                else 1
+            )
+            assert (
+                re.findall(rf"{flag}: [\"']([^\"']+)[\"']", workflow)
+                == ["1"] * expected
+            )
         blocks = re.split(r"(?=^      - name: )", workflow, flags=re.MULTILINE)
         paths = [f"tests/integration/test_{name}.py" for name in modules]
-        block = next(b for b in blocks if f"python -m pytest {paths[0]} " in b)
-        command = block.split("python -m pytest ", 1)[1].split("--junitxml", 1)[0]
+        pytest_command = (
+            '"$RUNNER_TEMP/declared-upload-data/bin/python" -m pytest '
+            if group == "declared-upload-030"
+            else "python -m pytest "
+        )
+        block = next(b for b in blocks if pytest_command in b and paths[0] in b)
+        command = block.split(pytest_command, 1)[1].split("--junitxml", 1)[0]
         assert all(path in command for path in paths)
         assert (
             "--ignore" not in command
@@ -216,6 +271,24 @@ def _assert_actual_runtime_partition():
                 for n in module.body
                 if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
             )
+        if group == "workflow-028":
+            assert required == {
+                "test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results"
+            }
+            # Match the actual parametrized inventory, not just its function name.
+            decorator = next(
+                n
+                for n in module.body
+                if isinstance(n, ast.FunctionDef) and n.name in required
+            ).decorator_list[0]
+            ids = ast.literal_eval(
+                next(k.value for k in decorator.keywords if k.arg == "ids")
+            )
+            assert ids == ["default-off-waits", "explicit-opt-in-two-children"]
+            required = {
+                f"test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results[{i}]"
+                for i in ids
+            }
         if file == "mineagent-openevolve-initial.yml":
             from script.verify_openevolve_initial import CASES
 
@@ -245,7 +318,7 @@ def _assert_actual_runtime_partition():
             checks = body[start + 1 :]
             environment = {}
             names = set(required)
-            if file == "mineagent-configured-analysis.yml":
+            if group == "mineagent-configured-analysis.yml":
                 # The same gate also retains nineteen PostgreSQL-only cases.
                 repair = (
                     root / "tests/integration/test_seed_parent_contract_migration.py"
@@ -273,6 +346,26 @@ def _assert_actual_runtime_partition():
                     f"test_provider_request_and_conservative_amount_match_python[{i}]"
                     for i in range(8)
                 }
+            if group == "workflow-028":
+                names |= {
+                    f"test_installed_workflow_config_predicate_matches_strict_python[{i}]"
+                    for i in range(112)
+                }
+                names |= {
+                    f"test_installed_workflow_source_dispatch_preserves_exact_old_provider[{i}]"
+                    for i in range(9)
+                }
+                names.add(
+                    "test_workflow_manual_declaration_and_deferred_forgery_guards_actual_pg"
+                )
+                names |= {
+                    f"test_actual_child_template_comparison_preserves_layout_only[{i}]"
+                    for i in range(4)
+                }
+                names |= {
+                    f"test_workflow_explicit_composed_floor_is_preserved[{i}]"
+                    for i in range(4)
+                }
         code = compile(ast.Module(body=checks, type_ignores=[]), file, "exec")
 
         def check(cases, code=code, environment=environment):
@@ -291,7 +384,7 @@ def _assert_actual_runtime_partition():
             ET.SubElement(broken[0], tag)
             with pytest.raises(AssertionError):
                 check(broken)
-    assert len(result) == len(set(result)) == 12
+    assert len(result) == len(set(result)) == 17
     return result
 
 

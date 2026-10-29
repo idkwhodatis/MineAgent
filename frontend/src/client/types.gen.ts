@@ -191,7 +191,7 @@ export type BackupReceipt = {
     /**
      * Schema Revision
      */
-    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger' | '012_factor_library' | '013_factor_import' | '014_run_identity' | '015_neutral_primitives' | '016_process_versioning' | '017_numeric_process_boundary' | '018_rd_source_persistence' | '019_native_hdf_storage' | '020_rd_controller' | '021_execution_snapshots' | '022_factor_analysis' | '023_rd_submissions' | '024_openevolve_initial' | '025_structured_factor_strategy' | '026_rd_seeded_submissions' | '027_rd_controller_v3' | '027a_contract_repairs' | '027b_provider_material' | '027c_seeded_controller_v4';
+    schema_revision: '003_m3' | '004_m5' | '005_settings' | '006_provider_connections' | '007_research_specs' | '008_comparisons' | '009_independent_evaluations' | '010_research_notes' | '011_note_pin_trigger' | '012_factor_library' | '013_factor_import' | '014_run_identity' | '015_neutral_primitives' | '016_process_versioning' | '017_numeric_process_boundary' | '018_rd_source_persistence' | '019_native_hdf_storage' | '020_rd_controller' | '021_execution_snapshots' | '022_factor_analysis' | '023_rd_submissions' | '024_openevolve_initial' | '025_structured_factor_strategy' | '026_rd_seeded_submissions' | '027_rd_controller_v3' | '027a_contract_repairs' | '027b_provider_material' | '027c_seeded_controller_v4' | '028_oe_structured_search' | '029_research_workflow' | '030_declared_upload_basket' | '031_workflow_structured_stage' | '032_normal_oe_note_pins';
 };
 
 /**
@@ -759,6 +759,28 @@ export type CaptureConfig = {
      * Stage Ids
      */
     stage_ids?: Array<string>;
+};
+
+/**
+ * ChatPricing
+ */
+export type ChatPricing = {
+    /**
+     * Currency
+     */
+    currency?: 'USD';
+    /**
+     * Input Microusd Per Million
+     */
+    input_microusd_per_million?: number | null;
+    /**
+     * Output Microusd Per Million
+     */
+    output_microusd_per_million?: number | null;
+    /**
+     * Status
+     */
+    status?: 'unavailable' | 'operator_declared';
 };
 
 /**
@@ -2420,6 +2442,37 @@ export type DeclaredTokenPricing = {
 };
 
 /**
+ * DeclaredUploadBasketReceipt
+ */
+export type DeclaredUploadBasketReceipt = {
+    /**
+     * Data Evidence
+     */
+    data_evidence?: 'user_declaration_unverified';
+    dataset: DatasetPublic;
+    /**
+     * Is Synthetic
+     */
+    is_synthetic?: false;
+    /**
+     * Point In Time Proven
+     */
+    point_in_time_proven?: false;
+    /**
+     * Profile
+     */
+    profile?: 'mineagent.declared-upload-basket.v1';
+    /**
+     * Research Submitted
+     */
+    research_submitted?: false;
+    /**
+     * Result Released
+     */
+    result_released?: false;
+};
+
+/**
  * DiagnosticEventPair
  */
 export type DiagnosticEventPair = {
@@ -3029,6 +3082,10 @@ export type EngineDatasetOption = {
     name: string;
     reason?: PreflightReason | null;
     /**
+     * Source
+     */
+    source?: string | null;
+    /**
      * Start Date
      */
     start_date: string;
@@ -3226,7 +3283,7 @@ export type EngineRunDetail = {
     /**
      * Config Schema
      */
-    config_schema?: 'mineagent.factor-research.v1' | 'mineagent.factor-research.v2';
+    config_schema?: 'mineagent.factor-research.v1' | 'mineagent.factor-research.v2' | 'mineagent.factor-research.v3';
     /**
      * Config Sha256
      */
@@ -3297,7 +3354,7 @@ export type EngineRunSummary = {
     /**
      * Config Schema
      */
-    config_schema?: 'mineagent.factor-research.v1' | 'mineagent.factor-research.v2';
+    config_schema?: 'mineagent.factor-research.v1' | 'mineagent.factor-research.v2' | 'mineagent.factor-research.v3';
     /**
      * Created At
      */
@@ -5891,6 +5948,80 @@ export type IndicatorSeries = {
 };
 
 /**
+ * InputDerivationView
+ */
+export type InputDerivationView = {
+    /**
+     * Derivation Id
+     */
+    derivation_id: string;
+    /**
+     * Error Code
+     */
+    error_code: 'mapping_path_missing' | 'raw_bytes_required' | 'invalid_json_or_mapping' | 'bounded_item_list_required' | 'text_fields_required' | 'invalid_proposal_text' | 'normalized_output_limit' | 'owner_cancelled' | 'worker_interrupted' | 'derivation_failed' | 'feedback_source_blocked' | 'feedback_release_required' | 'other_derivation_error' | null;
+    /**
+     * Mapping Sha256
+     */
+    mapping_sha256: string | null;
+    /**
+     * Operation
+     */
+    operation: 'external_normalization' | 'experiment_feedback_projection';
+    /**
+     * Outputs
+     */
+    outputs: Array<InputVersionRef>;
+    /**
+     * Prepared At
+     */
+    prepared_at: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'receipt_metadata_not_live_status_or_content_approval';
+    /**
+     * Raw Input Sha256
+     */
+    raw_input_sha256: string | null;
+    /**
+     * Raw Object Id
+     */
+    raw_object_id?: string | null;
+    /**
+     * Source Sha256
+     */
+    source_sha256: string;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+    /**
+     * Status
+     */
+    status: 'prepared' | 'started_no_terminal_receipt' | 'succeeded' | 'rejected' | 'failed' | 'cancelled' | 'interrupted';
+    /**
+     * Terminal At
+     */
+    terminal_at: string | null;
+    /**
+     * Terminal Event Id
+     */
+    terminal_event_id?: string | null;
+    /**
+     * Terminal Event Sha256
+     */
+    terminal_event_sha256?: string | null;
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
  * InputField
  */
 export type InputField = {
@@ -5932,6 +6063,28 @@ export type InputOperation = {
      * Response Sha256
      */
     response_sha256: string;
+};
+
+/**
+ * InputVersionRef
+ */
+export type InputVersionRef = {
+    /**
+     * Content Sha256
+     */
+    content_sha256: string;
+    /**
+     * Origin
+     */
+    origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+    /**
+     * Record Id
+     */
+    record_id: string;
+    /**
+     * Version Id
+     */
+    version_id: string;
 };
 
 export type JsonValue = unknown;
@@ -6632,6 +6785,26 @@ export type ModelProfilePublic = {
 };
 
 /**
+ * ModelStageInputSnapshot
+ */
+export type ModelStageInputSnapshot = {
+    binding: StageExecutionBinding;
+    /**
+     * Inputs
+     */
+    inputs?: Array<ResolvedInputVersion>;
+    /**
+     * Qualification
+     */
+    qualification?: 'resolved_data_not_platform_instruction_or_approval';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-model-inputs.v1';
+    selection: WorkflowInputSnapshot;
+};
+
+/**
  * NativeParameter
  */
 export type NativeParameter = {
@@ -6707,6 +6880,409 @@ export type NoPreprocessing = {
      * Kind
      */
     kind?: 'none';
+};
+
+/**
+ * NormalExecutionRecord
+ */
+export type NormalExecutionRecord = {
+    /**
+     * Candidate Id
+     */
+    candidate_id: string;
+    /**
+     * Execution Id
+     */
+    execution_id: string | null;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Origin
+     */
+    origin: 'authenticated_user_seed' | 'workflow_seed' | 'model_proposal';
+    /**
+     * Parent Candidate Id
+     */
+    parent_candidate_id: string | null;
+    /**
+     * Program Version Id
+     */
+    program_version_id: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'identity_metadata_not_result_release';
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Source Run Id
+     */
+    source_run_id: string;
+};
+
+/**
+ * NormalExecutionRelease
+ */
+export type NormalExecutionRelease = {
+    /**
+     * Execution Id
+     */
+    execution_id: string;
+    /**
+     * Exposure Ids
+     */
+    exposure_ids: [
+        string,
+        string
+    ];
+    /**
+     * Extent
+     */
+    extent?: 'full_retained_factor_and_market_datasets';
+    /**
+     * Qualification
+     */
+    qualification?: 'exposure_record_not_execution_authority';
+    /**
+     * Run Id
+     */
+    run_id: string;
+};
+
+/**
+ * NormalExecutionView
+ */
+export type NormalExecutionView = {
+    /**
+     * Candidate Id
+     */
+    candidate_id: string;
+    execution: StructuredExecutionView;
+    measurement: StructuredMeasurement;
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_snapshot_comparison_not_causal_gain';
+};
+
+/**
+ * NormalOEDecisionNoteEvidence
+ */
+export type NormalOeDecisionNoteEvidence = {
+    /**
+     * Candidate Id
+     */
+    candidate_id: string;
+    /**
+     * Config Sha256
+     */
+    config_sha256: string;
+    /**
+     * Decision Sequence
+     */
+    decision_sequence: number;
+    /**
+     * Execution Attempt Id
+     */
+    execution_attempt_id: string;
+    /**
+     * Execution Id
+     */
+    execution_id: string;
+    /**
+     * Factor Id
+     */
+    factor_id: string;
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Generation
+     */
+    generation: number;
+    /**
+     * Kind
+     */
+    kind: 'normal_oe_decision';
+    /**
+     * Label
+     */
+    label?: string;
+    /**
+     * Market Sha256
+     */
+    market_sha256: string;
+    /**
+     * Measurement Sha256
+     */
+    measurement_sha256: string;
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Program Sha256
+     */
+    program_sha256: string;
+    /**
+     * Program Version Id
+     */
+    program_version_id: string;
+    /**
+     * Result Sha256
+     */
+    result_sha256: string;
+    /**
+     * Row Sha256
+     *
+     * SHA-256 of the canonical validated execution_view row; result_sha256 independently binds retained original result bytes.
+     */
+    row_sha256: string;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Snapshot Input Sha256
+     */
+    snapshot_input_sha256: string;
+};
+
+/**
+ * NormalOEExecutionNoteEvidence
+ */
+export type NormalOeExecutionNoteEvidence = {
+    /**
+     * Candidate Id
+     */
+    candidate_id: string;
+    /**
+     * Config Sha256
+     */
+    config_sha256: string;
+    /**
+     * Execution Attempt Id
+     */
+    execution_attempt_id: string;
+    /**
+     * Execution Id
+     */
+    execution_id: string;
+    /**
+     * Factor Id
+     */
+    factor_id: string;
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Generation
+     */
+    generation: number;
+    /**
+     * Kind
+     */
+    kind: 'normal_oe_execution';
+    /**
+     * Label
+     */
+    label?: string;
+    /**
+     * Market Sha256
+     */
+    market_sha256: string;
+    /**
+     * Measurement Sha256
+     */
+    measurement_sha256: string;
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Program Sha256
+     */
+    program_sha256: string;
+    /**
+     * Program Version Id
+     */
+    program_version_id: string;
+    /**
+     * Result Sha256
+     */
+    result_sha256: string;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Snapshot Input Sha256
+     */
+    snapshot_input_sha256: string;
+};
+
+/**
+ * NormalOEFillNoteEvidence
+ */
+export type NormalOeFillNoteEvidence = {
+    /**
+     * Candidate Id
+     */
+    candidate_id: string;
+    /**
+     * Config Sha256
+     */
+    config_sha256: string;
+    /**
+     * Execution Attempt Id
+     */
+    execution_attempt_id: string;
+    /**
+     * Execution Id
+     */
+    execution_id: string;
+    /**
+     * Factor Id
+     */
+    factor_id: string;
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Generation
+     */
+    generation: number;
+    /**
+     * Kind
+     */
+    kind: 'normal_oe_fill';
+    /**
+     * Label
+     */
+    label?: string;
+    /**
+     * Listing Id
+     */
+    listing_id: string;
+    /**
+     * Market Sha256
+     */
+    market_sha256: string;
+    /**
+     * Measurement Sha256
+     */
+    measurement_sha256: string;
+    /**
+     * Native Fill Id
+     */
+    native_fill_id: string;
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Program Sha256
+     */
+    program_sha256: string;
+    /**
+     * Program Version Id
+     */
+    program_version_id: string;
+    /**
+     * Result Sha256
+     */
+    result_sha256: string;
+    /**
+     * Row Sha256
+     *
+     * SHA-256 of the canonical validated execution_view row; result_sha256 independently binds retained original result bytes.
+     */
+    row_sha256: string;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Session Date
+     */
+    session_date: string;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Snapshot Input Sha256
+     */
+    snapshot_input_sha256: string;
+};
+
+/**
+ * NormalOENoteCapture
+ */
+export type NormalOeNoteCapture = {
+    /**
+     * Evidence
+     */
+    evidence: ({
+        kind: 'normal_oe_execution';
+    } & NormalOeExecutionNoteEvidence) | ({
+        kind: 'normal_oe_decision';
+    } & NormalOeDecisionNoteEvidence) | ({
+        kind: 'normal_oe_fill';
+    } & NormalOeFillNoteEvidence);
+    /**
+     * Href
+     */
+    href: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'released_original_identity_not_note_write';
+};
+
+/**
+ * NormalOENoteRestore
+ */
+export type NormalOeNoteRestore = {
+    /**
+     * Evidence Index
+     */
+    evidence_index: number;
+    /**
+     * Schema Version
+     */
+    schema_version: 'mineagent.note-normal-oe-restore.v1';
+};
+
+/**
+ * NormalPairComparison
+ */
+export type NormalPairComparison = {
+    after: NormalExecutionView;
+    before: NormalExecutionView;
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_snapshot_comparison_not_causal_gain';
+    /**
+     * Score Delta Percentage Points
+     */
+    score_delta_percentage_points: number | null;
 };
 
 /**
@@ -6964,6 +7540,53 @@ export type NoteSourceEvidence = {
      * Spec Sha256
      */
     spec_sha256?: string | null;
+};
+
+/**
+ * OEChatBinding
+ */
+export type OeChatBinding = {
+    /**
+     * Max Output Tokens
+     */
+    max_output_tokens: number;
+    /**
+     * Max Request Bytes
+     */
+    max_request_bytes?: 262144;
+    /**
+     * Max Response Bytes
+     */
+    max_response_bytes?: 262144;
+    /**
+     * Model
+     */
+    model: string;
+    pricing?: ChatPricing;
+    /**
+     * Profile Id
+     */
+    profile_id: string;
+    /**
+     * Profile Sha256
+     */
+    profile_sha256: string;
+    /**
+     * Request Deadline Ms
+     */
+    request_deadline_ms: number;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-provider-binding.v1';
+    /**
+     * Synthetic
+     */
+    synthetic?: boolean;
+    /**
+     * Transport
+     */
+    transport?: 'openai-compatible-structured-chat.v1';
 };
 
 /**
@@ -10196,20 +10819,6 @@ export type ProviderConnectionUpdate = {
 };
 
 /**
- * ProviderPreflightReason
- */
-export type ProviderPreflightReason = {
-    /**
-     * Code
-     */
-    code: 'runtime_disabled' | 'runtime_unconfigured' | 'runtime_unsupported' | 'task_profile_unsupported' | 'runtime_schema_unavailable' | 'dataset_format_unsupported' | 'dataset_bytes_unavailable' | 'source_projection_unsupported' | 'output_window_unsupported' | 'insufficient_history' | 'insufficient_label_horizon' | 'delayed_output_unsupported' | 'budget_below_profile' | 'objective_coverage_impossible' | 'rd_model_unavailable' | 'rd_provider_disabled' | 'rd_model_pricing_unavailable' | 'model_prompt_unsupported' | 'seed_parent_unsupported';
-    /**
-     * Message
-     */
-    message: string;
-};
-
-/**
  * ProviderProbeCreate
  */
 export type ProviderProbeCreate = {
@@ -10269,6 +10878,252 @@ export type ProviderPublic = {
      * Upstream
      */
     upstream: string;
+};
+
+/**
+ * ProviderStructuredPreflight
+ */
+export type ProviderStructuredPreflight = {
+    /**
+     * Can Submit
+     */
+    can_submit: boolean;
+    /**
+     * Data Eligible
+     */
+    data_eligible: boolean;
+    /**
+     * Data Qualification
+     */
+    data_qualification: 'synthetic_by_construction' | 'user_declaration_unverified' | null;
+    /**
+     * Fixed Input Sha256
+     */
+    fixed_input_sha256: string | null;
+    model_binding: OeChatBinding | null;
+    normalized_request: ProviderStructuredSearchRequest;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_snapshot_comparison_not_causal_gain';
+    /**
+     * Reasons
+     */
+    reasons: Array<BackendAppOeStructuredProviderSubmissionProviderPreflightReason>;
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    required_budget: BudgetVector | null;
+    /**
+     * Required Process Units
+     */
+    required_process_units: number;
+    /**
+     * Runtime Profile Sha256
+     */
+    runtime_profile_sha256: string | null;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-provider-preflight.v1';
+};
+
+/**
+ * ProviderStructuredRunView
+ */
+export type ProviderStructuredRunView = {
+    actions?: StructuredRunActions;
+    /**
+     * Active Attempt Id
+     */
+    active_attempt_id: string | null;
+    budget_limits: BudgetVector;
+    budget_reserved: BudgetVector;
+    budget_used: BudgetVector;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data Qualification
+     */
+    data_qualification?: 'synthetic_by_construction' | 'user_declaration_unverified';
+    /**
+     * Dataset Version Id
+     */
+    dataset_version_id: string;
+    /**
+     * Declared Process Units
+     */
+    declared_process_units: number;
+    /**
+     * Engine
+     */
+    engine?: 'openevolve';
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Generation
+     */
+    generation: number;
+    /**
+     * Id
+     */
+    id: string;
+    model_binding: OeChatBinding;
+    /**
+     * Purpose
+     */
+    purpose?: 'strategy_search';
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_snapshot_comparison_not_causal_gain';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-run-view.v1';
+    /**
+     * Status
+     */
+    status: 'queued' | 'preparing' | 'running' | 'finalizing' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'failed' | 'interrupted' | 'succeeded';
+    submission: ProviderStructuredSubmissionReceipt;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * ProviderStructuredSearchRequest
+ */
+export type ProviderStructuredSearchRequest = {
+    budget: BudgetVector;
+    /**
+     * Engine
+     */
+    engine?: 'openevolve';
+    /**
+     * Maximum Mutation Slots
+     */
+    maximum_mutation_slots: number;
+    /**
+     * Model Binding Sha256
+     */
+    model_binding_sha256: string;
+    /**
+     * Model Profile Id
+     */
+    model_profile_id: string;
+    objective: StructuredObjective;
+    /**
+     * Profile
+     */
+    profile?: 'fixed_factor_operator_closed_program_v1';
+    /**
+     * Purpose
+     */
+    purpose?: 'strategy_search';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-provider-submission.v1';
+    seed_parameters: StructuredSeedParameters;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+};
+
+/**
+ * ProviderStructuredSearchSubmit
+ */
+export type ProviderStructuredSearchSubmit = {
+    budget: BudgetVector;
+    /**
+     * Engine
+     */
+    engine?: 'openevolve';
+    /**
+     * Maximum Mutation Slots
+     */
+    maximum_mutation_slots: number;
+    /**
+     * Model Binding Sha256
+     */
+    model_binding_sha256: string;
+    /**
+     * Model Profile Id
+     */
+    model_profile_id: string;
+    objective: StructuredObjective;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Profile
+     */
+    profile?: 'fixed_factor_operator_closed_program_v1';
+    /**
+     * Purpose
+     */
+    purpose?: 'strategy_search';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-provider-submission.v1';
+    seed_parameters: StructuredSeedParameters;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+};
+
+/**
+ * ProviderStructuredSubmissionReceipt
+ */
+export type ProviderStructuredSubmissionReceipt = {
+    /**
+     * Id
+     */
+    id: string;
+    normalized_request: ProviderStructuredSearchRequest;
+    /**
+     * Origin
+     */
+    origin?: 'authenticated_user_submission';
+    /**
+     * Origin User Id
+     */
+    origin_user_id: string;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    /**
+     * Required Process Units
+     */
+    required_process_units: number;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-provider-submission-receipt.v1';
 };
 
 /**
@@ -10662,7 +11517,7 @@ export type RdProviderPreflight = {
     /**
      * Reasons
      */
-    reasons: Array<ProviderPreflightReason>;
+    reasons: Array<BackendAppRdagentProviderSubmissionContractsProviderPreflightReason>;
     /**
      * Request Sha256
      */
@@ -11722,11 +12577,11 @@ export type ResearchInputItem = {
     /**
      * Origin
      */
-    origin: 'user_provided' | 'agent_generated' | 'unknown';
+    origin: 'user_provided' | 'workflow_stage' | 'agent_generated' | 'unknown';
     /**
      * Provenance
      */
-    provenance: 'authenticated_submission_receipt' | 'model_response_source_witness' | 'origin_not_established';
+    provenance: 'authenticated_submission_receipt' | 'workflow_stage_submission_receipt' | 'model_response_source_witness' | 'origin_not_established';
     /**
      * Steer Evidence
      */
@@ -11744,6 +12599,11 @@ export type ResearchInputItem = {
      * Title
      */
     title: string;
+    workflow_inputs?: ModelStageInputSnapshot | null;
+    /**
+     * Workflow Inputs Sha256
+     */
+    workflow_inputs_sha256?: string | null;
 };
 
 /**
@@ -11753,7 +12613,7 @@ export type ResearchInputs = {
     /**
      * Group Order
      */
-    group_order?: Array<'user_provided' | 'agent_generated' | 'unknown'>;
+    group_order?: Array<'user_provided' | 'workflow_stage' | 'agent_generated' | 'unknown'>;
     /**
      * Has More Proposals
      */
@@ -11821,7 +12681,7 @@ export type ResearchNoteContent = {
     /**
      * Evidence
      */
-    evidence?: Array<NoteSourceEvidence | NoteEvaluationEvidence | NoteComparisonEvidence | NoteDiagnosticEvidence | NoteControlledEvidence>;
+    evidence?: Array<NoteSourceEvidence | NoteEvaluationEvidence | NoteComparisonEvidence | NoteDiagnosticEvidence | NoteControlledEvidence | NormalOeExecutionNoteEvidence | NormalOeDecisionNoteEvidence | NormalOeFillNoteEvidence>;
     /**
      * Hypothesis
      */
@@ -11834,7 +12694,10 @@ export type ResearchNoteContent = {
      * Next Steps
      */
     next_steps?: string;
-    restore?: NoteRestore | null;
+    /**
+     * Restore
+     */
+    restore?: NoteRestore | NormalOeNoteRestore | null;
     /**
      * Rules
      */
@@ -12323,6 +13186,29 @@ export type ResolveCreate = {
      * Symbols
      */
     symbols: Array<string>;
+};
+
+/**
+ * ResolvedInputVersion
+ */
+export type ResolvedInputVersion = {
+    /**
+     * Kind
+     */
+    kind: 'direction' | 'hypothesis' | 'constraints';
+    ref: InputVersionRef;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Text Sha256
+     */
+    text_sha256: string;
+    /**
+     * Title
+     */
+    title: string;
 };
 
 /**
@@ -12910,6 +13796,32 @@ export type ResultTable = {
 };
 
 /**
+ * RetainedExternalInput
+ */
+export type RetainedExternalInput = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'raw_retained_not_normalized';
+    /**
+     * Sha256
+     */
+    sha256: string;
+    /**
+     * Size Bytes
+     */
+    size_bytes: number;
+    /**
+     * Workflow Created
+     */
+    workflow_created?: false;
+};
+
+/**
  * ReturnBin
  */
 export type ReturnBin = {
@@ -13485,6 +14397,42 @@ export type SlippageConfig = {
 };
 
 /**
+ * SourceOutputRef
+ *
+ * Identity only, not evidence that a stage completed or release is allowed.
+ *
+ * The host must join the exact owner/workflow/stage/child run and typed retained
+ * output, then independently recheck development eligibility and release ledger.
+ * No caller boolean may certify success, disclosure, sealed status or eligibility.
+ */
+export type SourceOutputRef = {
+    /**
+     * Child Run Id
+     */
+    child_run_id: string;
+    /**
+     * Content Sha256
+     */
+    content_sha256: string;
+    /**
+     * Output Id
+     */
+    output_id: string;
+    /**
+     * Output Kind
+     */
+    output_kind: 'direct_analysis' | 'structured_execution';
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
  * SourceRef
  */
 export type SourceRef = {
@@ -13589,6 +14537,82 @@ export type SplitVersionPublic = {
      * Universe Version Id
      */
     universe_version_id: string;
+};
+
+/**
+ * StageConsumption
+ *
+ * Read projection, never accepted as execution/stop authority.
+ */
+export type StageConsumption = {
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Model Operation Id
+     */
+    model_operation_id: string | null;
+    /**
+     * Request Sha256
+     */
+    request_sha256: string | null;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * State
+     */
+    state: 'not_observed' | 'selected_not_submitted' | 'included_in_submitted_prompt' | 'submission_uncertain' | 'not_consumed_numeric' | 'not_submitted_to_model';
+    /**
+     * Transport Id
+     */
+    transport_id?: string | null;
+};
+
+/**
+ * StageExecutionBinding
+ *
+ * Must be part of the NEW child submission/bootstrap, not post-hoc metadata.
+ */
+export type StageExecutionBinding = {
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-stage-binding.v1';
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Submission Origin
+     */
+    submission_origin?: 'workflow_stage';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
 };
 
 /**
@@ -14126,6 +15150,90 @@ export type StrategySpec = {
 };
 
 /**
+ * StructuredControlReceipt
+ */
+export type StructuredControlReceipt = {
+    /**
+     * Pending
+     */
+    pending: boolean;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-control-receipt.v1';
+    /**
+     * Status
+     */
+    status: 'queued' | 'preparing' | 'running' | 'finalizing' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'failed' | 'interrupted' | 'succeeded';
+};
+
+/**
+ * StructuredDemoCreate
+ */
+export type StructuredDemoCreate = {
+    /**
+     * Acknowledge Synthetic
+     */
+    acknowledge_synthetic: true;
+};
+
+/**
+ * StructuredDemoPreset
+ */
+export type StructuredDemoPreset = {
+    /**
+     * Acknowledgement Required
+     */
+    acknowledgement_required: true;
+    /**
+     * Input Fields
+     */
+    input_fields: [
+        'close',
+        'volume'
+    ];
+    /**
+     * Lag Sessions
+     */
+    lag_sessions: 0;
+    /**
+     * Lookback Sessions
+     */
+    lookback_sessions: 2;
+    /**
+     * Max Iterations
+     */
+    max_iterations: 1;
+    objective: DirectObjectiveDeclaration;
+    /**
+     * Qualification
+     */
+    qualification: 'synthetic_by_construction_not_live_or_pit_evidence';
+    task: FactorTaskSpec;
+    window: DateWindow;
+};
+
+/**
+ * StructuredDemoReceipt
+ */
+export type StructuredDemoReceipt = {
+    dataset: DatasetPublic;
+    /**
+     * Qualification
+     */
+    qualification: 'synthetic_by_construction_not_live_or_pit_evidence';
+    rd_preset: StructuredDemoPreset;
+    /**
+     * Research Submitted
+     */
+    research_submitted?: false;
+};
+
+/**
  * StructuredExecutionRecord
  *
  * Identity-only discovery; no result values, measurements or change flags.
@@ -14259,6 +15367,142 @@ export type StructuredExecutionView = {
 };
 
 /**
+ * StructuredMeasurement
+ */
+export type StructuredMeasurement = {
+    /**
+     * Closed Trade Count
+     */
+    closed_trade_count: number;
+    /**
+     * Combined Score
+     */
+    combined_score: number | null;
+    /**
+     * Eligible
+     */
+    eligible: boolean;
+    /**
+     * Execution Id
+     */
+    execution_id: string;
+    /**
+     * Market Sha256
+     */
+    market_sha256: string;
+    /**
+     * Max Drawdown Pct
+     */
+    max_drawdown_pct: number | null;
+    /**
+     * Objective Sha256
+     */
+    objective_sha256: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_window_comparison_not_causal_advantage_or_annualized_gain';
+    /**
+     * Reason
+     */
+    reason: 'eligible' | 'undefined_accounting' | 'minimum_closed_trades';
+    /**
+     * Result Sha256
+     */
+    result_sha256: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-measurement.v1';
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Strategy Input Sha256
+     */
+    strategy_input_sha256: string;
+    /**
+     * Structured Strategy Version Id
+     */
+    structured_strategy_version_id: string;
+    /**
+     * Total Return Pct
+     */
+    total_return_pct: number | null;
+};
+
+/**
+ * StructuredModelOption
+ */
+export type StructuredModelOption = {
+    binding: OeChatBinding;
+    /**
+     * Binding Sha256
+     */
+    binding_sha256: string;
+    /**
+     * Label
+     */
+    label: string;
+    /**
+     * Operator Available
+     */
+    operator_available: boolean;
+    /**
+     * Qualification
+     */
+    qualification?: 'public_operator_metadata_not_submission_authority';
+    /**
+     * Unavailable Reason
+     */
+    unavailable_reason?: string | null;
+};
+
+/**
+ * StructuredObjective
+ */
+export type StructuredObjective = {
+    /**
+     * Direction
+     */
+    direction?: 'maximize';
+    /**
+     * Initial Cash
+     */
+    initial_cash: number;
+    /**
+     * Metric
+     */
+    metric?: 'total_return_pct_minus_max_drawdown_pct';
+    /**
+     * Minimum Closed Trades
+     */
+    minimum_closed_trades?: number | null;
+    /**
+     * Missing Policy
+     */
+    missing_policy?: 'ineligible_null_score';
+    /**
+     * Precision
+     */
+    precision?: 'unrounded_native_accounting';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-objective.v1';
+    /**
+     * Source
+     */
+    source?: 'validated_closed_engine_accounting_summary';
+    /**
+     * Unit
+     */
+    unit?: 'percentage_points';
+    window: DateWindow;
+};
+
+/**
  * StructuredPairComparison
  */
 export type StructuredPairComparison = {
@@ -14344,6 +15588,226 @@ export type StructuredRelease = {
      * Run Id
      */
     run_id: string;
+};
+
+/**
+ * StructuredRunActions
+ */
+export type StructuredRunActions = {
+    /**
+     * Cancel
+     */
+    cancel?: boolean;
+    /**
+     * Pause
+     */
+    pause?: false;
+    /**
+     * Reason Code
+     */
+    reason_code?: 'structured_worker_control_not_registered' | 'structured_pause_resume_not_supported' | 'cancel_pending_containment';
+    /**
+     * Resume
+     */
+    resume?: false;
+};
+
+/**
+ * StructuredSearchCapabilities
+ */
+export type StructuredSearchCapabilities = {
+    /**
+     * Can Preflight
+     */
+    can_preflight: boolean;
+    /**
+     * Qualification
+     */
+    qualification?: 'metadata_not_submission_authority';
+    /**
+     * Reason Code
+     */
+    reason_code?: 'runtime_schema_unavailable' | null;
+    /**
+     * Routes Available
+     */
+    routes_available: boolean;
+};
+
+/**
+ * StructuredSeedParameters
+ */
+export type StructuredSeedParameters = {
+    /**
+     * Maximum Gross Weight
+     */
+    maximum_gross_weight: number;
+    /**
+     * Maximum Weight
+     */
+    maximum_weight: number;
+    /**
+     * Threshold
+     */
+    threshold: number;
+    /**
+     * Top K
+     */
+    top_k: number;
+};
+
+/**
+ * StructuredSnapshotOption
+ */
+export type StructuredSnapshotOption = {
+    /**
+     * Dataset Version Id
+     */
+    dataset_version_id: string;
+    /**
+     * Factor Id
+     */
+    factor_id: string;
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'released_historical_metadata_requires_fresh_preflight';
+    /**
+     * Release Receipt Id
+     */
+    release_receipt_id: string;
+    signal_window: DateWindow;
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Snapshot Manifest Sha256
+     */
+    snapshot_manifest_sha256: string;
+    /**
+     * Source Run Id
+     */
+    source_run_id: string;
+};
+
+/**
+ * StructuredSnapshotPage
+ */
+export type StructuredSnapshotPage = {
+    /**
+     * Has More
+     */
+    has_more: boolean;
+    /**
+     * Items
+     */
+    items: Array<StructuredSnapshotOption>;
+    /**
+     * Limit
+     */
+    limit: number;
+    /**
+     * Offset
+     */
+    offset: number;
+};
+
+/**
+ * StructuredWorkflowPreflight
+ */
+export type StructuredWorkflowPreflight = {
+    /**
+     * Can Create
+     */
+    can_create?: true;
+    /**
+     * Plan Sha256
+     */
+    plan_sha256: string;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Provider Preflight Sha256
+     */
+    provider_preflight_sha256: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'fresh_declaration_not_stage_execution_or_release';
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    /**
+     * Resolved Inputs Sha256
+     */
+    resolved_inputs_sha256: string;
+    /**
+     * Runtime Profile Sha256
+     */
+    runtime_profile_sha256: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-public-preflight.v2';
+    /**
+     * Structured Template Sha256
+     */
+    structured_template_sha256: string;
+};
+
+/**
+ * StructuredWorkflowView
+ */
+export type StructuredWorkflowView = {
+    /**
+     * Blocked Reason
+     */
+    blocked_reason?: string | null;
+    controls: WorkflowControls;
+    /**
+     * Current Stage
+     */
+    current_stage: WorkflowStageView | WorkflowOeStageView | null;
+    /**
+     * Latest Checkpoint Id
+     */
+    latest_checkpoint_id: string | null;
+    /**
+     * Mode
+     */
+    mode: 'continuous' | 'pause_after_stage';
+    /**
+     * Qualification
+     */
+    qualification?: 'stage_metadata_not_result_release_or_process_authority';
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-view.v2';
+    /**
+     * Selected Input Revision Id
+     */
+    selected_input_revision_id: string;
+    /**
+     * Status
+     */
+    status: 'ready' | 'running' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'blocked' | 'completed';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
 };
 
 /**
@@ -15169,6 +16633,730 @@ export type WorkbenchSpec = {
 };
 
 /**
+ * WorkflowAvailability
+ */
+export type WorkflowAvailability = {
+    /**
+     * Can Read
+     */
+    can_read: boolean;
+    /**
+     * Preflight Available
+     */
+    preflight_available: boolean;
+    /**
+     * Reason Code
+     */
+    reason_code: string;
+    /**
+     * Structured Preflight Available
+     */
+    structured_preflight_available?: boolean;
+};
+
+/**
+ * WorkflowCommandReceipt
+ */
+export type WorkflowCommandReceipt = {
+    /**
+     * Checkpoint Id
+     */
+    checkpoint_id: string | null;
+    /**
+     * Command Id
+     */
+    command_id: string;
+    /**
+     * Command Sha256
+     */
+    command_sha256: string;
+    /**
+     * Current Stage Id
+     */
+    current_stage_id: string | null;
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-command-receipt.v1';
+    /**
+     * Status
+     */
+    status: 'ready' | 'running' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'blocked' | 'completed';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
+ * WorkflowControls
+ */
+export type WorkflowControls = {
+    /**
+     * Cancel
+     */
+    cancel?: boolean;
+    /**
+     * Pause After Stage
+     */
+    pause_after_stage?: boolean;
+    /**
+     * Reason Code
+     */
+    reason_code: string;
+    /**
+     * Resume
+     */
+    resume?: boolean;
+};
+
+/**
+ * WorkflowCreated
+ */
+export type WorkflowCreated = {
+    /**
+     * Current Stage Id
+     */
+    current_stage_id: string | null;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    /**
+     * Revision
+     */
+    revision?: 1;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-created.v1';
+    /**
+     * Status
+     */
+    status: 'ready' | 'blocked';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
+ * WorkflowInputSnapshot
+ */
+export type WorkflowInputSnapshot = {
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Refs
+     */
+    refs?: Array<InputVersionRef>;
+    /**
+     * Revision Id
+     */
+    revision_id: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-input-snapshot.v1';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
+ * WorkflowManualOption
+ */
+export type WorkflowManualOption = {
+    /**
+     * Disabled
+     */
+    disabled: boolean;
+    ref: InputVersionRef;
+    /**
+     * Revision
+     */
+    revision: number;
+    version: SteerVersion;
+};
+
+/**
+ * WorkflowManualOptions
+ */
+export type WorkflowManualOptions = {
+    /**
+     * Has More
+     */
+    has_more: boolean;
+    /**
+     * Items
+     */
+    items: Array<WorkflowManualOption>;
+    /**
+     * Offset
+     */
+    offset: number;
+};
+
+/**
+ * WorkflowOEStageHistory
+ */
+export type WorkflowOeStageHistory = {
+    /**
+     * Automatic Feedback Refs
+     */
+    automatic_feedback_refs?: Array<InputVersionRef>;
+    /**
+     * Checkpoint Id
+     */
+    checkpoint_id: string | null;
+    /**
+     * Child Attempt Id
+     */
+    child_attempt_id: string | null;
+    /**
+     * Child Run Id
+     */
+    child_run_id: string | null;
+    /**
+     * Consumption
+     */
+    consumption: 'not_observed' | 'selected_not_submitted' | 'included_in_submitted_prompt' | 'submission_uncertain' | 'not_consumed_numeric' | 'not_submitted_to_model';
+    /**
+     * Containment
+     */
+    containment: 'not_applicable' | 'not_observed' | 'positive_stop' | 'uncertain';
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Derived Input Refs
+     */
+    derived_input_refs?: Array<InputVersionRef>;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    /**
+     * Input Refs
+     */
+    input_refs?: Array<InputVersionRef>;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Kind
+     */
+    kind?: 'structured_factor_execution';
+    /**
+     * Model Requests
+     */
+    model_requests?: Array<StageConsumption>;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Output Refs
+     */
+    output_refs?: Array<SourceOutputRef>;
+    /**
+     * Predecessor Checkpoint Id
+     */
+    predecessor_checkpoint_id?: string | null;
+    /**
+     * Qualification
+     */
+    qualification?: 'retained_stage_metadata_not_live_status_or_result_release';
+    /**
+     * Safe Error Code
+     */
+    safe_error_code?: string | null;
+    /**
+     * Settlement
+     */
+    settlement: 'not_observed' | 'settled' | 'unsettled' | 'uncertain';
+    /**
+     * Source Status
+     */
+    source_status: 'not_recorded' | 'prepared' | 'started_no_terminal_receipt' | 'queued' | 'preparing' | 'running' | 'finalizing' | 'pause_requested' | 'paused' | 'cancel_requested' | 'succeeded' | 'rejected' | 'failed' | 'cancelled' | 'interrupted' | 'blocked';
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+};
+
+/**
+ * WorkflowOEStageView
+ */
+export type WorkflowOeStageView = {
+    /**
+     * Checkpoint Id
+     */
+    checkpoint_id: string | null;
+    /**
+     * Child Run Id
+     */
+    child_run_id: string | null;
+    /**
+     * Consumption
+     */
+    consumption: 'not_observed' | 'selected_not_submitted' | 'included_in_submitted_prompt' | 'submission_uncertain' | 'not_consumed_numeric' | 'not_submitted_to_model';
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Kind
+     */
+    kind?: 'structured_factor_execution';
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+};
+
+/**
+ * WorkflowPreflight
+ */
+export type WorkflowPreflight = {
+    /**
+     * Can Create
+     */
+    can_create?: true;
+    /**
+     * Plan Sha256
+     */
+    plan_sha256: string;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Provider Preflight Sha256
+     */
+    provider_preflight_sha256: string;
+    /**
+     * Qualification
+     */
+    qualification?: 'fresh_declaration_not_stage_execution_or_release';
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    /**
+     * Resolved Inputs Sha256
+     */
+    resolved_inputs_sha256: string;
+    /**
+     * Runtime Profile Sha256
+     */
+    runtime_profile_sha256: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-public-preflight.v1';
+};
+
+/**
+ * WorkflowStageHistory
+ *
+ * Actual source-record projection; unknown is not inferred running/success.
+ */
+export type WorkflowStageHistory = {
+    /**
+     * Automatic Feedback Refs
+     */
+    automatic_feedback_refs?: Array<InputVersionRef>;
+    /**
+     * Checkpoint Id
+     */
+    checkpoint_id: string | null;
+    /**
+     * Child Attempt Id
+     */
+    child_attempt_id: string | null;
+    /**
+     * Child Run Id
+     */
+    child_run_id: string | null;
+    /**
+     * Consumption
+     */
+    consumption: 'not_observed' | 'selected_not_submitted' | 'included_in_submitted_prompt' | 'submission_uncertain' | 'not_consumed_numeric' | 'not_submitted_to_model';
+    /**
+     * Containment
+     */
+    containment: 'not_applicable' | 'not_observed' | 'positive_stop' | 'uncertain';
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Derived Input Refs
+     */
+    derived_input_refs?: Array<InputVersionRef>;
+    /**
+     * Finished At
+     */
+    finished_at: string | null;
+    /**
+     * Input Refs
+     */
+    input_refs?: Array<InputVersionRef>;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Kind
+     */
+    kind: 'external_normalization' | 'experiment_feedback_projection' | 'rd_factor_generation' | 'structured_factor_execution';
+    /**
+     * Model Requests
+     */
+    model_requests?: Array<StageConsumption>;
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Output Refs
+     */
+    output_refs?: Array<SourceOutputRef>;
+    /**
+     * Predecessor Checkpoint Id
+     */
+    predecessor_checkpoint_id?: string | null;
+    /**
+     * Qualification
+     */
+    qualification?: 'retained_stage_metadata_not_live_status_or_result_release';
+    /**
+     * Safe Error Code
+     */
+    safe_error_code?: string | null;
+    /**
+     * Settlement
+     */
+    settlement: 'not_observed' | 'settled' | 'unsettled' | 'uncertain';
+    /**
+     * Source Status
+     */
+    source_status: 'not_recorded' | 'prepared' | 'started_no_terminal_receipt' | 'queued' | 'preparing' | 'running' | 'finalizing' | 'pause_requested' | 'paused' | 'cancel_requested' | 'succeeded' | 'rejected' | 'failed' | 'cancelled' | 'interrupted' | 'blocked';
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Started At
+     */
+    started_at: string | null;
+};
+
+/**
+ * WorkflowStageLink
+ */
+export type WorkflowStageLink = {
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Kind
+     */
+    kind: 'external_normalization' | 'experiment_feedback_projection' | 'rd_factor_generation' | 'structured_factor_execution';
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+};
+
+/**
+ * WorkflowStageList
+ */
+export type WorkflowStageList = {
+    /**
+     * After Ordinal
+     */
+    after_ordinal: number;
+    /**
+     * Has More
+     */
+    has_more: boolean;
+    /**
+     * Items
+     */
+    items: Array<WorkflowStageLink>;
+    /**
+     * Qualification
+     */
+    qualification?: 'navigation_metadata_not_stage_completion_or_authority';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
+ * WorkflowStageView
+ */
+export type WorkflowStageView = {
+    /**
+     * Checkpoint Id
+     */
+    checkpoint_id: string | null;
+    /**
+     * Child Run Id
+     */
+    child_run_id: string | null;
+    /**
+     * Consumption
+     */
+    consumption: 'not_observed' | 'selected_not_submitted' | 'included_in_submitted_prompt' | 'submission_uncertain' | 'not_consumed_numeric' | 'not_submitted_to_model';
+    /**
+     * Definition Sha256
+     */
+    definition_sha256: string;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Input Sha256
+     */
+    input_sha256: string;
+    /**
+     * Kind
+     */
+    kind: 'external_normalization' | 'experiment_feedback_projection' | 'rd_factor_generation' | 'structured_factor_execution';
+    /**
+     * Ordinal
+     */
+    ordinal: number;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+};
+
+/**
+ * WorkflowStructuredRunOrigin
+ *
+ * Verified relational metadata, not a human submission acknowledgement.
+ */
+export type WorkflowStructuredRunOrigin = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Input Revision Id
+     */
+    input_revision_id: string;
+    /**
+     * Origin
+     */
+    origin?: 'workflow_stage';
+    /**
+     * Owner Id
+     */
+    owner_id: string;
+    /**
+     * Preflight Sha256
+     */
+    preflight_sha256: string;
+    /**
+     * Request Sha256
+     */
+    request_sha256: string;
+    /**
+     * Required Process Units
+     */
+    required_process_units: number;
+    /**
+     * Run Id
+     */
+    run_id: string;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-workflow-run-origin.v1';
+    /**
+     * Snapshot Id
+     */
+    snapshot_id: string;
+    /**
+     * Stage Id
+     */
+    stage_id: string;
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
+ * WorkflowStructuredRunView
+ */
+export type WorkflowStructuredRunView = {
+    actions?: StructuredRunActions;
+    /**
+     * Active Attempt Id
+     */
+    active_attempt_id: string | null;
+    budget_limits: BudgetVector;
+    budget_reserved: BudgetVector;
+    budget_used: BudgetVector;
+    /**
+     * Created At
+     */
+    created_at: string;
+    /**
+     * Data Qualification
+     */
+    data_qualification?: 'synthetic_by_construction' | 'user_declaration_unverified';
+    /**
+     * Dataset Version Id
+     */
+    dataset_version_id: string;
+    /**
+     * Declared Process Units
+     */
+    declared_process_units: number;
+    /**
+     * Engine
+     */
+    engine?: 'openevolve';
+    /**
+     * Factor Version Id
+     */
+    factor_version_id: string;
+    /**
+     * Generation
+     */
+    generation: number;
+    /**
+     * Id
+     */
+    id: string;
+    model_binding: OeChatBinding;
+    /**
+     * Purpose
+     */
+    purpose?: 'strategy_search';
+    /**
+     * Qualification
+     */
+    qualification?: 'fixed_snapshot_comparison_not_causal_gain';
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.oe-structured-run-view.v2';
+    /**
+     * Status
+     */
+    status: 'queued' | 'preparing' | 'running' | 'finalizing' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'failed' | 'interrupted' | 'succeeded';
+    submission: WorkflowStructuredRunOrigin;
+    /**
+     * Updated At
+     */
+    updated_at: string;
+};
+
+/**
+ * WorkflowView
+ */
+export type WorkflowView = {
+    /**
+     * Blocked Reason
+     */
+    blocked_reason?: string | null;
+    controls: WorkflowControls;
+    current_stage: WorkflowStageView | null;
+    /**
+     * Latest Checkpoint Id
+     */
+    latest_checkpoint_id: string | null;
+    /**
+     * Mode
+     */
+    mode: 'continuous' | 'pause_after_stage';
+    /**
+     * Qualification
+     */
+    qualification?: 'stage_metadata_not_result_release_or_process_authority';
+    /**
+     * Revision
+     */
+    revision: number;
+    /**
+     * Schema Version
+     */
+    schema_version?: 'mineagent.workflow-view.v1';
+    /**
+     * Selected Input Revision Id
+     */
+    selected_input_revision_id: string;
+    /**
+     * Status
+     */
+    status: 'ready' | 'running' | 'pause_requested' | 'paused' | 'cancel_requested' | 'cancelled' | 'blocked' | 'completed';
+    /**
+     * Workflow Id
+     */
+    workflow_id: string;
+};
+
+/**
  * WorkspaceDefaults
  */
 export type WorkspaceDefaults = {
@@ -15196,6 +17384,34 @@ export type WorkspaceDefaults = {
      * Model Profile Id
      */
     model_profile_id?: string;
+};
+
+/**
+ * ProviderPreflightReason
+ */
+export type BackendAppOeStructuredProviderSubmissionProviderPreflightReason = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Message
+     */
+    message: string;
+};
+
+/**
+ * ProviderPreflightReason
+ */
+export type BackendAppRdagentProviderSubmissionContractsProviderPreflightReason = {
+    /**
+     * Code
+     */
+    code: 'runtime_disabled' | 'runtime_unconfigured' | 'runtime_unsupported' | 'task_profile_unsupported' | 'runtime_schema_unavailable' | 'dataset_format_unsupported' | 'dataset_bytes_unavailable' | 'source_projection_unsupported' | 'output_window_unsupported' | 'insufficient_history' | 'insufficient_label_horizon' | 'delayed_output_unsupported' | 'budget_below_profile' | 'objective_coverage_impossible' | 'rd_model_unavailable' | 'rd_provider_disabled' | 'rd_model_pricing_unavailable' | 'model_prompt_unsupported' | 'seed_parent_unsupported';
+    /**
+     * Message
+     */
+    message: string;
 };
 
 export type DownloadArtifactData = {
@@ -16085,6 +18301,62 @@ export type ListDataUsageExposuresResponses = {
 };
 
 export type ListDataUsageExposuresResponse = ListDataUsageExposuresResponses[keyof ListDataUsageExposuresResponses];
+
+export type CreateDeclaredUploadBasketData = {
+    /**
+     * DeclaredUploadBasketCreate
+     */
+    body: {
+        /**
+         * Acknowledge Unverified
+         */
+        acknowledge_unverified: true;
+        /**
+         * Idempotency Key
+         */
+        idempotency_key: string;
+        /**
+         * Source Dataset Ids
+         */
+        source_dataset_ids: [
+            string,
+            string
+        ];
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/data/declared-upload-baskets';
+};
+
+export type CreateDeclaredUploadBasketErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateDeclaredUploadBasketError = CreateDeclaredUploadBasketErrors[keyof CreateDeclaredUploadBasketErrors];
+
+export type CreateDeclaredUploadBasketResponses = {
+    /**
+     * Successful Response
+     */
+    200: DeclaredUploadBasketReceipt;
+};
+
+export type CreateDeclaredUploadBasketResponse = CreateDeclaredUploadBasketResponses[keyof CreateDeclaredUploadBasketResponses];
 
 export type ListDataImportsData = {
     body?: never;
@@ -17269,6 +19541,43 @@ export type EligibleDatasetsApiV1EngineRunsDatasetsGetResponses = {
 
 export type EligibleDatasetsApiV1EngineRunsDatasetsGetResponse = EligibleDatasetsApiV1EngineRunsDatasetsGetResponses[keyof EligibleDatasetsApiV1EngineRunsDatasetsGetResponses];
 
+export type CreateStructuredDemoDatasetData = {
+    body: StructuredDemoCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/engine-runs/demo-dataset';
+};
+
+export type CreateStructuredDemoDatasetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateStructuredDemoDatasetError = CreateStructuredDemoDatasetErrors[keyof CreateStructuredDemoDatasetErrors];
+
+export type CreateStructuredDemoDatasetResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredDemoReceipt;
+};
+
+export type CreateStructuredDemoDatasetResponse = CreateStructuredDemoDatasetResponses[keyof CreateStructuredDemoDatasetResponses];
+
 export type PreflightSubmissionApiV1EngineRunsPreflightPostData = {
     /**
      * Body
@@ -17310,6 +19619,481 @@ export type PreflightSubmissionApiV1EngineRunsPreflightPostResponses = {
 };
 
 export type PreflightSubmissionApiV1EngineRunsPreflightPostResponse = PreflightSubmissionApiV1EngineRunsPreflightPostResponses[keyof PreflightSubmissionApiV1EngineRunsPreflightPostResponses];
+
+export type SubmitOeStructuredSearchData = {
+    body: ProviderStructuredSearchSubmit;
+    headers: {
+        /**
+         * Idempotency-Key
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search';
+};
+
+export type SubmitOeStructuredSearchErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SubmitOeStructuredSearchError = SubmitOeStructuredSearchErrors[keyof SubmitOeStructuredSearchErrors];
+
+export type SubmitOeStructuredSearchResponses = {
+    /**
+     * Successful Response
+     */
+    201: ProviderStructuredSubmissionReceipt;
+};
+
+export type SubmitOeStructuredSearchResponse = SubmitOeStructuredSearchResponses[keyof SubmitOeStructuredSearchResponses];
+
+export type GetOeStructuredCapabilitiesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/capabilities';
+};
+
+export type GetOeStructuredCapabilitiesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetOeStructuredCapabilitiesError = GetOeStructuredCapabilitiesErrors[keyof GetOeStructuredCapabilitiesErrors];
+
+export type GetOeStructuredCapabilitiesResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredSearchCapabilities;
+};
+
+export type GetOeStructuredCapabilitiesResponse = GetOeStructuredCapabilitiesResponses[keyof GetOeStructuredCapabilitiesResponses];
+
+export type ListOeStructuredModelProfilesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/model-profiles';
+};
+
+export type ListOeStructuredModelProfilesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListOeStructuredModelProfilesError = ListOeStructuredModelProfilesErrors[keyof ListOeStructuredModelProfilesErrors];
+
+export type ListOeStructuredModelProfilesResponses = {
+    /**
+     * Response List Oe Structured Model Profiles
+     *
+     * Successful Response
+     */
+    200: Array<StructuredModelOption>;
+};
+
+export type ListOeStructuredModelProfilesResponse = ListOeStructuredModelProfilesResponses[keyof ListOeStructuredModelProfilesResponses];
+
+export type PreflightOeStructuredSearchData = {
+    body: ProviderStructuredSearchRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/preflight';
+};
+
+export type PreflightOeStructuredSearchErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type PreflightOeStructuredSearchError = PreflightOeStructuredSearchErrors[keyof PreflightOeStructuredSearchErrors];
+
+export type PreflightOeStructuredSearchResponses = {
+    /**
+     * Successful Response
+     */
+    200: ProviderStructuredPreflight;
+};
+
+export type PreflightOeStructuredSearchResponse = PreflightOeStructuredSearchResponses[keyof PreflightOeStructuredSearchResponses];
+
+export type GetOeStructuredRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}';
+};
+
+export type GetOeStructuredRunErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type GetOeStructuredRunError = GetOeStructuredRunErrors[keyof GetOeStructuredRunErrors];
+
+export type GetOeStructuredRunResponses = {
+    /**
+     * Response Get Oe Structured Run
+     *
+     * Successful Response
+     */
+    200: ProviderStructuredRunView | WorkflowStructuredRunView;
+};
+
+export type GetOeStructuredRunResponse = GetOeStructuredRunResponses[keyof GetOeStructuredRunResponses];
+
+export type CancelOeStructuredRunData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}/cancel';
+};
+
+export type CancelOeStructuredRunErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CancelOeStructuredRunError = CancelOeStructuredRunErrors[keyof CancelOeStructuredRunErrors];
+
+export type CancelOeStructuredRunResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredControlReceipt;
+};
+
+export type CancelOeStructuredRunResponse = CancelOeStructuredRunResponses[keyof CancelOeStructuredRunResponses];
+
+export type CompareOeStructuredExecutionsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query: {
+        /**
+         * Before
+         */
+        before: string;
+        /**
+         * After
+         */
+        after: string;
+    };
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}/comparison';
+};
+
+export type CompareOeStructuredExecutionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CompareOeStructuredExecutionsError = CompareOeStructuredExecutionsErrors[keyof CompareOeStructuredExecutionsErrors];
+
+export type CompareOeStructuredExecutionsResponses = {
+    /**
+     * Successful Response
+     */
+    200: NormalPairComparison;
+};
+
+export type CompareOeStructuredExecutionsResponse = CompareOeStructuredExecutionsResponses[keyof CompareOeStructuredExecutionsResponses];
+
+export type ListOeStructuredExecutionsData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+    };
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}/executions';
+};
+
+export type ListOeStructuredExecutionsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListOeStructuredExecutionsError = ListOeStructuredExecutionsErrors[keyof ListOeStructuredExecutionsErrors];
+
+export type ListOeStructuredExecutionsResponses = {
+    /**
+     * Response List Oe Structured Executions
+     *
+     * Successful Response
+     */
+    200: Array<NormalExecutionRecord>;
+};
+
+export type ListOeStructuredExecutionsResponse = ListOeStructuredExecutionsResponses[keyof ListOeStructuredExecutionsResponses];
+
+export type ReadOeStructuredExecutionData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+        /**
+         * Execution Id
+         */
+        execution_id: string;
+    };
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}/executions/{execution_id}';
+};
+
+export type ReadOeStructuredExecutionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReadOeStructuredExecutionError = ReadOeStructuredExecutionErrors[keyof ReadOeStructuredExecutionErrors];
+
+export type ReadOeStructuredExecutionResponses = {
+    /**
+     * Successful Response
+     */
+    200: NormalExecutionView;
+};
+
+export type ReadOeStructuredExecutionResponse = ReadOeStructuredExecutionResponses[keyof ReadOeStructuredExecutionResponses];
+
+export type ReleaseOeStructuredExecutionData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+        /**
+         * Execution Id
+         */
+        execution_id: string;
+    };
+    query?: never;
+    url: '/api/v1/engine-runs/structured-search/runs/{run_id}/executions/{execution_id}/release';
+};
+
+export type ReleaseOeStructuredExecutionErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReleaseOeStructuredExecutionError = ReleaseOeStructuredExecutionErrors[keyof ReleaseOeStructuredExecutionErrors];
+
+export type ReleaseOeStructuredExecutionResponses = {
+    /**
+     * Successful Response
+     */
+    200: NormalExecutionRelease;
+};
+
+export type ReleaseOeStructuredExecutionResponse = ReleaseOeStructuredExecutionResponses[keyof ReleaseOeStructuredExecutionResponses];
+
+export type ListOeStructuredSnapshotsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/engine-runs/structured-search/snapshots';
+};
+
+export type ListOeStructuredSnapshotsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ListOeStructuredSnapshotsError = ListOeStructuredSnapshotsErrors[keyof ListOeStructuredSnapshotsErrors];
+
+export type ListOeStructuredSnapshotsResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredSnapshotPage;
+};
+
+export type ListOeStructuredSnapshotsResponse = ListOeStructuredSnapshotsResponses[keyof ListOeStructuredSnapshotsResponses];
 
 export type ReadRunApiV1EngineRunsRunIdGetData = {
     body?: never;
@@ -19693,6 +22477,57 @@ export type ListFactorExecutionRecordsResponses = {
 };
 
 export type ListFactorExecutionRecordsResponse = ListFactorExecutionRecordsResponses[keyof ListFactorExecutionRecordsResponses];
+
+export type FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Factor Id
+         */
+        factor_id: string;
+        /**
+         * Version Id
+         */
+        version_id: string;
+    };
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+    };
+    url: '/api/v1/factors/{factor_id}/versions/{version_id}/normal-oe-executions';
+};
+
+export type FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetError = FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetErrors[keyof FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetErrors];
+
+export type FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredExecutionRecords;
+};
+
+export type FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetResponse = FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetResponses[keyof FactorNormalOeRecordsApiV1FactorsFactorIdVersionsVersionIdNormalOeExecutionsGetResponses];
 
 export type FactorExecutionRecordsApiV1FactorsFactorIdVersionsVersionIdStructuredExecutionsGetData = {
     body?: never;
@@ -23636,6 +26471,237 @@ export type ReadResearchReturnAnalysisResponses = {
 
 export type ReadResearchReturnAnalysisResponse = ReadResearchReturnAnalysisResponses[keyof ReadResearchReturnAnalysisResponses];
 
+export type RetainExternalInputApiV1ResearchInputsExternalObjectsPostData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-inputs/external-objects';
+};
+
+export type RetainExternalInputApiV1ResearchInputsExternalObjectsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type RetainExternalInputApiV1ResearchInputsExternalObjectsPostError = RetainExternalInputApiV1ResearchInputsExternalObjectsPostErrors[keyof RetainExternalInputApiV1ResearchInputsExternalObjectsPostErrors];
+
+export type RetainExternalInputApiV1ResearchInputsExternalObjectsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: RetainedExternalInput;
+};
+
+export type RetainExternalInputApiV1ResearchInputsExternalObjectsPostResponse = RetainExternalInputApiV1ResearchInputsExternalObjectsPostResponses[keyof RetainExternalInputApiV1ResearchInputsExternalObjectsPostResponses];
+
+export type ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetData = {
+    body?: never;
+    path: {
+        /**
+         * Object Id
+         */
+        object_id: string;
+    };
+    query: {
+        /**
+         * Expected Sha256
+         */
+        expected_sha256: string;
+    };
+    url: '/api/v1/research-inputs/external-objects/{object_id}/content';
+};
+
+export type ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetError = ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetErrors[keyof ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetErrors];
+
+export type ExternalInputContentApiV1ResearchInputsExternalObjectsObjectIdContentGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetData = {
+    body?: never;
+    path: {
+        /**
+         * Version Id
+         */
+        version_id: string;
+    };
+    query: {
+        /**
+         * Expected Sha256
+         */
+        expected_sha256: string;
+    };
+    url: '/api/v1/research-inputs/feedback-versions/{version_id}/content';
+};
+
+export type FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetError = FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetErrors[keyof FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetErrors];
+
+export type FeedbackInputContentApiV1ResearchInputsFeedbackVersionsVersionIdContentGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetData = {
+    body?: never;
+    path: {
+        /**
+         * Version Id
+         */
+        version_id: string;
+    };
+    query: {
+        /**
+         * Expected Sha256
+         */
+        expected_sha256: string;
+    };
+    url: '/api/v1/research-inputs/versions/{version_id}/content';
+};
+
+export type NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetError = NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetErrors[keyof NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetErrors];
+
+export type NormalizedInputContentApiV1ResearchInputsVersionsVersionIdContentGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
+};
+
+export type CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Run Id
+         */
+        run_id: string;
+        /**
+         * Execution Id
+         */
+        execution_id: string;
+    };
+    query: {
+        /**
+         * Kind
+         */
+        kind: string;
+        /**
+         * Decision Sequence
+         */
+        decision_sequence?: number | null;
+        /**
+         * Native Fill Id
+         */
+        native_fill_id?: string | null;
+    };
+    url: '/api/v1/research-note-evidence/normal-oe/{run_id}/{execution_id}';
+};
+
+export type CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetError = CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetErrors[keyof CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetErrors];
+
+export type CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: NormalOeNoteCapture;
+};
+
+export type CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetResponse = CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetResponses[keyof CaptureNormalOeEvidenceApiV1ResearchNoteEvidenceNormalOeRunIdExecutionIdGetResponses];
+
 export type ListResearchNotesData = {
     body?: never;
     path?: never;
@@ -24585,6 +27651,3073 @@ export type ListResearchTemplatesResponses = {
 };
 
 export type ListResearchTemplatesResponse = ListResearchTemplatesResponses[keyof ListResearchTemplatesResponses];
+
+export type ManualOptionsApiV1ResearchWorkflowInputsManualGetData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Offset
+         */
+        offset?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/research-workflow-inputs/manual';
+};
+
+export type ManualOptionsApiV1ResearchWorkflowInputsManualGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ManualOptionsApiV1ResearchWorkflowInputsManualGetError = ManualOptionsApiV1ResearchWorkflowInputsManualGetErrors[keyof ManualOptionsApiV1ResearchWorkflowInputsManualGetErrors];
+
+export type ManualOptionsApiV1ResearchWorkflowInputsManualGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowManualOptions;
+};
+
+export type ManualOptionsApiV1ResearchWorkflowInputsManualGetResponse = ManualOptionsApiV1ResearchWorkflowInputsManualGetResponses[keyof ManualOptionsApiV1ResearchWorkflowInputsManualGetResponses];
+
+export type CreateWorkflowApiV1ResearchWorkflowsPostData = {
+    /**
+     * WorkflowSubmit
+     */
+    body: {
+        /**
+         * Idempotency Key
+         */
+        idempotency_key: string;
+        /**
+         * Preflight Sha256
+         */
+        preflight_sha256: string;
+        /**
+         * WorkflowRequest
+         */
+        request: {
+            /**
+             * Allow Workflow Development Feedback Release
+             */
+            allow_workflow_development_feedback_release?: boolean;
+            /**
+             * BudgetVector
+             */
+            budget_ceiling: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            external_definition?: {
+                /**
+                 * ExternalFeedMapping
+                 *
+                 * Owner/workflow-selected JSON paths; no JSONPath evaluation or URL fetch.
+                 */
+                mapping: {
+                    /**
+                     * Items Path
+                     */
+                    items_path?: Array<string | number>;
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direction' | 'hypothesis' | 'constraints';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.external-feed-mapping.v1';
+                    /**
+                     * Text Path
+                     */
+                    text_path?: Array<string | number>;
+                    /**
+                     * Title Path
+                     */
+                    title_path?: Array<string | number> | null;
+                };
+                /**
+                 * Raw Object Id
+                 */
+                raw_object_id: string;
+                /**
+                 * Raw Sha256
+                 */
+                raw_sha256: string;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.external-normalization-stage.v1';
+            } | null;
+            /**
+             * Maximum Iterations
+             */
+            maximum_iterations: number;
+            /**
+             * Mode
+             */
+            mode?: 'continuous' | 'pause_after_stage';
+            /**
+             * Refs
+             */
+            refs?: Array<{
+                /**
+                 * Content Sha256
+                 */
+                content_sha256: string;
+                /**
+                 * Origin
+                 */
+                origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+                /**
+                 * Record Id
+                 */
+                record_id: string;
+                /**
+                 * Version Id
+                 */
+                version_id: string;
+            }>;
+            /**
+             * Research
+             */
+            research: {
+                /**
+                 * BudgetVector
+                 */
+                budget: {
+                    /**
+                     * Calls
+                     */
+                    calls?: number;
+                    /**
+                     * Cost Microunits
+                     */
+                    cost_microunits?: number;
+                    /**
+                     * Evaluator Executions
+                     */
+                    evaluator_executions?: number;
+                    /**
+                     * Mutation Slots
+                     */
+                    mutation_slots?: number;
+                    /**
+                     * Process Slots
+                     */
+                    process_slots?: number;
+                    /**
+                     * Storage Bytes
+                     */
+                    storage_bytes?: number;
+                    /**
+                     * Tokens
+                     */
+                    tokens?: number;
+                    /**
+                     * Wall Milliseconds
+                     */
+                    wall_milliseconds?: number;
+                };
+                /**
+                 * Dataset Version Id
+                 */
+                dataset_version_id: string;
+                /**
+                 * Engine
+                 */
+                engine?: 'rdagent';
+                /**
+                 * Input Fields
+                 */
+                input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+                /**
+                 * Lag Sessions
+                 */
+                lag_sessions: number;
+                /**
+                 * Lookback Sessions
+                 */
+                lookback_sessions: number;
+                /**
+                 * Max Iterations
+                 */
+                max_iterations: number;
+                /**
+                 * Model Profile Id
+                 */
+                model_profile_id: string;
+                /**
+                 * DirectObjectiveDeclaration
+                 */
+                objective: {
+                    /**
+                     * Aggregation
+                     */
+                    aggregation?: 'arithmetic_mean_of_defined_days';
+                    /**
+                     * Direction
+                     */
+                    direction: 'at_least' | 'at_most';
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direct_factor_analysis';
+                    /**
+                     * Label Horizon Sessions
+                     */
+                    label_horizon_sessions: number;
+                    /**
+                     * Metric
+                     */
+                    metric: 'ic' | 'rank_ic';
+                    /**
+                     * Minimum Defined Days
+                     */
+                    minimum_defined_days: number;
+                    /**
+                     * Minimum Pairs
+                     */
+                    minimum_pairs: number;
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.direct-factor-objective.v1';
+                    /**
+                     * Selection Claim
+                     */
+                    selection_claim?: 'research_selection_not_out_of_sample_performance';
+                    /**
+                     * Threshold
+                     */
+                    threshold: number;
+                    /**
+                     * DateWindow
+                     */
+                    window: {
+                        /**
+                         * End
+                         */
+                        end: string;
+                        /**
+                         * Start
+                         */
+                        start: string;
+                    };
+                };
+                /**
+                 * Purpose
+                 */
+                purpose?: 'factor_research';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-provider-submission.v1';
+                /**
+                 * Selected Steer Version Ids
+                 */
+                selected_steer_version_ids?: Array<string>;
+                /**
+                 * ConfiguredSourcePolicy
+                 */
+                source_policy: {
+                    /**
+                     * Acknowledged Unverified
+                     */
+                    acknowledged_unverified: true;
+                    /**
+                     * Availability
+                     */
+                    availability?: 'declared_session_close_not_verified';
+                    /**
+                     * Membership
+                     */
+                    membership?: 'user_fixed_declared_at_source_start';
+                    /**
+                     * Price Basis
+                     */
+                    price_basis?: 'unadjusted';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+                };
+                /**
+                 * FactorTaskSpec
+                 */
+                task: {
+                    /**
+                     * Description
+                     */
+                    description: string;
+                    /**
+                     * Explanation Origin
+                     */
+                    explanation_origin?: 'task_declaration';
+                    /**
+                     * Factor Kind
+                     */
+                    factor_kind: 'cross_sectional' | 'time_series';
+                    /**
+                     * Formulation
+                     */
+                    formulation: string;
+                    /**
+                     * Interpretation
+                     */
+                    interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                    /**
+                     * Name
+                     */
+                    name: string;
+                    /**
+                     * Output Unit
+                     */
+                    output_unit: string;
+                };
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            } | {
+                /**
+                 * BudgetVector
+                 */
+                budget: {
+                    /**
+                     * Calls
+                     */
+                    calls?: number;
+                    /**
+                     * Cost Microunits
+                     */
+                    cost_microunits?: number;
+                    /**
+                     * Evaluator Executions
+                     */
+                    evaluator_executions?: number;
+                    /**
+                     * Mutation Slots
+                     */
+                    mutation_slots?: number;
+                    /**
+                     * Process Slots
+                     */
+                    process_slots?: number;
+                    /**
+                     * Storage Bytes
+                     */
+                    storage_bytes?: number;
+                    /**
+                     * Tokens
+                     */
+                    tokens?: number;
+                    /**
+                     * Wall Milliseconds
+                     */
+                    wall_milliseconds?: number;
+                };
+                /**
+                 * Dataset Version Id
+                 */
+                dataset_version_id: string;
+                /**
+                 * Engine
+                 */
+                engine?: 'rdagent';
+                /**
+                 * Input Fields
+                 */
+                input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+                /**
+                 * Lag Sessions
+                 */
+                lag_sessions: number;
+                /**
+                 * Lookback Sessions
+                 */
+                lookback_sessions: number;
+                /**
+                 * Max Iterations
+                 */
+                max_iterations: number;
+                /**
+                 * Model Profile Id
+                 */
+                model_profile_id: string;
+                /**
+                 * DirectObjectiveDeclaration
+                 */
+                objective: {
+                    /**
+                     * Aggregation
+                     */
+                    aggregation?: 'arithmetic_mean_of_defined_days';
+                    /**
+                     * Direction
+                     */
+                    direction: 'at_least' | 'at_most';
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direct_factor_analysis';
+                    /**
+                     * Label Horizon Sessions
+                     */
+                    label_horizon_sessions: number;
+                    /**
+                     * Metric
+                     */
+                    metric: 'ic' | 'rank_ic';
+                    /**
+                     * Minimum Defined Days
+                     */
+                    minimum_defined_days: number;
+                    /**
+                     * Minimum Pairs
+                     */
+                    minimum_pairs: number;
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.direct-factor-objective.v1';
+                    /**
+                     * Selection Claim
+                     */
+                    selection_claim?: 'research_selection_not_out_of_sample_performance';
+                    /**
+                     * Threshold
+                     */
+                    threshold: number;
+                    /**
+                     * DateWindow
+                     */
+                    window: {
+                        /**
+                         * End
+                         */
+                        end: string;
+                        /**
+                         * Start
+                         */
+                        start: string;
+                    };
+                };
+                /**
+                 * Parent Factor Version Id
+                 */
+                parent_factor_version_id: string;
+                /**
+                 * Purpose
+                 */
+                purpose?: 'factor_research';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-provider-seeded-submission.v1';
+                /**
+                 * Selected Steer Version Ids
+                 */
+                selected_steer_version_ids?: Array<string>;
+                /**
+                 * ConfiguredSourcePolicy
+                 */
+                source_policy: {
+                    /**
+                     * Acknowledged Unverified
+                     */
+                    acknowledged_unverified: true;
+                    /**
+                     * Availability
+                     */
+                    availability?: 'declared_session_close_not_verified';
+                    /**
+                     * Membership
+                     */
+                    membership?: 'user_fixed_declared_at_source_start';
+                    /**
+                     * Price Basis
+                     */
+                    price_basis?: 'unadjusted';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+                };
+                /**
+                 * FactorTaskSpec
+                 */
+                task: {
+                    /**
+                     * Description
+                     */
+                    description: string;
+                    /**
+                     * Explanation Origin
+                     */
+                    explanation_origin?: 'task_declaration';
+                    /**
+                     * Factor Kind
+                     */
+                    factor_kind: 'cross_sectional' | 'time_series';
+                    /**
+                     * Formulation
+                     */
+                    formulation: string;
+                    /**
+                     * Interpretation
+                     */
+                    interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                    /**
+                     * Name
+                     */
+                    name: string;
+                    /**
+                     * Output Unit
+                     */
+                    output_unit: string;
+                };
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.workflow-public-request.v1';
+        };
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-public-submit.v1';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-workflows';
+};
+
+export type CreateWorkflowApiV1ResearchWorkflowsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateWorkflowApiV1ResearchWorkflowsPostError = CreateWorkflowApiV1ResearchWorkflowsPostErrors[keyof CreateWorkflowApiV1ResearchWorkflowsPostErrors];
+
+export type CreateWorkflowApiV1ResearchWorkflowsPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: WorkflowCreated;
+};
+
+export type CreateWorkflowApiV1ResearchWorkflowsPostResponse = CreateWorkflowApiV1ResearchWorkflowsPostResponses[keyof CreateWorkflowApiV1ResearchWorkflowsPostResponses];
+
+export type AvailabilityApiV1ResearchWorkflowsCapabilitiesGetData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-workflows/capabilities';
+};
+
+export type AvailabilityApiV1ResearchWorkflowsCapabilitiesGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type AvailabilityApiV1ResearchWorkflowsCapabilitiesGetError = AvailabilityApiV1ResearchWorkflowsCapabilitiesGetErrors[keyof AvailabilityApiV1ResearchWorkflowsCapabilitiesGetErrors];
+
+export type AvailabilityApiV1ResearchWorkflowsCapabilitiesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowAvailability;
+};
+
+export type AvailabilityApiV1ResearchWorkflowsCapabilitiesGetResponse = AvailabilityApiV1ResearchWorkflowsCapabilitiesGetResponses[keyof AvailabilityApiV1ResearchWorkflowsCapabilitiesGetResponses];
+
+export type PreflightWorkflowApiV1ResearchWorkflowsPreflightPostData = {
+    /**
+     * WorkflowRequest
+     */
+    body: {
+        /**
+         * Allow Workflow Development Feedback Release
+         */
+        allow_workflow_development_feedback_release?: boolean;
+        /**
+         * BudgetVector
+         */
+        budget_ceiling: {
+            /**
+             * Calls
+             */
+            calls?: number;
+            /**
+             * Cost Microunits
+             */
+            cost_microunits?: number;
+            /**
+             * Evaluator Executions
+             */
+            evaluator_executions?: number;
+            /**
+             * Mutation Slots
+             */
+            mutation_slots?: number;
+            /**
+             * Process Slots
+             */
+            process_slots?: number;
+            /**
+             * Storage Bytes
+             */
+            storage_bytes?: number;
+            /**
+             * Tokens
+             */
+            tokens?: number;
+            /**
+             * Wall Milliseconds
+             */
+            wall_milliseconds?: number;
+        };
+        external_definition?: {
+            /**
+             * ExternalFeedMapping
+             *
+             * Owner/workflow-selected JSON paths; no JSONPath evaluation or URL fetch.
+             */
+            mapping: {
+                /**
+                 * Items Path
+                 */
+                items_path?: Array<string | number>;
+                /**
+                 * Kind
+                 */
+                kind?: 'direction' | 'hypothesis' | 'constraints';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.external-feed-mapping.v1';
+                /**
+                 * Text Path
+                 */
+                text_path?: Array<string | number>;
+                /**
+                 * Title Path
+                 */
+                title_path?: Array<string | number> | null;
+            };
+            /**
+             * Raw Object Id
+             */
+            raw_object_id: string;
+            /**
+             * Raw Sha256
+             */
+            raw_sha256: string;
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.external-normalization-stage.v1';
+        } | null;
+        /**
+         * Maximum Iterations
+         */
+        maximum_iterations: number;
+        /**
+         * Mode
+         */
+        mode?: 'continuous' | 'pause_after_stage';
+        /**
+         * Refs
+         */
+        refs?: Array<{
+            /**
+             * Content Sha256
+             */
+            content_sha256: string;
+            /**
+             * Origin
+             */
+            origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+            /**
+             * Record Id
+             */
+            record_id: string;
+            /**
+             * Version Id
+             */
+            version_id: string;
+        }>;
+        /**
+         * Research
+         */
+        research: {
+            /**
+             * BudgetVector
+             */
+            budget: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            /**
+             * Dataset Version Id
+             */
+            dataset_version_id: string;
+            /**
+             * Engine
+             */
+            engine?: 'rdagent';
+            /**
+             * Input Fields
+             */
+            input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+            /**
+             * Lag Sessions
+             */
+            lag_sessions: number;
+            /**
+             * Lookback Sessions
+             */
+            lookback_sessions: number;
+            /**
+             * Max Iterations
+             */
+            max_iterations: number;
+            /**
+             * Model Profile Id
+             */
+            model_profile_id: string;
+            /**
+             * DirectObjectiveDeclaration
+             */
+            objective: {
+                /**
+                 * Aggregation
+                 */
+                aggregation?: 'arithmetic_mean_of_defined_days';
+                /**
+                 * Direction
+                 */
+                direction: 'at_least' | 'at_most';
+                /**
+                 * Kind
+                 */
+                kind?: 'direct_factor_analysis';
+                /**
+                 * Label Horizon Sessions
+                 */
+                label_horizon_sessions: number;
+                /**
+                 * Metric
+                 */
+                metric: 'ic' | 'rank_ic';
+                /**
+                 * Minimum Defined Days
+                 */
+                minimum_defined_days: number;
+                /**
+                 * Minimum Pairs
+                 */
+                minimum_pairs: number;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.direct-factor-objective.v1';
+                /**
+                 * Selection Claim
+                 */
+                selection_claim?: 'research_selection_not_out_of_sample_performance';
+                /**
+                 * Threshold
+                 */
+                threshold: number;
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Purpose
+             */
+            purpose?: 'factor_research';
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.rdagent-provider-submission.v1';
+            /**
+             * Selected Steer Version Ids
+             */
+            selected_steer_version_ids?: Array<string>;
+            /**
+             * ConfiguredSourcePolicy
+             */
+            source_policy: {
+                /**
+                 * Acknowledged Unverified
+                 */
+                acknowledged_unverified: true;
+                /**
+                 * Availability
+                 */
+                availability?: 'declared_session_close_not_verified';
+                /**
+                 * Membership
+                 */
+                membership?: 'user_fixed_declared_at_source_start';
+                /**
+                 * Price Basis
+                 */
+                price_basis?: 'unadjusted';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+            };
+            /**
+             * FactorTaskSpec
+             */
+            task: {
+                /**
+                 * Description
+                 */
+                description: string;
+                /**
+                 * Explanation Origin
+                 */
+                explanation_origin?: 'task_declaration';
+                /**
+                 * Factor Kind
+                 */
+                factor_kind: 'cross_sectional' | 'time_series';
+                /**
+                 * Formulation
+                 */
+                formulation: string;
+                /**
+                 * Interpretation
+                 */
+                interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                /**
+                 * Name
+                 */
+                name: string;
+                /**
+                 * Output Unit
+                 */
+                output_unit: string;
+            };
+            /**
+             * DateWindow
+             */
+            window: {
+                /**
+                 * End
+                 */
+                end: string;
+                /**
+                 * Start
+                 */
+                start: string;
+            };
+        } | {
+            /**
+             * BudgetVector
+             */
+            budget: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            /**
+             * Dataset Version Id
+             */
+            dataset_version_id: string;
+            /**
+             * Engine
+             */
+            engine?: 'rdagent';
+            /**
+             * Input Fields
+             */
+            input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+            /**
+             * Lag Sessions
+             */
+            lag_sessions: number;
+            /**
+             * Lookback Sessions
+             */
+            lookback_sessions: number;
+            /**
+             * Max Iterations
+             */
+            max_iterations: number;
+            /**
+             * Model Profile Id
+             */
+            model_profile_id: string;
+            /**
+             * DirectObjectiveDeclaration
+             */
+            objective: {
+                /**
+                 * Aggregation
+                 */
+                aggregation?: 'arithmetic_mean_of_defined_days';
+                /**
+                 * Direction
+                 */
+                direction: 'at_least' | 'at_most';
+                /**
+                 * Kind
+                 */
+                kind?: 'direct_factor_analysis';
+                /**
+                 * Label Horizon Sessions
+                 */
+                label_horizon_sessions: number;
+                /**
+                 * Metric
+                 */
+                metric: 'ic' | 'rank_ic';
+                /**
+                 * Minimum Defined Days
+                 */
+                minimum_defined_days: number;
+                /**
+                 * Minimum Pairs
+                 */
+                minimum_pairs: number;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.direct-factor-objective.v1';
+                /**
+                 * Selection Claim
+                 */
+                selection_claim?: 'research_selection_not_out_of_sample_performance';
+                /**
+                 * Threshold
+                 */
+                threshold: number;
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Parent Factor Version Id
+             */
+            parent_factor_version_id: string;
+            /**
+             * Purpose
+             */
+            purpose?: 'factor_research';
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.rdagent-provider-seeded-submission.v1';
+            /**
+             * Selected Steer Version Ids
+             */
+            selected_steer_version_ids?: Array<string>;
+            /**
+             * ConfiguredSourcePolicy
+             */
+            source_policy: {
+                /**
+                 * Acknowledged Unverified
+                 */
+                acknowledged_unverified: true;
+                /**
+                 * Availability
+                 */
+                availability?: 'declared_session_close_not_verified';
+                /**
+                 * Membership
+                 */
+                membership?: 'user_fixed_declared_at_source_start';
+                /**
+                 * Price Basis
+                 */
+                price_basis?: 'unadjusted';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+            };
+            /**
+             * FactorTaskSpec
+             */
+            task: {
+                /**
+                 * Description
+                 */
+                description: string;
+                /**
+                 * Explanation Origin
+                 */
+                explanation_origin?: 'task_declaration';
+                /**
+                 * Factor Kind
+                 */
+                factor_kind: 'cross_sectional' | 'time_series';
+                /**
+                 * Formulation
+                 */
+                formulation: string;
+                /**
+                 * Interpretation
+                 */
+                interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                /**
+                 * Name
+                 */
+                name: string;
+                /**
+                 * Output Unit
+                 */
+                output_unit: string;
+            };
+            /**
+             * DateWindow
+             */
+            window: {
+                /**
+                 * End
+                 */
+                end: string;
+                /**
+                 * Start
+                 */
+                start: string;
+            };
+        };
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-public-request.v1';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-workflows/preflight';
+};
+
+export type PreflightWorkflowApiV1ResearchWorkflowsPreflightPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type PreflightWorkflowApiV1ResearchWorkflowsPreflightPostError = PreflightWorkflowApiV1ResearchWorkflowsPreflightPostErrors[keyof PreflightWorkflowApiV1ResearchWorkflowsPreflightPostErrors];
+
+export type PreflightWorkflowApiV1ResearchWorkflowsPreflightPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowPreflight;
+};
+
+export type PreflightWorkflowApiV1ResearchWorkflowsPreflightPostResponse = PreflightWorkflowApiV1ResearchWorkflowsPreflightPostResponses[keyof PreflightWorkflowApiV1ResearchWorkflowsPreflightPostResponses];
+
+export type CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostData = {
+    /**
+     * StructuredWorkflowSubmit
+     */
+    body: {
+        /**
+         * Idempotency Key
+         */
+        idempotency_key: string;
+        /**
+         * Preflight Sha256
+         */
+        preflight_sha256: string;
+        /**
+         * StructuredWorkflowRequest
+         */
+        request: {
+            /**
+             * Allow Workflow Development Feedback Release
+             */
+            allow_workflow_development_feedback_release?: boolean;
+            /**
+             * BudgetVector
+             */
+            budget_ceiling: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            external_definition?: {
+                /**
+                 * ExternalFeedMapping
+                 *
+                 * Owner/workflow-selected JSON paths; no JSONPath evaluation or URL fetch.
+                 */
+                mapping: {
+                    /**
+                     * Items Path
+                     */
+                    items_path?: Array<string | number>;
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direction' | 'hypothesis' | 'constraints';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.external-feed-mapping.v1';
+                    /**
+                     * Text Path
+                     */
+                    text_path?: Array<string | number>;
+                    /**
+                     * Title Path
+                     */
+                    title_path?: Array<string | number> | null;
+                };
+                /**
+                 * Raw Object Id
+                 */
+                raw_object_id: string;
+                /**
+                 * Raw Sha256
+                 */
+                raw_sha256: string;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.external-normalization-stage.v1';
+            } | null;
+            /**
+             * Maximum Iterations
+             */
+            maximum_iterations: number;
+            /**
+             * Mode
+             */
+            mode?: 'continuous' | 'pause_after_stage';
+            /**
+             * Refs
+             */
+            refs?: Array<{
+                /**
+                 * Content Sha256
+                 */
+                content_sha256: string;
+                /**
+                 * Origin
+                 */
+                origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+                /**
+                 * Record Id
+                 */
+                record_id: string;
+                /**
+                 * Version Id
+                 */
+                version_id: string;
+            }>;
+            /**
+             * Research
+             */
+            research: {
+                /**
+                 * BudgetVector
+                 */
+                budget: {
+                    /**
+                     * Calls
+                     */
+                    calls?: number;
+                    /**
+                     * Cost Microunits
+                     */
+                    cost_microunits?: number;
+                    /**
+                     * Evaluator Executions
+                     */
+                    evaluator_executions?: number;
+                    /**
+                     * Mutation Slots
+                     */
+                    mutation_slots?: number;
+                    /**
+                     * Process Slots
+                     */
+                    process_slots?: number;
+                    /**
+                     * Storage Bytes
+                     */
+                    storage_bytes?: number;
+                    /**
+                     * Tokens
+                     */
+                    tokens?: number;
+                    /**
+                     * Wall Milliseconds
+                     */
+                    wall_milliseconds?: number;
+                };
+                /**
+                 * Dataset Version Id
+                 */
+                dataset_version_id: string;
+                /**
+                 * Engine
+                 */
+                engine?: 'rdagent';
+                /**
+                 * Input Fields
+                 */
+                input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+                /**
+                 * Lag Sessions
+                 */
+                lag_sessions: number;
+                /**
+                 * Lookback Sessions
+                 */
+                lookback_sessions: number;
+                /**
+                 * Max Iterations
+                 */
+                max_iterations: number;
+                /**
+                 * Model Profile Id
+                 */
+                model_profile_id: string;
+                /**
+                 * DirectObjectiveDeclaration
+                 */
+                objective: {
+                    /**
+                     * Aggregation
+                     */
+                    aggregation?: 'arithmetic_mean_of_defined_days';
+                    /**
+                     * Direction
+                     */
+                    direction: 'at_least' | 'at_most';
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direct_factor_analysis';
+                    /**
+                     * Label Horizon Sessions
+                     */
+                    label_horizon_sessions: number;
+                    /**
+                     * Metric
+                     */
+                    metric: 'ic' | 'rank_ic';
+                    /**
+                     * Minimum Defined Days
+                     */
+                    minimum_defined_days: number;
+                    /**
+                     * Minimum Pairs
+                     */
+                    minimum_pairs: number;
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.direct-factor-objective.v1';
+                    /**
+                     * Selection Claim
+                     */
+                    selection_claim?: 'research_selection_not_out_of_sample_performance';
+                    /**
+                     * Threshold
+                     */
+                    threshold: number;
+                    /**
+                     * DateWindow
+                     */
+                    window: {
+                        /**
+                         * End
+                         */
+                        end: string;
+                        /**
+                         * Start
+                         */
+                        start: string;
+                    };
+                };
+                /**
+                 * Purpose
+                 */
+                purpose?: 'factor_research';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-provider-submission.v1';
+                /**
+                 * Selected Steer Version Ids
+                 */
+                selected_steer_version_ids?: Array<string>;
+                /**
+                 * ConfiguredSourcePolicy
+                 */
+                source_policy: {
+                    /**
+                     * Acknowledged Unverified
+                     */
+                    acknowledged_unverified: true;
+                    /**
+                     * Availability
+                     */
+                    availability?: 'declared_session_close_not_verified';
+                    /**
+                     * Membership
+                     */
+                    membership?: 'user_fixed_declared_at_source_start';
+                    /**
+                     * Price Basis
+                     */
+                    price_basis?: 'unadjusted';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+                };
+                /**
+                 * FactorTaskSpec
+                 */
+                task: {
+                    /**
+                     * Description
+                     */
+                    description: string;
+                    /**
+                     * Explanation Origin
+                     */
+                    explanation_origin?: 'task_declaration';
+                    /**
+                     * Factor Kind
+                     */
+                    factor_kind: 'cross_sectional' | 'time_series';
+                    /**
+                     * Formulation
+                     */
+                    formulation: string;
+                    /**
+                     * Interpretation
+                     */
+                    interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                    /**
+                     * Name
+                     */
+                    name: string;
+                    /**
+                     * Output Unit
+                     */
+                    output_unit: string;
+                };
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            } | {
+                /**
+                 * BudgetVector
+                 */
+                budget: {
+                    /**
+                     * Calls
+                     */
+                    calls?: number;
+                    /**
+                     * Cost Microunits
+                     */
+                    cost_microunits?: number;
+                    /**
+                     * Evaluator Executions
+                     */
+                    evaluator_executions?: number;
+                    /**
+                     * Mutation Slots
+                     */
+                    mutation_slots?: number;
+                    /**
+                     * Process Slots
+                     */
+                    process_slots?: number;
+                    /**
+                     * Storage Bytes
+                     */
+                    storage_bytes?: number;
+                    /**
+                     * Tokens
+                     */
+                    tokens?: number;
+                    /**
+                     * Wall Milliseconds
+                     */
+                    wall_milliseconds?: number;
+                };
+                /**
+                 * Dataset Version Id
+                 */
+                dataset_version_id: string;
+                /**
+                 * Engine
+                 */
+                engine?: 'rdagent';
+                /**
+                 * Input Fields
+                 */
+                input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+                /**
+                 * Lag Sessions
+                 */
+                lag_sessions: number;
+                /**
+                 * Lookback Sessions
+                 */
+                lookback_sessions: number;
+                /**
+                 * Max Iterations
+                 */
+                max_iterations: number;
+                /**
+                 * Model Profile Id
+                 */
+                model_profile_id: string;
+                /**
+                 * DirectObjectiveDeclaration
+                 */
+                objective: {
+                    /**
+                     * Aggregation
+                     */
+                    aggregation?: 'arithmetic_mean_of_defined_days';
+                    /**
+                     * Direction
+                     */
+                    direction: 'at_least' | 'at_most';
+                    /**
+                     * Kind
+                     */
+                    kind?: 'direct_factor_analysis';
+                    /**
+                     * Label Horizon Sessions
+                     */
+                    label_horizon_sessions: number;
+                    /**
+                     * Metric
+                     */
+                    metric: 'ic' | 'rank_ic';
+                    /**
+                     * Minimum Defined Days
+                     */
+                    minimum_defined_days: number;
+                    /**
+                     * Minimum Pairs
+                     */
+                    minimum_pairs: number;
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.direct-factor-objective.v1';
+                    /**
+                     * Selection Claim
+                     */
+                    selection_claim?: 'research_selection_not_out_of_sample_performance';
+                    /**
+                     * Threshold
+                     */
+                    threshold: number;
+                    /**
+                     * DateWindow
+                     */
+                    window: {
+                        /**
+                         * End
+                         */
+                        end: string;
+                        /**
+                         * Start
+                         */
+                        start: string;
+                    };
+                };
+                /**
+                 * Parent Factor Version Id
+                 */
+                parent_factor_version_id: string;
+                /**
+                 * Purpose
+                 */
+                purpose?: 'factor_research';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-provider-seeded-submission.v1';
+                /**
+                 * Selected Steer Version Ids
+                 */
+                selected_steer_version_ids?: Array<string>;
+                /**
+                 * ConfiguredSourcePolicy
+                 */
+                source_policy: {
+                    /**
+                     * Acknowledged Unverified
+                     */
+                    acknowledged_unverified: true;
+                    /**
+                     * Availability
+                     */
+                    availability?: 'declared_session_close_not_verified';
+                    /**
+                     * Membership
+                     */
+                    membership?: 'user_fixed_declared_at_source_start';
+                    /**
+                     * Price Basis
+                     */
+                    price_basis?: 'unadjusted';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+                };
+                /**
+                 * FactorTaskSpec
+                 */
+                task: {
+                    /**
+                     * Description
+                     */
+                    description: string;
+                    /**
+                     * Explanation Origin
+                     */
+                    explanation_origin?: 'task_declaration';
+                    /**
+                     * Factor Kind
+                     */
+                    factor_kind: 'cross_sectional' | 'time_series';
+                    /**
+                     * Formulation
+                     */
+                    formulation: string;
+                    /**
+                     * Interpretation
+                     */
+                    interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                    /**
+                     * Name
+                     */
+                    name: string;
+                    /**
+                     * Output Unit
+                     */
+                    output_unit: string;
+                };
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.workflow-public-request.v2';
+            /**
+             * WorkflowStructuredChoice
+             */
+            structured: {
+                /**
+                 * BudgetVector
+                 */
+                budget: {
+                    /**
+                     * Calls
+                     */
+                    calls?: number;
+                    /**
+                     * Cost Microunits
+                     */
+                    cost_microunits?: number;
+                    /**
+                     * Evaluator Executions
+                     */
+                    evaluator_executions?: number;
+                    /**
+                     * Mutation Slots
+                     */
+                    mutation_slots?: number;
+                    /**
+                     * Process Slots
+                     */
+                    process_slots?: number;
+                    /**
+                     * Storage Bytes
+                     */
+                    storage_bytes?: number;
+                    /**
+                     * Tokens
+                     */
+                    tokens?: number;
+                    /**
+                     * Wall Milliseconds
+                     */
+                    wall_milliseconds?: number;
+                };
+                /**
+                 * Maximum Mutation Slots
+                 */
+                maximum_mutation_slots: number;
+                /**
+                 * Model Binding Sha256
+                 */
+                model_binding_sha256: string;
+                /**
+                 * Model Profile Id
+                 */
+                model_profile_id: string;
+                /**
+                 * StructuredObjective
+                 */
+                objective: {
+                    /**
+                     * Direction
+                     */
+                    direction?: 'maximize';
+                    /**
+                     * Initial Cash
+                     */
+                    initial_cash: number;
+                    /**
+                     * Metric
+                     */
+                    metric?: 'total_return_pct_minus_max_drawdown_pct';
+                    /**
+                     * Minimum Closed Trades
+                     */
+                    minimum_closed_trades?: number | null;
+                    /**
+                     * Missing Policy
+                     */
+                    missing_policy?: 'ineligible_null_score';
+                    /**
+                     * Precision
+                     */
+                    precision?: 'unrounded_native_accounting';
+                    /**
+                     * Schema Version
+                     */
+                    schema_version?: 'mineagent.oe-structured-objective.v1';
+                    /**
+                     * Source
+                     */
+                    source?: 'validated_closed_engine_accounting_summary';
+                    /**
+                     * Unit
+                     */
+                    unit?: 'percentage_points';
+                    /**
+                     * DateWindow
+                     */
+                    window: {
+                        /**
+                         * End
+                         */
+                        end: string;
+                        /**
+                         * Start
+                         */
+                        start: string;
+                    };
+                };
+                /**
+                 * StructuredSeedParameters
+                 */
+                seed_parameters: {
+                    /**
+                     * Maximum Gross Weight
+                     */
+                    maximum_gross_weight: number;
+                    /**
+                     * Maximum Weight
+                     */
+                    maximum_weight: number;
+                    /**
+                     * Threshold
+                     */
+                    threshold: number;
+                    /**
+                     * Top K
+                     */
+                    top_k: number;
+                };
+            };
+        };
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-public-submit.v2';
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-workflows/structured';
+};
+
+export type CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostError = CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostErrors[keyof CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostErrors];
+
+export type CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostResponses = {
+    /**
+     * Successful Response
+     */
+    201: WorkflowCreated;
+};
+
+export type CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostResponse = CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostResponses[keyof CreateStructuredWorkflowApiV1ResearchWorkflowsStructuredPostResponses];
+
+export type PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostData = {
+    /**
+     * StructuredWorkflowRequest
+     */
+    body: {
+        /**
+         * Allow Workflow Development Feedback Release
+         */
+        allow_workflow_development_feedback_release?: boolean;
+        /**
+         * BudgetVector
+         */
+        budget_ceiling: {
+            /**
+             * Calls
+             */
+            calls?: number;
+            /**
+             * Cost Microunits
+             */
+            cost_microunits?: number;
+            /**
+             * Evaluator Executions
+             */
+            evaluator_executions?: number;
+            /**
+             * Mutation Slots
+             */
+            mutation_slots?: number;
+            /**
+             * Process Slots
+             */
+            process_slots?: number;
+            /**
+             * Storage Bytes
+             */
+            storage_bytes?: number;
+            /**
+             * Tokens
+             */
+            tokens?: number;
+            /**
+             * Wall Milliseconds
+             */
+            wall_milliseconds?: number;
+        };
+        external_definition?: {
+            /**
+             * ExternalFeedMapping
+             *
+             * Owner/workflow-selected JSON paths; no JSONPath evaluation or URL fetch.
+             */
+            mapping: {
+                /**
+                 * Items Path
+                 */
+                items_path?: Array<string | number>;
+                /**
+                 * Kind
+                 */
+                kind?: 'direction' | 'hypothesis' | 'constraints';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.external-feed-mapping.v1';
+                /**
+                 * Text Path
+                 */
+                text_path?: Array<string | number>;
+                /**
+                 * Title Path
+                 */
+                title_path?: Array<string | number> | null;
+            };
+            /**
+             * Raw Object Id
+             */
+            raw_object_id: string;
+            /**
+             * Raw Sha256
+             */
+            raw_sha256: string;
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.external-normalization-stage.v1';
+        } | null;
+        /**
+         * Maximum Iterations
+         */
+        maximum_iterations: number;
+        /**
+         * Mode
+         */
+        mode?: 'continuous' | 'pause_after_stage';
+        /**
+         * Refs
+         */
+        refs?: Array<{
+            /**
+             * Content Sha256
+             */
+            content_sha256: string;
+            /**
+             * Origin
+             */
+            origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+            /**
+             * Record Id
+             */
+            record_id: string;
+            /**
+             * Version Id
+             */
+            version_id: string;
+        }>;
+        /**
+         * Research
+         */
+        research: {
+            /**
+             * BudgetVector
+             */
+            budget: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            /**
+             * Dataset Version Id
+             */
+            dataset_version_id: string;
+            /**
+             * Engine
+             */
+            engine?: 'rdagent';
+            /**
+             * Input Fields
+             */
+            input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+            /**
+             * Lag Sessions
+             */
+            lag_sessions: number;
+            /**
+             * Lookback Sessions
+             */
+            lookback_sessions: number;
+            /**
+             * Max Iterations
+             */
+            max_iterations: number;
+            /**
+             * Model Profile Id
+             */
+            model_profile_id: string;
+            /**
+             * DirectObjectiveDeclaration
+             */
+            objective: {
+                /**
+                 * Aggregation
+                 */
+                aggregation?: 'arithmetic_mean_of_defined_days';
+                /**
+                 * Direction
+                 */
+                direction: 'at_least' | 'at_most';
+                /**
+                 * Kind
+                 */
+                kind?: 'direct_factor_analysis';
+                /**
+                 * Label Horizon Sessions
+                 */
+                label_horizon_sessions: number;
+                /**
+                 * Metric
+                 */
+                metric: 'ic' | 'rank_ic';
+                /**
+                 * Minimum Defined Days
+                 */
+                minimum_defined_days: number;
+                /**
+                 * Minimum Pairs
+                 */
+                minimum_pairs: number;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.direct-factor-objective.v1';
+                /**
+                 * Selection Claim
+                 */
+                selection_claim?: 'research_selection_not_out_of_sample_performance';
+                /**
+                 * Threshold
+                 */
+                threshold: number;
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Purpose
+             */
+            purpose?: 'factor_research';
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.rdagent-provider-submission.v1';
+            /**
+             * Selected Steer Version Ids
+             */
+            selected_steer_version_ids?: Array<string>;
+            /**
+             * ConfiguredSourcePolicy
+             */
+            source_policy: {
+                /**
+                 * Acknowledged Unverified
+                 */
+                acknowledged_unverified: true;
+                /**
+                 * Availability
+                 */
+                availability?: 'declared_session_close_not_verified';
+                /**
+                 * Membership
+                 */
+                membership?: 'user_fixed_declared_at_source_start';
+                /**
+                 * Price Basis
+                 */
+                price_basis?: 'unadjusted';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+            };
+            /**
+             * FactorTaskSpec
+             */
+            task: {
+                /**
+                 * Description
+                 */
+                description: string;
+                /**
+                 * Explanation Origin
+                 */
+                explanation_origin?: 'task_declaration';
+                /**
+                 * Factor Kind
+                 */
+                factor_kind: 'cross_sectional' | 'time_series';
+                /**
+                 * Formulation
+                 */
+                formulation: string;
+                /**
+                 * Interpretation
+                 */
+                interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                /**
+                 * Name
+                 */
+                name: string;
+                /**
+                 * Output Unit
+                 */
+                output_unit: string;
+            };
+            /**
+             * DateWindow
+             */
+            window: {
+                /**
+                 * End
+                 */
+                end: string;
+                /**
+                 * Start
+                 */
+                start: string;
+            };
+        } | {
+            /**
+             * BudgetVector
+             */
+            budget: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            /**
+             * Dataset Version Id
+             */
+            dataset_version_id: string;
+            /**
+             * Engine
+             */
+            engine?: 'rdagent';
+            /**
+             * Input Fields
+             */
+            input_fields: Array<'open' | 'high' | 'low' | 'close' | 'volume'>;
+            /**
+             * Lag Sessions
+             */
+            lag_sessions: number;
+            /**
+             * Lookback Sessions
+             */
+            lookback_sessions: number;
+            /**
+             * Max Iterations
+             */
+            max_iterations: number;
+            /**
+             * Model Profile Id
+             */
+            model_profile_id: string;
+            /**
+             * DirectObjectiveDeclaration
+             */
+            objective: {
+                /**
+                 * Aggregation
+                 */
+                aggregation?: 'arithmetic_mean_of_defined_days';
+                /**
+                 * Direction
+                 */
+                direction: 'at_least' | 'at_most';
+                /**
+                 * Kind
+                 */
+                kind?: 'direct_factor_analysis';
+                /**
+                 * Label Horizon Sessions
+                 */
+                label_horizon_sessions: number;
+                /**
+                 * Metric
+                 */
+                metric: 'ic' | 'rank_ic';
+                /**
+                 * Minimum Defined Days
+                 */
+                minimum_defined_days: number;
+                /**
+                 * Minimum Pairs
+                 */
+                minimum_pairs: number;
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.direct-factor-objective.v1';
+                /**
+                 * Selection Claim
+                 */
+                selection_claim?: 'research_selection_not_out_of_sample_performance';
+                /**
+                 * Threshold
+                 */
+                threshold: number;
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * Parent Factor Version Id
+             */
+            parent_factor_version_id: string;
+            /**
+             * Purpose
+             */
+            purpose?: 'factor_research';
+            /**
+             * Schema Version
+             */
+            schema_version?: 'mineagent.rdagent-provider-seeded-submission.v1';
+            /**
+             * Selected Steer Version Ids
+             */
+            selected_steer_version_ids?: Array<string>;
+            /**
+             * ConfiguredSourcePolicy
+             */
+            source_policy: {
+                /**
+                 * Acknowledged Unverified
+                 */
+                acknowledged_unverified: true;
+                /**
+                 * Availability
+                 */
+                availability?: 'declared_session_close_not_verified';
+                /**
+                 * Membership
+                 */
+                membership?: 'user_fixed_declared_at_source_start';
+                /**
+                 * Price Basis
+                 */
+                price_basis?: 'unadjusted';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.rdagent-declared-daily-source.v1';
+            };
+            /**
+             * FactorTaskSpec
+             */
+            task: {
+                /**
+                 * Description
+                 */
+                description: string;
+                /**
+                 * Explanation Origin
+                 */
+                explanation_origin?: 'task_declaration';
+                /**
+                 * Factor Kind
+                 */
+                factor_kind: 'cross_sectional' | 'time_series';
+                /**
+                 * Formulation
+                 */
+                formulation: string;
+                /**
+                 * Interpretation
+                 */
+                interpretation: 'higher_preferred' | 'lower_preferred' | 'unsigned';
+                /**
+                 * Name
+                 */
+                name: string;
+                /**
+                 * Output Unit
+                 */
+                output_unit: string;
+            };
+            /**
+             * DateWindow
+             */
+            window: {
+                /**
+                 * End
+                 */
+                end: string;
+                /**
+                 * Start
+                 */
+                start: string;
+            };
+        };
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-public-request.v2';
+        /**
+         * WorkflowStructuredChoice
+         */
+        structured: {
+            /**
+             * BudgetVector
+             */
+            budget: {
+                /**
+                 * Calls
+                 */
+                calls?: number;
+                /**
+                 * Cost Microunits
+                 */
+                cost_microunits?: number;
+                /**
+                 * Evaluator Executions
+                 */
+                evaluator_executions?: number;
+                /**
+                 * Mutation Slots
+                 */
+                mutation_slots?: number;
+                /**
+                 * Process Slots
+                 */
+                process_slots?: number;
+                /**
+                 * Storage Bytes
+                 */
+                storage_bytes?: number;
+                /**
+                 * Tokens
+                 */
+                tokens?: number;
+                /**
+                 * Wall Milliseconds
+                 */
+                wall_milliseconds?: number;
+            };
+            /**
+             * Maximum Mutation Slots
+             */
+            maximum_mutation_slots: number;
+            /**
+             * Model Binding Sha256
+             */
+            model_binding_sha256: string;
+            /**
+             * Model Profile Id
+             */
+            model_profile_id: string;
+            /**
+             * StructuredObjective
+             */
+            objective: {
+                /**
+                 * Direction
+                 */
+                direction?: 'maximize';
+                /**
+                 * Initial Cash
+                 */
+                initial_cash: number;
+                /**
+                 * Metric
+                 */
+                metric?: 'total_return_pct_minus_max_drawdown_pct';
+                /**
+                 * Minimum Closed Trades
+                 */
+                minimum_closed_trades?: number | null;
+                /**
+                 * Missing Policy
+                 */
+                missing_policy?: 'ineligible_null_score';
+                /**
+                 * Precision
+                 */
+                precision?: 'unrounded_native_accounting';
+                /**
+                 * Schema Version
+                 */
+                schema_version?: 'mineagent.oe-structured-objective.v1';
+                /**
+                 * Source
+                 */
+                source?: 'validated_closed_engine_accounting_summary';
+                /**
+                 * Unit
+                 */
+                unit?: 'percentage_points';
+                /**
+                 * DateWindow
+                 */
+                window: {
+                    /**
+                     * End
+                     */
+                    end: string;
+                    /**
+                     * Start
+                     */
+                    start: string;
+                };
+            };
+            /**
+             * StructuredSeedParameters
+             */
+            seed_parameters: {
+                /**
+                 * Maximum Gross Weight
+                 */
+                maximum_gross_weight: number;
+                /**
+                 * Maximum Weight
+                 */
+                maximum_weight: number;
+                /**
+                 * Threshold
+                 */
+                threshold: number;
+                /**
+                 * Top K
+                 */
+                top_k: number;
+            };
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/research-workflows/structured/preflight';
+};
+
+export type PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostError = PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostErrors[keyof PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostErrors];
+
+export type PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: StructuredWorkflowPreflight;
+};
+
+export type PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostResponse = PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostResponses[keyof PreflightStructuredWorkflowApiV1ResearchWorkflowsStructuredPreflightPostResponses];
+
+export type WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}';
+};
+
+export type WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetError = WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetErrors[keyof WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetErrors];
+
+export type WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetResponses = {
+    /**
+     * Response Workflow Detail Api V1 Research Workflows  Workflow Id  Get
+     *
+     * Successful Response
+     */
+    200: WorkflowView | StructuredWorkflowView;
+};
+
+export type WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetResponse = WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetResponses[keyof WorkflowDetailApiV1ResearchWorkflowsWorkflowIdGetResponses];
+
+export type WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostData = {
+    /**
+     * WorkflowCommand
+     */
+    body: {
+        /**
+         * Action
+         */
+        action: 'pause_after_stage' | 'cancel' | 'resume';
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+        /**
+         * Idempotency Key
+         */
+        idempotency_key: string;
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-command.v1';
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}/commands';
+};
+
+export type WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostError = WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostErrors[keyof WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostErrors];
+
+export type WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowCommandReceipt;
+};
+
+export type WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostResponse = WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostResponses[keyof WorkflowCommandApiV1ResearchWorkflowsWorkflowIdCommandsPostResponses];
+
+export type SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetData = {
+    body?: never;
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}/selected-inputs';
+};
+
+export type SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetError = SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetErrors[keyof SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetErrors];
+
+export type SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowInputSnapshot;
+};
+
+export type SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetResponse = SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetResponses[keyof SelectedWorkflowInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsGetResponses];
+
+export type SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostData = {
+    /**
+     * SelectWorkflowInputs
+     */
+    body: {
+        /**
+         * Expected Revision
+         */
+        expected_revision: number;
+        /**
+         * Idempotency Key
+         */
+        idempotency_key: string;
+        /**
+         * Refs
+         */
+        refs?: Array<{
+            /**
+             * Content Sha256
+             */
+            content_sha256: string;
+            /**
+             * Origin
+             */
+            origin: 'manual_user_submission' | 'normalized_external_proposal' | 'experiment_feedback_proposal' | 'unknown';
+            /**
+             * Record Id
+             */
+            record_id: string;
+            /**
+             * Version Id
+             */
+            version_id: string;
+        }>;
+        /**
+         * Schema Version
+         */
+        schema_version?: 'mineagent.workflow-select-inputs.v1';
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}/selected-inputs';
+};
+
+export type SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostError = SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostErrors[keyof SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostErrors];
+
+export type SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowCommandReceipt;
+};
+
+export type SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostResponse = SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostResponses[keyof SelectInputsApiV1ResearchWorkflowsWorkflowIdSelectedInputsPostResponses];
+
+export type WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+    };
+    query?: {
+        /**
+         * After Ordinal
+         */
+        after_ordinal?: number;
+        /**
+         * Limit
+         */
+        limit?: number;
+    };
+    url: '/api/v1/research-workflows/{workflow_id}/stages';
+};
+
+export type WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetError = WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetErrors[keyof WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetErrors];
+
+export type WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: WorkflowStageList;
+};
+
+export type WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetResponse = WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetResponses[keyof WorkflowStagesApiV1ResearchWorkflowsWorkflowIdStagesGetResponses];
+
+export type WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetData = {
+    body?: never;
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+        /**
+         * Stage Id
+         */
+        stage_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}/stages/{stage_id}';
+};
+
+export type WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetError = WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetErrors[keyof WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetErrors];
+
+export type WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetResponses = {
+    /**
+     * Response Workflow Stage Api V1 Research Workflows  Workflow Id  Stages  Stage Id  Get
+     *
+     * Successful Response
+     */
+    200: WorkflowStageHistory | WorkflowOeStageHistory;
+};
+
+export type WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetResponse = WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetResponses[keyof WorkflowStageApiV1ResearchWorkflowsWorkflowIdStagesStageIdGetResponses];
+
+export type ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetData = {
+    body?: never;
+    path: {
+        /**
+         * Workflow Id
+         */
+        workflow_id: string;
+        /**
+         * Stage Id
+         */
+        stage_id: string;
+    };
+    query?: never;
+    url: '/api/v1/research-workflows/{workflow_id}/stages/{stage_id}/input-derivation';
+};
+
+export type ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetError = ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetErrors[keyof ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetErrors];
+
+export type ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: InputDerivationView;
+};
+
+export type ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetResponse = ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetResponses[keyof ReadInputDerivationApiV1ResearchWorkflowsWorkflowIdStagesStageIdInputDerivationGetResponses];
 
 export type ListRunsData = {
     body?: never;

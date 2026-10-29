@@ -138,3 +138,41 @@ def test_catalog_budget_reaches_real_preflight_and_old_fresh_quote_fails_seed(
     assert seeded.normalized_request.budget == option.seeded_recommended_budget
     assert seeded.parent_binding_sha256 == parent.reference.sha256
     assert seeded.runtime_profile_sha256 != fresh.runtime_profile_sha256
+
+
+@pytest.mark.parametrize(
+    "revision",
+    [
+        "027c_seeded_controller_v4",
+        "028_oe_structured_search",
+        "029_research_workflow",
+        "030_declared_upload_basket",
+        "031_workflow_structured_stage",
+        "032_normal_oe_note_pins",
+    ],
+)
+def test_seeded_budget_exact_successor_schema(monkeypatch, preflight_inputs, revision):
+    owner, *_ = preflight_inputs
+    settings, _ = setup_catalog(
+        monkeypatch, owner, {"controller_profile": V3, "seeded_controller_profile": V4}
+    )
+    (option,) = provider_options(settings, owner, revision)
+    assert option.can_create and option.seeded_can_create
+    assert (
+        option.seeded_recommended_budget.wall_milliseconds
+        == option.recommended_budget.wall_milliseconds + 60000
+    )
+
+
+@pytest.mark.parametrize(
+    "revision", ["UNKNOWN", "033_safe_workflow_branches", "027b_provider_material"]
+)
+def test_seeded_budget_rejects_uninstalled_revision(
+    monkeypatch, preflight_inputs, revision
+):
+    owner, *_ = preflight_inputs
+    settings, _ = setup_catalog(
+        monkeypatch, owner, {"controller_profile": V3, "seeded_controller_profile": V4}
+    )
+    (option,) = provider_options(settings, owner, revision)
+    assert not option.seeded_can_create and option.seeded_recommended_budget is None

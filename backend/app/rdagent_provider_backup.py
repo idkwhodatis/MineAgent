@@ -32,7 +32,10 @@ def validate_receipts(
     settlements,
     outcomes,
     read_bytes,
+    workflow=False,
 ):
+    if type(workflow) is not bool:
+        raise ValueError("Explicit provider closure version required")
     grouped = {}
     charges_by_reservation, outcomes_by_transport = defaultdict(list), defaultdict(list)
     for row in settlements.values():
@@ -84,7 +87,12 @@ def validate_receipts(
             raise ValueError("Provider receipt payload scope differs")
         config = configs[row["run_id"]]
         if getattr(config, "model_profile", None) != "configured.rdagent.v1":
-            raise ValueError("Provider receipt requires configured model identity")
+            from packages.rdagent_adapter.workflow_config import (
+                WorkflowFactorResearchConfig,
+            )
+
+            if not workflow or type(config) is not WorkflowFactorResearchConfig:
+                raise ValueError("Provider receipt requires configured model identity")
         if (
             str(document.transport_id) != transport["id"]
             or document.request_sha256 != operation["request_sha256"]

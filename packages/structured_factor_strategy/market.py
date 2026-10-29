@@ -36,7 +36,16 @@ class StagedStructuredMarket:
     qualification: str = "synthetic_by_construction_not_live_or_pit_evidence"
 
 
-def stage_market(manifest_bytes, artifacts, *, dataset_sha256, window):
+def stage_market(
+    manifest_bytes,
+    artifacts,
+    *,
+    dataset_sha256,
+    window,
+    declared_upload=False,
+    dataset_id=None,
+    owner_id=None,
+):
     """Pure exact-byte parser; caller resolves owned dataset and exposure first."""
     window = DateWindow.model_validate(window)
     if not 1 <= (window.end - window.start).days <= 8:
@@ -50,6 +59,28 @@ def stage_market(manifest_bytes, artifacts, *, dataset_sha256, window):
     manifest = parse_json(manifest_bytes, limits=LIMITS)
     if type(manifest) is not dict or marketdata_bytes(manifest) != manifest_bytes:
         raise ValueError("Canonical retained manifest required")
+    if type(declared_upload) is not bool:
+        raise ValueError("Explicit declared-upload market dispatch required")
+    if declared_upload and manifest.get("schema_version") == 3:
+        from packages.rdagent_adapter.declared_projection import project_basket
+
+        projected = project_basket(
+            manifest_bytes,
+            artifacts,
+            dataset_id=dataset_id,
+            owner_id=owner_id,
+            manifest_sha256=dataset_sha256,
+        )
+        request = BarsRequest.model_validate(projected["request"])
+        if not request.start <= window.start < window.end <= request.end:
+            raise ValueError("Declared market window outside exact source")
+        parsed = {
+            name: parse_json(artifacts[name], limits=LIMITS)
+            for name in ("preview.json", "sessions.json")
+        }
+        return _stage_market_rows(
+            projected, artifacts, parsed, request, window, "user_declaration_unverified"
+        )
     inner = dict(manifest)
     expected_inner = inner.pop("content_hash", None)
     if hashlib.sha256(marketdata_bytes(inner)).hexdigest() != expected_inner:
@@ -121,6 +152,23 @@ def stage_market(manifest_bytes, artifacts, *, dataset_sha256, window):
         or manifest.get("structured_synthetic_provenance") != expected_coverage
     ):
         raise ValueError("Explicit exact synthetic action coverage required")
+    return _stage_market_rows(
+        manifest,
+        artifacts,
+        parsed,
+        request,
+        window,
+        "synthetic_by_construction_not_live_or_pit_evidence",
+    )
+
+
+def _stage_market_rows(manifest, artifacts, parsed, request, window, qualification):
+    """Common host market projection after separate, exact source verification.
+
+    Clock-based availability and membership are declared research assumptions for
+    real uploads, not independently proven historical/PIT knowledge.
+    """
+    ids = sorted(x.listing_id for x in request.listings)
     schedule = parsed["sessions.json"]
     if (
         type(schedule) is not dict
@@ -264,4 +312,6 @@ def stage_market(manifest_bytes, artifacts, *, dataset_sha256, window):
         },
         limits=LIMITS,
     )
-    return StagedStructuredMarket(content, tuple(listings), tuple(selected))
+    return StagedStructuredMarket(
+        content, tuple(listings), tuple(selected), qualification
+    )

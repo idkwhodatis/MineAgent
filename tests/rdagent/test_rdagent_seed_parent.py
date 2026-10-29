@@ -329,3 +329,59 @@ def test_foreign_seed_rejected_before_database_or_files(saved_seed, retained_par
     with pytest.raises(DomainError) as exc:
         reread_saved_seed(None, uuid4(), row, retained_parent.settings)
     assert exc.value.code == "not_found"
+
+
+def test_native_guard_parent_reader_reuses_actual_lock_without_reentry(
+    retained_parent, monkeypatch
+):
+    from backend.app import rdagent_seed_services as service
+    from backend.app.factor_native_io import native_storage_guard
+
+    r = retained_parent
+    expected = resolve(r)
+    r.path.chmod(0o444)
+    monkeypatch.setattr(
+        service,
+        "source_storage_guard",
+        lambda *a: pytest.fail("must not reacquire factor flock"),
+    )
+    with native_storage_guard(r.settings.storage_root):
+        actual = service.resolve_seed_parent_under_native_guard(
+            r.session(), r.owner, r.version.id, r.settings
+        )
+    assert actual == expected
+
+
+def test_native_parent_reader_requires_actual_guard_before_database(retained_parent):
+    from backend.app.factor_native_io import NativeStorageError
+    from backend.app.rdagent_seed_services import resolve_seed_parent_under_native_guard
+
+    r = retained_parent
+    session = SimpleNamespace(scalar=lambda *a: pytest.fail("unguarded SQL"))
+    with pytest.raises(NativeStorageError):
+        resolve_seed_parent_under_native_guard(
+            session, r.owner, r.version.id, r.settings
+        )
+
+
+@pytest.mark.parametrize("mutation", ["bytes", "writable", "hardlink", "foreign_owner"])
+def test_native_guard_parent_reader_keeps_byte_scope_and_immutability_checks(
+    retained_parent, mutation
+):
+    import os
+
+    from backend.app.factor_native_io import native_storage_guard
+    from backend.app.rdagent_seed_services import resolve_seed_parent_under_native_guard
+
+    r = retained_parent
+    if mutation == "bytes":
+        r.path.write_bytes(b"tampered")
+    r.path.chmod(0o644 if mutation == "writable" else 0o444)
+    if mutation == "hardlink":
+        os.link(r.path, r.path.with_name("alias.py"))
+    if mutation == "foreign_owner":
+        r.version.owner_id = uuid4()
+    with native_storage_guard(r.settings.storage_root), pytest.raises(DomainError):
+        resolve_seed_parent_under_native_guard(
+            r.session(), r.owner, r.version.id, r.settings
+        )

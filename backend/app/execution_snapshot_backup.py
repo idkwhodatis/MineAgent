@@ -181,6 +181,11 @@ def validate_closure(
         },
         SCHEMA_V2: {
             (
+                "mineagent.research-restore-closure.v12",
+                "mineagent.rd-source-restore-closure.v7",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
+            (
                 "mineagent.research-restore-closure.v7",
                 "mineagent.rd-source-restore-closure.v4",
                 "mineagent.native-hdf-restore-closure.v3",
@@ -201,13 +206,28 @@ def validate_closure(
                 "mineagent.native-hdf-restore-closure.v3",
             ),
             (
+                "mineagent.research-restore-closure.v13",
+                "mineagent.rd-source-restore-closure.v8",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
+            (
+                "mineagent.research-restore-closure.v14",
+                "mineagent.rd-source-restore-closure.v9",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
+            (
                 "mineagent.research-restore-closure.v11",
                 "mineagent.rd-source-restore-closure.v6",
                 "mineagent.native-hdf-restore-closure.v3",
             ),
             (
-                "mineagent.research-restore-closure.v12",
-                "mineagent.rd-source-restore-closure.v7",
+                "mineagent.research-restore-closure.v15",
+                "mineagent.rd-source-restore-closure.v10",
+                "mineagent.native-hdf-restore-closure.v3",
+            ),
+            (
+                "mineagent.research-restore-closure.v16",
+                "mineagent.rd-source-restore-closure.v11",
                 "mineagent.native-hdf-restore-closure.v3",
             ),
         },
@@ -310,6 +330,25 @@ def validate_closure(
         config = parse_snapshot_config(
             spec["config"],
             owner_id=spec["owner_id"],
+            run_id=spec["run_id"],
+            workflow_config=(
+                research_closure.get("schema_version"),
+                rd_source_closure.get("schema_version"),
+            )
+            in {
+                (
+                    "mineagent.research-restore-closure.v16",
+                    "mineagent.rd-source-restore-closure.v11",
+                ),
+                (
+                    "mineagent.research-restore-closure.v14",
+                    "mineagent.rd-source-restore-closure.v9",
+                ),
+                (
+                    "mineagent.research-restore-closure.v15",
+                    "mineagent.rd-source-restore-closure.v10",
+                ),
+            },
             provider_config=(
                 research_closure.get("schema_version"),
                 rd_source_closure.get("schema_version"),
@@ -320,6 +359,10 @@ def validate_closure(
                     "mineagent.rd-source-restore-closure.v5",
                 ),
                 (
+                    "mineagent.research-restore-closure.v13",
+                    "mineagent.rd-source-restore-closure.v8",
+                ),
+                (
                     "mineagent.research-restore-closure.v11",
                     "mineagent.rd-source-restore-closure.v6",
                 ),
@@ -328,13 +371,23 @@ def validate_closure(
                     "mineagent.rd-source-restore-closure.v7",
                 ),
             },
-            composed_controller=research_closure["schema_version"]
+            composed_controller=research_closure.get("schema_version")
             in {
-                "mineagent.research-restore-closure.v11",
                 "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
             },
-            seeded_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v12",
+            seeded_controller=research_closure.get("schema_version")
+            in {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
+                "mineagent.research-restore-closure.v16",
+            },
         )
         from backend.app.rdagent_complete_evaluation import maintained_calendar
 

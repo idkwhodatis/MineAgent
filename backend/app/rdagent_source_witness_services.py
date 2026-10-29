@@ -89,7 +89,10 @@ def derive_source_read_witness(session, fence, *, source_id, settings):
     from backend.app.rdagent_services import require_research_spec
 
     _, config = require_research_spec(session, fence)
-    provider = config.schema_version == "mineagent.factor-research.v2"
+    provider = config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    )
     source = _scope_row(session, FactorGenerationSource, source_id, fence, lock=True)
     assembly = _scope_row(session, FactorResponseAssembly, source.assembly_id, fence)
     call = _scope_row(session, FactorUpstreamCall, source.call_id, fence)

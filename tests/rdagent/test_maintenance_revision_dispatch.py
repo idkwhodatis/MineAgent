@@ -21,6 +21,9 @@ def session(revisions):
         "027a_contract_repairs",
         "027b_provider_material",
         "027c_seeded_controller_v4",
+        "028_oe_structured_search",
+        "029_research_workflow",
+        "030_declared_upload_basket",
     ],
 )
 def test_exact_maintenance_has_same_composed_capability(revision):
@@ -75,6 +78,9 @@ def test_seed_bootstrap_never_reads_family_under_unknown_or_multirow_head(revisi
         "027a_contract_repairs",
         "027b_provider_material",
         "027c_seeded_controller_v4",
+        "028_oe_structured_search",
+        "029_research_workflow",
+        "030_declared_upload_basket",
     ],
 )
 def test_seed_bootstrap_exact_head_still_requires_saved_receipt(revision):
@@ -94,3 +100,26 @@ def test_seed_bootstrap_exact_head_still_requires_saved_receipt(revision):
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "revision,workflow,declared",
+    [
+        ("027_rd_controller_v3", False, False),
+        ("027a_contract_repairs", False, False),
+        ("028_oe_structured_search", False, False),
+        ("029_research_workflow", True, False),
+        ("030_declared_upload_basket", True, True),
+    ],
+)
+def test_maintenance_does_not_grant_future_workflow_or_upload(
+    revision, workflow, declared
+):
+    from backend.app.rdagent_snapshot_config import (
+        declared_upload_in_session,
+        workflow_config_in_session,
+    )
+
+    value = session([revision])
+    assert workflow_config_in_session(value) is workflow
+    assert declared_upload_in_session(value) is declared

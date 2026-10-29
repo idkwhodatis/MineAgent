@@ -17,9 +17,28 @@ def require_config_revision(config, *, research_schema=None, source_schema=None)
         raise ValueError("Exact retained RD configuration required")
     if "controller_profile" not in config:
         return
+    seeded_pairs = {
+        (SEEDED_RESEARCH, SEEDED_SOURCE),
+        (
+            "mineagent.research-restore-closure.v13",
+            "mineagent.rd-source-restore-closure.v8",
+        ),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
+        ),
+        (
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
+        ),
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
+    }
     pairs = {
-        PROFILE: {(RESEARCH, SOURCE), (SEEDED_RESEARCH, SEEDED_SOURCE)},
-        SEEDED_PROFILE: {(SEEDED_RESEARCH, SEEDED_SOURCE)},
+        PROFILE: {(RESEARCH, SOURCE)} | seeded_pairs,
+        SEEDED_PROFILE: seeded_pairs,
     }.get(
         config["controller_profile"]
         if type(config["controller_profile"]) is str
@@ -38,7 +57,7 @@ def require_config_revision(config, *, research_schema=None, source_schema=None)
 
 
 def require_admission_revision(profile, research_schema):
-    if profile == PROFILE and research_schema not in {RESEARCH, SEEDED_RESEARCH}:
-        raise ValueError("Controller v3 admission requires research-v11 or v12 closure")
-    if profile == SEEDED_PROFILE and research_schema != SEEDED_RESEARCH:
-        raise ValueError("Seeded controller v4 admission requires research-v12 closure")
+    if profile in {PROFILE, SEEDED_PROFILE}:
+        require_config_revision(
+            {"controller_profile": profile}, research_schema=research_schema
+        )

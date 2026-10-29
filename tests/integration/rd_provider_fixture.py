@@ -43,7 +43,9 @@ GUIDANCE = "Research cross-sectional closing-price level, not momentum or return
 
 
 @contextmanager
-def provider_server(*, sources=(SOURCE,), port=0):
+def provider_server(*, sources=(SOURCE,), rejection=False, port=0):
+    if type(rejection) is not bool:
+        raise ValueError("Exact synthetic rejection mode required")
     captured = []
     chats = []
 
@@ -64,7 +66,7 @@ def provider_server(*, sources=(SOURCE,), port=0):
             if self.path == "/v1/chat/completions":
                 ordinal = len(chats)
                 chats.append(request)
-                generation, stage = divmod(ordinal, 4)
+                generation, stage = divmod(ordinal, 3 if rejection else 4)
                 if generation >= len(sources):
                     self.send_error(400)
                     return
@@ -84,6 +86,17 @@ def provider_server(*, sources=(SOURCE,), port=0):
                         }
                     ),
                 )
+                if rejection:
+                    contents = (
+                        json.dumps({"code": sources[generation]}),
+                        "Observed candidate rejection; no accepted values exist. Do not infer code root cause or IC.",
+                        json.dumps(
+                            {
+                                "final_decision": False,
+                                "final_feedback": "Actual candidate rejection cannot be adopted.",
+                            }
+                        ),
+                    )
                 result = {
                     "id": f"synthetic-chat-{ordinal}",
                     "object": "chat.completion",

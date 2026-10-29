@@ -28,6 +28,16 @@ const navigation = [
   { to: "/datasets", label: "Datasets", icon: Database },
   { to: "/strategies", label: "Strategy library", icon: Braces },
   { to: "/engine-runs", label: "Engine history", icon: FlaskConical },
+  {
+    to: "/research-workflows",
+    label: "Research workflows",
+    icon: FlaskConical,
+  },
+  {
+    to: "/engine-runs/structured-search",
+    label: "Strategy search",
+    icon: FlaskConical,
+  },
   { to: "/runs", label: "Experiments", icon: FlaskConical },
   { to: "/portable/new", label: "Portable research", icon: FlaskConical },
   { to: "/settings", label: "Settings & status", icon: Settings2 },

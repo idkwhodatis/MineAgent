@@ -38,7 +38,7 @@ def test_explicit_empty_schema_dispatch_preserves_historical_closures(schema):
 def test_v5_uses_exact_v4_field_inventory_without_optional_columns():
     assert module.closure_fields(module.SCHEMA_V5) is module.FIELDS_V4
     with pytest.raises(ValueError):
-        module.closure_fields("mineagent.research-restore-closure.v13")
+        module.closure_fields("mineagent.research-restore-closure.v17")
 
 
 @pytest.mark.parametrize(

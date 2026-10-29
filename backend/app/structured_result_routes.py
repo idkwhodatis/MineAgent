@@ -269,3 +269,19 @@ def read_capability(user: CurrentUser, session: SessionDep):
     return StructuredReadCapability(
         can_read=True, reason_code="retained_history_only_no_public_execution"
     )
+
+
+@router.get(
+    "/factors/{factor_id}/versions/{version_id}/normal-oe-executions",
+    response_model=StructuredExecutionRecords,
+)
+def factor_normal_oe_records(
+    factor_id: UUID,
+    version_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    offset: int = Query(0, ge=0, le=100000),
+):
+    from backend.app.oe_factor_usage import factor_usage
+
+    return factor_usage(session, user.id, factor_id, version_id, offset)

@@ -37,7 +37,9 @@ describe("pure typed note capture boundaries (SDK mocks, not real admission)", (
       spec_sha256: hashes.spec,
       source_ref: spec.spec.rules[0].source_ref,
     });
-    expect(content.restore?.selection.stage_id).toBe("liquidity");
+    if (!content.restore || !("selection" in content.restore))
+      throw new Error("Expected the unchanged legacy note restoration grammar");
+    expect(content.restore.selection.stage_id).toBe("liquidity");
   });
   it("captures physical leaf, exact decision/instrument/stage/ordinal and complete selected view", async () => {
     const selection = {
@@ -78,13 +80,15 @@ describe("pure typed note capture boundaries (SDK mocks, not real admission)", (
       record_ordinal: 2,
       source_ref: spec.spec.rules[0].source_ref,
     });
-    expect(content.restore?.selection).toMatchObject({
+    if (!content.restore || !("selection" in content.restore))
+      throw new Error("Expected the unchanged legacy note restoration grammar");
+    expect(content.restore.selection).toMatchObject({
       tab: "replay",
       detail_offset: 50,
       eligibility: "ineligible",
       record_ordinal: 2,
     });
-    expect(content.restore?.selection).not.toHaveProperty("note_origin_tab");
+    expect(content.restore.selection).not.toHaveProperty("note_origin_tab");
   });
   it.each([
     { code_sha256: "f".repeat(64) },

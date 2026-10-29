@@ -259,6 +259,7 @@ def execute(
     boundary=None,
     python_executable=None,
     identity_boundary=None,
+    protocol=None,
 ):
     """Only a host broker may supply endpoint, secret and SDK executable.
 
@@ -270,10 +271,26 @@ def execute(
     No callback means this is a component call, not persisted process authority.
     """
     try:
-        if type(binding) is not RDModelBinding or type(request) not in (
-            RDProviderChatRequest,
-            RDProviderEmbeddingRequest,
-        ):
+        if protocol is None:
+            binding_type = RDModelBinding
+            request_types = (RDProviderChatRequest, RDProviderEmbeddingRequest)
+            validate_binding = require_request_binding
+        elif protocol == "mineagent.oe-structured-provider-chat.v1":
+            # Explicit successor opt-in only: default RD dispatch is unchanged.
+            # These public contracts import no operator endpoint or native SDK.
+            from packages.openevolve_structured.provider_contracts import (
+                OEChatBinding,
+                OEChatRequest,
+            )
+            from packages.openevolve_structured.provider_contracts import (
+                require_request_binding as validate_binding,
+            )
+
+            binding_type = OEChatBinding
+            request_types = (OEChatRequest,)
+        else:
+            raise ValueError("protocol")
+        if type(binding) is not binding_type or type(request) not in request_types:
             raise ValueError("types")
         # Reparse JSON for UUID/tuple semantics, but inspect integer primitives first.
         raw_request = _raw_fields(request)
@@ -287,10 +304,10 @@ def execute(
         request = type(request).model_validate_json(
             json.dumps(raw_request, allow_nan=False)
         )
-        binding = RDModelBinding.model_validate_json(
+        binding = binding_type.model_validate_json(
             json.dumps(raw_binding, allow_nan=False)
         )
-        require_request_binding(request, binding)
+        validate_binding(request, binding)
         url = urlsplit(base_url)
         if (
             url.scheme not in ("https", "http")

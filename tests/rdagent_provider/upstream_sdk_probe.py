@@ -16,6 +16,8 @@ from uuid import uuid4
 
 FULL_LOOP = "--full-loop" in sys.argv
 FAIL_EVALUATION = "--failed-evaluation" in sys.argv
+REJECTION_FRAME = "--rejection-frame" in sys.argv
+assert not REJECTION_FRAME or (FULL_LOOP and FAIL_EVALUATION)
 active_phase = "generation"
 phase_trace = []
 feedback_seen = []
@@ -195,6 +197,24 @@ with tempfile.TemporaryDirectory() as tmp:
                 return {"exchange_id": str(uuid4())}
             if method == "end_exchange":
                 return {}
+            if method == "execute_or_reuse" and REJECTION_FRAME:
+                from packages.rdagent_adapter.numeric_failure import (
+                    RDNumericFailureFrame,
+                )
+
+                return RDNumericFailureFrame(
+                    source_id=body["source_id"],
+                    evaluation_id=body["evaluation_id"],
+                    factor_version_id=uuid4(),
+                    cutoff_execution_id=uuid4(),
+                    candidate_admission_id=uuid4(),
+                    rejection_receipt_id=uuid4(),
+                    stop_receipt_id=uuid4(),
+                    rejection_sha256="a" * 64,
+                    stop_sha256="b" * 64,
+                    outcome="child_nonzero",
+                    child_exit_code=1,
+                ).model_dump(mode="json")
             assert method in {"submit_chat", "submit_embedding"}
             request = parse_request(body["protocol"], body["request_utf8"].encode())
             result = execute(
@@ -243,6 +263,10 @@ with tempfile.TemporaryDirectory() as tmp:
 
         def execute_or_reuse(self, *, source_id, evaluation_ticket):
             assert source_id == self.last_source
+            if REJECTION_FRAME:
+                return super().execute_or_reuse(
+                    source_id=source_id, evaluation_ticket=evaluation_ticket
+                )
             if FAIL_EVALUATION:
                 return (
                     "Explicit numeric host double: simulated ABI rejection; code not executed",
@@ -317,6 +341,7 @@ with tempfile.TemporaryDirectory() as tmp:
                 "numeric_evaluation_is_explicit_double": FULL_LOOP,
                 "actual_upstream_feedback": feedback_seen,
                 "failed_evaluation_double": FAIL_EVALUATION,
+                "configured_rejection_frame_decoder": REJECTION_FRAME,
                 "upstream_failure": upstream_failure,
                 "production_provider_client": True,
                 "real_sdk_localhost_calls": len(requests_seen),

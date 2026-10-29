@@ -180,6 +180,7 @@ def test_literal_uniques_nullability_and_scalar_types_match_reviewed_schema():
 
 def test_frozen_bigint_kernel_ticks_are_not_truncated_to_int32():
     from sqlalchemy import BigInteger
+
     from backend.app.openevolve_backup_inventory import BIGINT_COLUMNS
 
     actual = {

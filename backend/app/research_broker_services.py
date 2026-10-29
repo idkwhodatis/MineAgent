@@ -6,7 +6,7 @@ submitted transport is uncertain until durable outcome publication succeeds.
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from backend.app.research_broker_models import (
     ResearchBudgetControl,
@@ -145,7 +145,25 @@ def _budget_reservation_preflight(
                 require_search_identity,
             )
 
-            require_search_identity(run)
+            if isinstance(run.config, dict) and run.config.get("schema_version") in {
+                "mineagent.oe-structured-provider-run.v1",
+                "mineagent.oe-structured-provider-run.v2",
+            }:
+                from backend.app.oe_structured_identity import decode_spec
+
+                if session.scalars(
+                    text("SELECT version_num FROM alembic_version")
+                ).all() not in (
+                    ["028_oe_structured_search"],
+                    ["029_research_workflow"],
+                    ["030_declared_upload_basket"],
+                    ["031_workflow_structured_stage"],
+                    ["032_normal_oe_note_pins"],
+                ):
+                    raise BrokerAbort("invalid_accounting")
+                decode_spec(session, run)
+            else:
+                require_search_identity(run)
         else:
             from backend.app.rdagent_services import require_research_spec
 
@@ -663,6 +681,7 @@ def validate_accounting_closure(
     rd_source=False,
     openevolve=False,
     rd_provider=False,
+    oe_structured=False,
     model_bindings=None,
 ):
     """Validate restored evidence without launching, refunding or redispatching."""
@@ -677,7 +696,38 @@ def validate_accounting_closure(
     ):
         raise ValueError("Exact provider model binding inventory required")
 
+    if type(oe_structured) is not bool or (
+        oe_structured and not (openevolve and rd_provider)
+    ):
+        raise ValueError("Structured provider accounting requires exact v11 dispatch")
+
+    def structured(operation):
+        is_normal = (
+            operation.get("protocol") == "mineagent.oe-structured-provider-chat.v1"
+        )
+        if is_normal and not oe_structured:
+            raise ValueError(
+                "Historical accounting cannot acquire structured provider protocol"
+            )
+        return is_normal
+
+    def structured_request(operation):
+        from packages.factors.contracts import canonical_bytes
+        from packages.openevolve_structured.provider_contracts import OEChatRequest
+
+        return OEChatRequest.model_validate_json(canonical_bytes(operation["request"]))
+
     def provider_binding(operation):
+        if structured(operation):
+            from packages.factors.contracts import canonical_bytes
+            from packages.openevolve_structured.provider_contracts import OEChatBinding
+
+            binding = model_bindings.get(str(operation["run_id"]))
+            if type(binding) is not OEChatBinding:
+                raise ValueError(
+                    "Structured provider operation lacks exact immutable model binding"
+                )
+            return OEChatBinding.model_validate_json(canonical_bytes(binding))
         from packages.rdagent_provider.codec import PROTOCOLS
 
         if operation.get("protocol") not in PROTOCOLS:
@@ -860,7 +910,24 @@ def validate_accounting_closure(
             else operation.get("protocol", "mineagent.neutral-model.v1")
         )
         binding = provider_binding(operation)
-        if binding is not None:
+        if structured(operation):
+            from packages.openevolve_structured.provider_contracts import (
+                require_request_binding,
+            )
+
+            request = structured_request(operation)
+            require_request_binding(request, binding)
+            context = lookup("research_operation_contexts", operation["context_id"])
+            if (
+                request.context_sha256 != context["context_sha256"]
+                or operation["purpose"] != "chat"
+                or type(operation["ordinal"]) is not int
+                or operation["ordinal"] != 0
+            ):
+                raise ValueError(
+                    "Structured request differs from exact rendered operation"
+                )
+        elif binding is not None:
             from packages.rdagent_provider.codec import (
                 parse_request as provider_request,
             )
@@ -874,7 +941,9 @@ def validate_accounting_closure(
             if protocol != "mineagent.neutral-model.v1":
                 raise ValueError("Unsupported historical accounting protocol")
             request = parse_request(operation["request"])
-        if binding is not None:
+        if structured(operation):
+            request_digest = request.sha256
+        elif binding is not None:
             from packages.rdagent_provider.codec import request_sha256 as provider_hash
 
             request_digest = provider_hash(protocol, request)
@@ -896,7 +965,13 @@ def validate_accounting_closure(
         if key in operation_keys:
             raise ValueError("Duplicate logical operation")
         operation_keys.add(key)
-        obj(operation, "request", "model_request")
+        obj(
+            operation,
+            "request",
+            "oe_structured_provider_request"
+            if structured(operation)
+            else "model_request",
+        )
     outcomes = {}
     for outcome in rows("research_model_outcomes"):
         key = str(outcome["transport_id"])
@@ -913,8 +988,15 @@ def validate_accounting_closure(
             or BudgetVector.model_validate(outcome["usage"]).calls != 1
         ):
             raise ValueError("Transport outcome/accounting mismatch")
+        operation = lookup("research_model_operations", transport["operation_id"])
         if outcome["outcome"] == "completed":
-            obj(outcome, "response", "model_response")
+            obj(
+                outcome,
+                "response",
+                "oe_structured_provider_response"
+                if structured(operation)
+                else "model_response",
+            )
         elif any(
             outcome[f"response_{suffix}"] is not None
             for suffix in ("object_id", "object_kind", "sha256")
@@ -939,7 +1021,15 @@ def validate_accounting_closure(
         same(transport, operation)
         same(transport, reservation)
         binding = provider_binding(operation)
-        if binding is not None:
+        if structured(operation):
+            from packages.openevolve_structured.provider_accounting import (
+                request_reservation as structured_reservation,
+            )
+
+            expected_amount = structured_reservation(
+                structured_request(operation), binding
+            )
+        elif binding is not None:
             from packages.rdagent_provider.accounting import (
                 request_reservation as provider_reservation,
             )

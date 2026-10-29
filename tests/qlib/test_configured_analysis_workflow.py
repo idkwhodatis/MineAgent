@@ -8,6 +8,20 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     assert "contents: read" in text and "persist-credentials: false" in text
     assert "timeout-minutes: 120" in text
     assert "assert len(cases)==23" in text
+    assert 'MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED: "1"' in text
+    assert 'MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"' in text
+    assert "python -m pytest tests/research_workflow tests/research_inputs" in text
+    assert "assert len(cases)==825" in text
+    assert "assert len(cases)==132" in text
+    assert "assert len(names)==132" in text
+    assert "test_actual_child_template_comparison_preserves_layout_only[" in text
+    assert "test_rd_workflow_config_predicate.py" in text
+    assert "test_rd_workflow_provider_dispatch.py" in text
+    assert "test_rd_workflow_declaration_graph.py" in text
+    assert "test_rdagent_workflow_user_flow.py" in text
+    assert "default-off-waits" in text and "explicit-opt-in-two-children" in text
+    assert "workflow-contract-outcomes.xml" in text
+    assert "workflow-runtime-outcomes.xml" in text
     assert "test_actual_configured_source_snapshot_direct_analysis_generation" in text
     assert "('failure','error','skipped')" in text
     assert (
@@ -134,7 +148,7 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert "MINEAGENT_PROVIDER_SDK_PYTHON" in workflow
     assert '"tests/rdagent_provider/**"' in workflow
     assert "python -m pytest tests/rdagent_provider -q -p no:cacheprovider" in workflow
-    assert "assert len(cases)==137" in workflow
+    assert "assert len(cases)==253" in workflow
     assert "var/numeric-proof/provider-outcomes.xml" in workflow
     assert (
         workflow.index("Install isolated host SDK")

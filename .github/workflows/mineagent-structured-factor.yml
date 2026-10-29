@@ -36,6 +36,13 @@ on:
       - "tests/structured/**"
       - "tests/structured_factor_strategy/**"
       - "tests/integration/*structured*"
+      - "tests/integration/*provider*"
+      - "packages/openevolve_structured/**"
+      - "packages/rdagent_provider/**"
+      - "runtimes/openevolve*/**"
+      - "runtimes/rdagent_provider/**"
+      - "workers/research/oe_structured*"
+      - "script/build_oe_structured_images.py"
   workflow_dispatch:
 
 permissions:
@@ -44,7 +51,9 @@ permissions:
 jobs:
   structured-factor-pair:
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # Sequential existing pair, locked OE build, normal browser flow and rejection.
+    # Individual protected process deadlines remain unchanged.
+    timeout-minutes: 120
     env:
       POSTGRES_USER: tradegrad_ci
       POSTGRES_DB: tradegrad_ci
@@ -72,6 +81,13 @@ jobs:
         run: python script/bootstrap_tradegrad_compat.py
       - name: Install unchanged host test closure
         run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Install isolated pinned host SDK without changing API dependencies
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/rd-provider-sdk"
+          "$RUNNER_TEMP/rd-provider-sdk/bin/python" -m pip install --require-hashes -r runtimes/rdagent_provider/requirements.lock
+          "$RUNNER_TEMP/rd-provider-sdk/bin/python" -m pip check
+          printf 'MINEAGENT_PROVIDER_SDK_PYTHON=%s\n' "$RUNNER_TEMP/rd-provider-sdk/bin/python" >> "$GITHUB_ENV"
       - name: Build locked frontend for genuine structured results
         run: |
           npm ci --prefix frontend
@@ -230,6 +246,21 @@ jobs:
           test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
           docker build --pull=false --network none --build-arg "TRUSTED_ENGINE_IMAGE=$parent_ref" --iidfile var/numeric-proof/structured.iid -f runtimes/structured_factor_engine/Dockerfile .
           test "$(docker image inspect --format '{{.Id}}' "$parent_ref")" = "$parent"
+      - name: Build exact installed OE parent and normal no-network derivatives
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/openevolve-upstream"
+          git init "$source"
+          git -C "$source" fetch --depth 1 https://github.com/algorithmicsuperintelligence/openevolve.git 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc
+          git -C "$source" checkout --detach FETCH_HEAD
+          test "$(git -C "$source" rev-parse HEAD)" = 8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc
+          python runtimes/openevolve/materialize_source.py --source "$source" --destination .runtime/openevolve-source
+          python runtimes/openevolve/verify_build_inputs.py .runtime/openevolve-source
+          docker build --iidfile var/numeric-proof/oe-controller-parent.iid -f runtimes/openevolve_operational/Dockerfile .
+          python -m script.build_oe_structured_images --output var/numeric-proof/oe-normal \
+            --controller-parent "$(cat var/numeric-proof/oe-controller-parent.iid)" \
+            --engine-parent "$(cat var/numeric-proof/structured-parent.iid)"
       - name: Require twenty actual units across live and independent cold restore cases
         shell: bash
         run: |
@@ -257,6 +288,153 @@ jobs:
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYRESULT
           test "$status" = 0
+      - name: Require normal demo RD to OE browser flow and truthful RD rejection
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+          MINEAGENT_RD_REJECTION_FLOW_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          test -x "$MINEAGENT_PROVIDER_SDK_PYTHON"
+          # Seven actual normal-flow Docker units plus two rejection units;
+          # localhost SDK children are independently contained and charged.
+          status=0
+          python -m pytest tests/integration/test_oe_structured_normal_flow.py \
+            tests/integration/test_rdagent_provider_rejection.py -q \
+            --junitxml=var/numeric-private/normal-027.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/normal-027.xml')
+          summarize(source,Path('var/numeric-proof/normal-027-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==2
+          assert {case.get('name') for case in cases}=={'test_normal_demo_generated_factor_and_model_child_reach_actual_engine','test_normal_provider_actual_rejection_preserves_failed_feedback_without_snapshot'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Require actual declared-upload PostgreSQL publication and constraints
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          python -m pytest tests/integration/test_declared_upload_persistence.py \
+            tests/integration/test_declared_upload_publication.py -q \
+            --junitxml=var/numeric-private/declared-upload-persistence.xml || status=$?
+          python - <<'PYDECLARED'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/declared-upload-persistence.xml')
+          summarize(source,Path('var/numeric-proof/declared-upload-persistence-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==7
+          assert {case.get('name') for case in cases}=={'test_workflow_optional_controller_matches_retained_canonical','test_declared_upload_owner_lineage_and_qualification_constraints','test_actual_declared_source_builder_matches_production_sql','test_declared_upload_retained_input_versions_are_distinct','test_installed_numeric_bounds_match_strict_python_fields','test_installed_signed_child_exit_preserves_unsigned_identity_fields','test_actual_upload_basket_publication_idempotency_rollback_and_owner'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYDECLARED
+          test "$status" = 0
+      - name: Require installed finite workflow OE contracts and reverse lineage
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          python -m pytest tests/integration/test_workflow_oe_persistence.py tests/integration/test_normal_oe_note_persistence.py -q \
+            --junitxml=var/numeric-private/workflow-oe-persistence.xml || status=$?
+          python - <<'PYWORKFLOWPG'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/workflow-oe-persistence.xml')
+          summarize(source,Path('var/numeric-proof/workflow-oe-persistence-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==6
+          assert {case.get('name') for case in cases}=={'test_explicit_workflow_oe_contracts_and_final_prompt','test_new_finite_plan_retains_original_inputs_and_requires_real_children','test_old_rd_only_root_rejects_orphan_oe_claim','test_normal_note_rejects_unbacked_references_and_preserves_legacy','test_normal_note_identity_case_and_space_match_python','test_note_dataset_identity_predicate_matches_typed_python_domain'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYWORKFLOWPG
+          test "$status" = 0
+      - name: Install isolated locked data-worker test environment
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/declared-upload-data"
+          "$RUNNER_TEMP/declared-upload-data/bin/python" -m pip install --require-hashes -r runtimes/data/requirements.lock
+          "$RUNNER_TEMP/declared-upload-data/bin/python" -m pip check
+      - name: Require real uploaded CSV RD to structured OE flow
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_DECLARED_UPLOAD_FLOW_REQUIRED: "1"
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          status=0
+          "$RUNNER_TEMP/declared-upload-data/bin/python" -m pytest tests/integration/test_declared_upload_research_flow.py -q \
+            --junitxml=var/numeric-private/declared-upload.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/declared-upload.xml')
+          summarize(source,Path('var/numeric-proof/declared-upload-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==2
+          assert {case.get('name') for case in cases}=={'test_actual_upload_api_and_data_worker_preserve_declared_originals','test_actual_declared_upload_rd_release_and_normal_structured_oe'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Require actual finite workflow RD to OE stage and complete restore
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_WORKFLOW_STRUCTURED_FLOW_REQUIRED: "1"
+          MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          status=0
+          python -m pytest tests/integration/test_workflow_structured_stage_flow.py -q \
+            --junitxml=var/numeric-private/workflow-structured-stage.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/workflow-structured-stage.xml')
+          summarize(source,Path('var/numeric-proof/workflow-structured-stage-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==1
+          assert {case.get('name') for case in cases}=={'test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Confirm exact normal OE controller units are absent
+        if: always()
+        run: |
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-oe-structured-orchestrator-v1)
+          test -z "$ids" || { echo 'Normal OE controller containment is not confirmed' >&2; exit 1; }
       - name: Confirm exact structured engine units are absent
         if: always()
         run: |

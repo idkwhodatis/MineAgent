@@ -48,6 +48,13 @@ def expected_operational_bootstrap(session, fence):
             "Fresh RD attempt binding is required",
             409,
         )
+    from backend.app.rdagent_workflow_controller import workflow_bootstrap_if_declared
+
+    workflow = workflow_bootstrap_if_declared(
+        session, fence, binding=binding, spec=spec, config=config
+    )
+    if workflow is not None:
+        return binding, workflow
     from backend.app.rdagent_seed_controller import seeded_bootstrap_if_declared
 
     seeded = seeded_bootstrap_if_declared(

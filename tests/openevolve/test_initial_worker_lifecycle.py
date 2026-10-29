@@ -230,6 +230,10 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
                         "prepare_initial_epoch",
                     ),
                     ("workers/research/rdagent_numeric.py", "_intent"),
+                    (
+                        "backend/app/oe_structured_epoch_services.py",
+                        "prepare_controller_epoch",
+                    ),
                 }, (path, call.lineno)
             assert any(
                 k.arg == "settings"
@@ -237,6 +241,43 @@ def test_owner_loss_fixture_migrates_its_own_connection_to_exact024(monkeypatch)
                 and k.value.id == "settings"
                 for k in call.keywords
             ), path
+    # Normal 027/028 delegates epoch reservation to this actual fixed issuer;
+    # verify its call remains inside the factor/process storage transaction.
+    caller = ast.parse(Path("workers/research/oe_structured_controller.py").read_text())
+    caller_parents = {
+        child: parent
+        for parent in ast.walk(caller)
+        for child in ast.iter_child_nodes(parent)
+    }
+    epoch_calls = [
+        node
+        for node in ast.walk(caller)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "prepare_controller_epoch"
+    ]
+    assert len(epoch_calls) == 1
+    current = epoch_calls[0]
+    ancestors = []
+    while current in caller_parents:
+        current = caller_parents[current]
+        ancestors.append(current)
+    assert any(
+        isinstance(parent, ast.With)
+        and any(
+            isinstance(item.context_expr, ast.Call)
+            and isinstance(item.context_expr.func, ast.Name)
+            and item.context_expr.func.id == "neutral_transaction"
+            and any(
+                keyword.arg == "resource_scope"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == "factor_numeric"
+                for keyword in item.context_expr.keywords
+            )
+            for item in parent.items
+        )
+        for parent in ancestors
+    )
     # The OE evaluator now separates read-only reservation admission from the
     # one-shot write. Audit that replacement, rather than silently dropping it.
     path = Path("backend/app/openevolve_evaluation_admission.py")

@@ -218,7 +218,15 @@ def _materialize(
 
 
 def reconstruct_retained_input(
-    session, fence, execution_id, snapshot_id, config, program, settings
+    session,
+    fence,
+    execution_id,
+    snapshot_id,
+    config,
+    program,
+    settings,
+    *,
+    declared_upload=False,
 ):
     """Data reconstruction shared with historical reads, never a live capability.
 
@@ -270,24 +278,41 @@ def reconstruct_retained_input(
     metadata = json.loads(raw)
     if metadata != dataset.manifest:
         fail()
+    actual_declared = metadata.get("schema_version") == 3
+    if actual_declared and declared_upload is not True:
+        fail()
     artifacts = {}
     total = len(raw)
-    for name in sorted(ARTIFACTS):
-        artifacts[name] = read_structured_artifact(
-            settings.storage_root,
-            dataset.storage_key,
-            name,
-            metadata["artifact_files"][name],
-            32 * 1024**2,
+    if actual_declared:
+        from backend.app.declared_upload_io import read_dataset_bytes
+        from backend.app.declared_upload_services import (
+            require_revision,
+            verify_basket_relations,
         )
-        total += len(artifacts[name])
-        if total > 64 * 1024**2:
-            fail()
+
+        require_revision(session)
+        verify_basket_relations(session, fence.owner_id, dataset)
+        raw, artifacts = read_dataset_bytes(settings.storage_root, dataset)
+    else:
+        for name in sorted(ARTIFACTS):
+            artifacts[name] = read_structured_artifact(
+                settings.storage_root,
+                dataset.storage_key,
+                name,
+                metadata["artifact_files"][name],
+                32 * 1024**2,
+            )
+            total += len(artifacts[name])
+            if total > 64 * 1024**2:
+                fail()
     market = stage_market(
         raw,
         artifacts,
         dataset_sha256=config.dataset_sha256,
         window=config.execution_window,
+        declared_upload=actual_declared,
+        dataset_id=dataset.id,
+        owner_id=fence.owner_id,
     )
     value = assemble_input(
         fence=fence,

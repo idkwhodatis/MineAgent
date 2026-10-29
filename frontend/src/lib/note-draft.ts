@@ -92,6 +92,9 @@ export function validateNoteContent(
           "comparison",
           "diagnostic",
           "controlled",
+          "normal_oe_execution",
+          "normal_oe_decision",
+          "normal_oe_fill",
         ].includes(ref.kind),
     )
   )

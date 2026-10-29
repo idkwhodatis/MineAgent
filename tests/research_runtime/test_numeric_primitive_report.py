@@ -441,6 +441,11 @@ def test_resolved_report_api_returns_exact_immutable_context_with_authority_doub
         "027a_contract_repairs",
         "027b_provider_material",
         "027c_seeded_controller_v4",
+        "028_oe_structured_search",
+        "029_research_workflow",
+        "030_declared_upload_basket",
+        "031_workflow_structured_stage",
+        "032_normal_oe_note_pins",
     ],
 )
 def test_report_capability_inherits_only_installed_exact_successor_pairs(revision):
@@ -479,7 +484,7 @@ def test_report_capability_refuses_old_unknown_or_ambiguous_installation(revisio
             "mineagent.execution-snapshot-restore-closure.v1",
         ),
         ("native_closure_schema", "mineagent.native-hdf-restore-closure.v2"),
-        ("research_closure_schema", "mineagent.research-restore-closure.v13"),
+        ("research_closure_schema", "mineagent.research-restore-closure.v16"),
     ],
 )
 def test_report_capability_refuses_mixed_or_future_capability_tuple(
@@ -499,6 +504,48 @@ def test_report_capability_refuses_mixed_or_future_capability_tuple(
     )
     session = SimpleNamespace(
         scalars=lambda _: SimpleNamespace(all=lambda: ["026_rd_seeded_submissions"])
+    )
+    with pytest.raises(ProcessError, match="numeric_report_schema_unsupported"):
+        require_report_capability(session)
+
+
+_REPORT_REVISION_GROUPS = (
+    ("021_execution_snapshots",),
+    ("022_factor_analysis", "023_rd_submissions"),
+    ("024_openevolve_initial",),
+    ("025_structured_factor_strategy",),
+    ("026_rd_seeded_submissions",),
+    ("027_rd_controller_v3", "027a_contract_repairs"),
+    ("028_oe_structured_search",),
+    ("029_research_workflow",),
+    ("030_declared_upload_basket",),
+    ("031_workflow_structured_stage", "032_normal_oe_note_pins"),
+)
+
+
+@pytest.mark.parametrize(
+    "installed,foreign",
+    [
+        (installed, foreign)
+        for group in _REPORT_REVISION_GROUPS
+        for other in _REPORT_REVISION_GROUPS
+        if group != other
+        for installed in group
+        for foreign in other
+    ],
+)
+def test_report_capability_refuses_other_known_revision_triple(
+    monkeypatch, installed, foreign
+):
+    from types import SimpleNamespace
+
+    from backend.app import schema_capabilities
+    from backend.app.normalizer_report_ddl import require_report_capability
+
+    wrong = schema_capabilities.capabilities_for(foreign)
+    monkeypatch.setattr(schema_capabilities, "capabilities_for", lambda _: wrong)
+    session = SimpleNamespace(
+        scalars=lambda _: SimpleNamespace(all=lambda: [installed])
     )
     with pytest.raises(ProcessError, match="numeric_report_schema_unsupported"):
         require_report_capability(session)

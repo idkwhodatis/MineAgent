@@ -87,7 +87,8 @@ def _capacity_guard(session, root, fence):
 
 
 def upload_holds(session):
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+    revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
+    if revisions not in (
         ["024_openevolve_initial"],
         ["025_structured_factor_strategy"],
         ["026_rd_seeded_submissions"],
@@ -95,6 +96,11 @@ def upload_holds(session):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload
@@ -125,6 +131,16 @@ def upload_holds(session):
                 4 * (upload.chunk_count + upload.file_count + 1),
             )
         )
+    if revisions in (
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
+    ):
+        from backend.app.oe_structured_quota import checkpoint_upload_holds
+
+        holds.extend(checkpoint_upload_holds(session))
     return tuple(holds)
 
 

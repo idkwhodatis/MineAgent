@@ -320,6 +320,37 @@ def test_new_config_bootstrap_preserves_explicit_model_and_unknown_pricing(
         assert result.seed.source.encode() == cold.parent.path.read_bytes()
 
 
+def test_027_seed_reconstruction_reads_actual_parent_bytes(cold):
+    cold.kwargs["research_closure"]["schema_version"] = (
+        "mineagent.research-restore-closure.v13"
+    )
+    cold.kwargs["rd_source_closure"]["schema_version"] = (
+        "mineagent.rd-source-restore-closure.v8"
+    )
+    result = backup.validate_closure(cold.closure, **cold.kwargs)
+    assert len(result) == 1
+    assert (
+        next(iter(result.values())).parent.source.encode()
+        == cold.parent.path.read_bytes()
+    )
+    assert len(cold.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "research,source", [("v11", "v5"), ("v10", "v6"), ("v12", "v6"), ("v11", "v7")]
+)
+def test_seed_rejects_mixed_or_future_closure_pairs(cold, research, source):
+    cold.kwargs["research_closure"]["schema_version"] = (
+        "mineagent.research-restore-closure." + research
+    )
+    cold.kwargs["rd_source_closure"]["schema_version"] = (
+        "mineagent.rd-source-restore-closure." + source
+    )
+    with pytest.raises(ValueError, match="Seed explicit closure tuple"):
+        backup.validate_closure(cold.closure, **cold.kwargs)
+    assert not cold.calls
+
+
 @pytest.mark.parametrize(
     "research_version,source_version,allowed",
     [

@@ -36,11 +36,18 @@ def test_full_revision_declares_separate_domain_closure_not_component_only():
             {"schema_version": backup.SCHEMA_V8}, None, None, 100, inventory=[]
         )
     with pytest.raises(ValueError):
-        backup.closure_fields("mineagent.research-restore-closure.v12")
+        backup.closure_fields("mineagent.research-restore-closure.v17")
 
 
 @pytest.mark.parametrize(
-    "schema", [backup.SCHEMA_V8, backup.SCHEMA_V9, backup.SCHEMA_V10]
+    "schema",
+    [
+        backup.SCHEMA_V8,
+        backup.SCHEMA_V9,
+        backup.SCHEMA_V10,
+        backup.SCHEMA_V11,
+        backup.SCHEMA_V12,
+    ],
 )
 def test_native_manifest_path_does_not_allow_other_root_files(schema):
     prefix = f"research-processes/{uuid4()}/{uuid4()}/"
@@ -51,7 +58,14 @@ def test_native_manifest_path_does_not_allow_other_root_files(schema):
 
 
 @pytest.mark.parametrize(
-    "schema", [backup.SCHEMA_V8, backup.SCHEMA_V9, backup.SCHEMA_V10]
+    "schema",
+    [
+        backup.SCHEMA_V8,
+        backup.SCHEMA_V9,
+        backup.SCHEMA_V10,
+        backup.SCHEMA_V11,
+        backup.SCHEMA_V12,
+    ],
 )
 @pytest.mark.parametrize("profile", ["native", "controller"])
 def test_retention_manifest_routing_matches_native_production_layout(

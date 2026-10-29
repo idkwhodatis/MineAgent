@@ -37,6 +37,17 @@ def reason(code, message):
 
 
 def dataset_options(session, owner_id, offset=0, limit=25):
+    from backend.app.rdagent_snapshot_config import declared_upload_in_session
+
+    declared_installed = declared_upload_in_session(session)
+
+    def supported(row):
+        return row.manifest.get("schema_version") == "marketdata.v1" or (
+            declared_installed
+            and row.manifest.get("schema_version") == 3
+            and row.manifest.get("profile") == "mineagent.declared-upload-basket.v1"
+        )
+
     rows = session.scalars(
         select(DatasetVersion)
         .filter_by(owner_id=owner_id)
@@ -47,17 +58,16 @@ def dataset_options(session, owner_id, offset=0, limit=25):
     return [
         EngineDatasetOption(
             id=row.id,
+            source=row.source,
             name=row.name,
             start_date=row.start_date,
             end_date=row.end_date,
             market=row.market,
             is_synthetic=row.is_synthetic,
             content_sha256=row.content_sha256,
-            eligibility="not_checked"
-            if row.manifest.get("schema_version") == "marketdata.v1"
-            else "unsupported",
+            eligibility="not_checked" if supported(row) else "unsupported",
             reason=None
-            if row.manifest.get("schema_version") == "marketdata.v1"
+            if supported(row)
             else reason(
                 "dataset_format_unsupported",
                 "This initial profile requires retained marketdata.v1 daily source artifacts.",
@@ -224,6 +234,11 @@ def preflight(session, owner_id, request, settings):
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         ) and (
             selected_profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -232,6 +247,11 @@ def preflight(session, owner_id, request, settings):
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
                 ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
             )
         ):
             runtime_available = True

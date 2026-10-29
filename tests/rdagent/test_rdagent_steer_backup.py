@@ -135,9 +135,16 @@ def test_forged_steer_history_is_not_a_restore_grant(graph, mutation):
     elif mutation == "duplicate":
         versions.append(deepcopy(versions[0]))
     else:
-        rd["schema_version"] = "mineagent.rd-source-restore-closure.v8"
+        rd["schema_version"] = "mineagent.rd-source-restore-closure.v12"
     with pytest.raises(ValueError):
         backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)
+
+
+def test_027_steer_preserves_exact_historical_snapshot_after_disable(graph):
+    closure, rd = graph
+    rd["schema_version"] = "mineagent.rd-source-restore-closure.v8"
+    backup.validate_closure(closure, rd_source_closure=rd, maximum_rows=100)
+    assert closure["tables"]["rd_steers"][0]["disabled"] is True
 
 
 @pytest.mark.parametrize("profile", [None, "mineagent.rdagent-orchestrator.v3"])

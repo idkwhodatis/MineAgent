@@ -84,6 +84,11 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -152,6 +157,11 @@ def _persist_queued(
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -227,25 +237,23 @@ def _persist_queued(
     )
 
 
-def _persist_queued_graph(
+def resolve_research_declaration(
     session,
     owner_id,
     request,
-    key,
     settings,
     runtime,
-    installed_parent,
     *,
     expected_input_sha256,
     model_binding=None,
     steer_snapshot=None,
     controller_selection=None,
 ):
-    """Shared flush-only graph, called after a versioned declaration preflight.
+    """Fresh retained declaration only: no run, attempt, plan, exposure or outbox.
 
-    This does not manufacture a submission receipt or execution authority. The
-    caller must insert its exact versioned receipt and outbox in this same owner-
-    serialized transaction; deferred SQL rejects an unclosed queued graph.
+    Host callers derive runtime/model bindings from the operator registry and own
+    the existing lifecycle/owner transaction. Returned data grants no execution.
+    Both ordinary queued insertion and workflow preflight use this exact builder.
     """
     from workers.research.rdagent_configured import validate_configured_work
 
@@ -260,8 +268,6 @@ def _persist_queued_graph(
                 "Seeded v4 requires exact provider seed request",
                 409,
             )
-    validate_key(key)
-    _try_neutral_lock(session, f"submit:{owner_id}")
     source = resolve_dataset_preflight(
         session,
         owner_id=owner_id,
@@ -335,6 +341,104 @@ def _persist_queued_graph(
             "preflight_changed", "Separate retained label source changed", 409
         )
     derive_configured_labels(label_source, request.objective)
+    return config, source
+
+
+def _persist_queued_graph(
+    session,
+    owner_id,
+    request,
+    key,
+    settings,
+    runtime,
+    installed_parent,
+    *,
+    expected_input_sha256,
+    model_binding=None,
+    steer_snapshot=None,
+    controller_selection=None,
+):
+    """Shared flush-only graph, called after a versioned declaration preflight.
+
+    This does not manufacture a submission receipt or execution authority. The
+    caller must insert its exact versioned receipt and outbox in this same owner-
+    serialized transaction; deferred SQL rejects an unclosed queued graph.
+    """
+    if controller_selection == "mineagent.rdagent-orchestrator.v4":
+        from backend.app.rdagent_provider_submission_contracts import (
+            RDProviderSeedRequest,
+        )
+
+        if type(request) is not RDProviderSeedRequest or model_binding is None:
+            raise DomainError(
+                "seeded_controller_required",
+                "Seeded v4 requires exact provider seed request",
+                409,
+            )
+    validate_key(key)
+    _try_neutral_lock(session, f"submit:{owner_id}")
+    config, source = resolve_research_declaration(
+        session,
+        owner_id,
+        request,
+        settings,
+        runtime,
+        expected_input_sha256=expected_input_sha256,
+        model_binding=model_binding,
+        steer_snapshot=steer_snapshot,
+        controller_selection=controller_selection,
+    )
+    return _insert_declared_queued_graph(
+        session,
+        owner_id,
+        request,
+        key,
+        settings,
+        runtime,
+        installed_parent,
+        config=config,
+        source=source,
+    )
+
+
+def _insert_declared_queued_graph(
+    session,
+    owner_id,
+    request,
+    key,
+    settings,
+    runtime,
+    installed_parent,
+    *,
+    config,
+    source,
+    run_id=None,
+):
+    """Internal flush-only insertion after fresh declaration and owner admission.
+
+    A workflow caller must first lock/verify its actual allocated stage and bind
+    that new child UUID in its versioned config. No receipt, outbox, commit or
+    process authority is supplied here. Normal submissions retain random IDs.
+    """
+    validate_key(key)
+    _try_neutral_lock(session, f"submit:{owner_id}")
+    if run_id is not None:
+        from packages.rdagent_adapter.workflow_config import (
+            WorkflowFactorResearchConfig,
+        )
+
+        if not isinstance(config, WorkflowFactorResearchConfig) or (
+            config.workflow_child_run_id != run_id
+            or config.workflow_inputs.binding.owner_id != owner_id
+            or session.get(ResearchRun, run_id) is not None
+        ):
+            raise DomainError(
+                "workflow_child_changed", "New workflow child differs", 409
+            )
+    elif getattr(config, "schema_version", None) == "mineagent.factor-research.v3":
+        raise DomainError(
+            "workflow_child_required", "Allocated workflow child required", 409
+        )
     active = session.scalar(
         select(func.count())
         .select_from(ResearchRun)
@@ -343,7 +447,7 @@ def _persist_queued_graph(
     if active >= quota_limit(session, owner_id, settings):
         raise DomainError("run_quota", "Active run limit reached", 429)
     run = ResearchRun(
-        id=uuid4(),
+        id=uuid4() if run_id is None else run_id,
         owner_id=owner_id,
         idempotency_key=key,
         request_sha256=config.sha256,

@@ -27,6 +27,7 @@ vi.mock("@tanstack/react-query", () => ({
                 run_id: "run",
                 factor_id: state.foreign ? "other" : "factor",
                 factor_version_id: "version",
+                qualification: "identity_metadata_not_result_release",
               },
             ],
           },
@@ -64,11 +65,16 @@ it("unavailable schema never requests metadata or presents execution actions", (
   expect(state.keys).toEqual(["structured-results:capabilities"]);
   expect(html).toContain("Structured history unavailable");
   expect(html).not.toContain("Open observed strategy execution");
+  expect(html).not.toContain("Inspect normal OE run");
+  expect(html).not.toContain("Next normal OE usage");
 });
 it("metadata discovery never discloses values or grants release", () => {
   state.enabled = true;
   const html = render();
   expect(html).toContain("Open observed strategy execution execution");
+  expect(state.keys).toContain("factor-normal-oe-usage:factor:version:0");
+  expect(html).toContain('href="/engine-runs/structured-search/runs/run"');
+  expect(html).toContain("Inspect normal OE run run");
   expect(html).not.toContain("Observed difference");
   expect(html).not.toContain("Release before execution");
 });
@@ -78,6 +84,7 @@ it("foreign exact version is not linked or substituted", () => {
   const html = render();
   expect(html).toContain("Execution identity differs");
   expect(html).not.toContain("Open observed strategy execution");
+  expect(html).not.toContain("Inspect normal OE run");
 });
 it("invalid comparison IDs are rejected rather than defaulting to any seed", () => {
   expect(

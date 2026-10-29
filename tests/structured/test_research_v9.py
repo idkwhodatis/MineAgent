@@ -15,9 +15,18 @@ def test_structured_paths_only_exact_successor(leaf):
     path = f"research-processes/{uuid4()}/{uuid4()}/{leaf}"
     with pytest.raises(ValueError):
         backup.validate_path(path, schema=backup.SCHEMA_V8)
-    backup.validate_path(path, schema=backup.SCHEMA_V9)
+    for schema in (
+        backup.SCHEMA_V9,
+        backup.SCHEMA_V10,
+        backup.SCHEMA_V11,
+        backup.SCHEMA_V12,
+        backup.SCHEMA_V13,
+        backup.SCHEMA_V14,
+        backup.SCHEMA_V15,
+    ):
+        backup.validate_path(path, schema=schema)
     with pytest.raises(ValueError):
-        backup.validate_path(path, schema="mineagent.research-restore-closure.v13")
+        backup.validate_path(path, schema="mineagent.research-restore-closure.v17")
 
 
 def test_successor_preserves_oe_binary_grammar_without_new_json_assumption():

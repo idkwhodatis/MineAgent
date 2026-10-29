@@ -43,7 +43,20 @@ def require_research_spec(
         )
     from packages.rdagent_adapter.provider_config import parse_research_config
 
-    config = parse_research_config(spec.config)
+    if spec.config.get("schema_version") == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_capability import require_workflow_revision
+        from packages.rdagent_adapter.workflow_identity import (
+            require_workflow_source_identity,
+        )
+
+        require_workflow_revision(session)
+        config = require_workflow_source_identity(run)
+        if spec.config != config.model_dump(mode="json"):
+            raise DomainError(
+                "factor_research_spec_changed", "Workflow specification differs", 409
+            )
+    else:
+        config = parse_research_config(spec.config)
     if (
         config.sha256 != spec.config_sha256
         or config.input.sha256 != spec.input_sha256
@@ -54,7 +67,10 @@ def require_research_spec(
             "Research specification identity differs",
             409,
         )
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from backend.app.rdagent_steer_services import verify_steer_snapshot
 
         verify_steer_snapshot(session, fence.owner_id, config.steer_snapshot)
@@ -138,6 +154,7 @@ def begin_generation(
     mutation_reservation_id: UUID,
     parent_factor_version_id: UUID | None = None,
     seeded_submission_id: UUID | None = None,
+    workflow_submission_id: UUID | None = None,
 ):
     """Consume already-host-reserved mutation authority; never fabricate a grant.
 
@@ -170,6 +187,33 @@ def begin_generation(
     if type(logical_step) is not int or not 0 <= logical_step < config.max_iterations:
         raise DomainError(
             "factor_step_invalid", "Logical step exceeds frozen configuration", 409
+        )
+    if config.schema_version == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_controller import (
+            require_workflow_initial_generation,
+        )
+
+        if (
+            workflow_submission_id is None
+            or seeded_submission_id is not None
+            or logical_step != 0
+        ):
+            raise DomainError(
+                "workflow_initial_generation",
+                "Exact workflow first generation receipt required",
+                409,
+            )
+        require_workflow_initial_generation(
+            session,
+            fence,
+            submission_id=workflow_submission_id,
+            parent_factor_version_id=parent_factor_version_id,
+        )
+    elif workflow_submission_id is not None:
+        raise DomainError(
+            "workflow_initial_generation",
+            "Workflow receipt cannot authorize another profile",
+            409,
         )
     if seeded_submission_id is not None:
         from backend.app.rdagent_seed_services import require_initial_seed
@@ -251,7 +295,7 @@ def begin_generation(
                 "Previous completed nonterminal generation required",
                 409,
             )
-    elif seeded_submission_id is not None:
+    elif seeded_submission_id is not None or workflow_submission_id is not None:
         # The same persisted receipt was checked before exact replay above.
         pass
     elif parent_factor_version_id is not None:
@@ -688,7 +732,10 @@ def attach_request_operation(
         if call.kind == "chat"
         else "mineagent.rdagent-embedding.v1"
     )
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from packages.rdagent_provider.codec import parse_request, request_sha256
 
         protocol = (
@@ -698,7 +745,10 @@ def attach_request_operation(
         )
     operation = _scope_row(session, ResearchModelOperation, operation_id, fence)
     request = parse_request(protocol, operation.request)
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from packages.rdagent_provider.contracts import require_request_binding
 
         require_request_binding(request, config.model_binding)
@@ -1119,7 +1169,10 @@ def admit_atomic_request(
         if call.kind == "chat"
         else "mineagent.rdagent-embedding.v1"
     )
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from packages.rdagent_provider.codec import (
             canonical_bytes,
             parse_request,
@@ -1132,7 +1185,10 @@ def admit_atomic_request(
             else "mineagent.rdagent-provider-embedding.v1"
         )
     request = parse_request(protocol, request_bytes)
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from packages.rdagent_provider.contracts import require_request_binding
 
         require_request_binding(request, config.model_binding)
@@ -1192,8 +1248,28 @@ def admit_atomic_request(
                 "Atomic request lacks initial transport reservation",
                 409,
             )
+        if config.schema_version == "mineagent.factor-research.v3":
+            from backend.app.rdagent_workflow_prompt_guard import (
+                bind_workflow_consumption,
+            )
+
+            bind_workflow_consumption(
+                session,
+                fence,
+                call=call,
+                member=previous,
+                operation=operation,
+                transport=transport,
+                request=request,
+                config=config,
+                settings=settings,
+                replay=True,
+            )
         return operation, previous, transport
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from backend.app.rdagent_provider_quota import require_provider_call_capacity
 
         require_provider_call_capacity(session, fence)
@@ -1209,7 +1285,8 @@ def admit_atomic_request(
             "factor_context_closed", "Model context is already closed", 409
         )
     if (
-        config.schema_version == "mineagent.factor-research.v2"
+        config.schema_version
+        in ("mineagent.factor-research.v2", "mineagent.factor-research.v3")
         and call.phase == "generation"
         and call.ordinal == 0
         and not _call_members(session, fence, call.id)
@@ -1220,7 +1297,18 @@ def admit_atomic_request(
 
         if relation != "initial":
             raise ValueError("First provider generation request must be initial")
-        require_first_provider_prompt(session, fence, call, request, config, settings)
+        if config.schema_version == "mineagent.factor-research.v3":
+            from backend.app.rdagent_workflow_prompt_guard import (
+                require_first_workflow_prompt,
+            )
+
+            require_first_workflow_prompt(
+                session, fence, call, request, config, settings
+            )
+        else:
+            require_first_provider_prompt(
+                session, fence, call, request, config, settings
+            )
     purpose = (
         "embedding"
         if call.kind == "embedding"
@@ -1274,7 +1362,10 @@ def admit_atomic_request(
         else sum(len(text.encode("utf-8")) for text in request.inputs)
     )
     amounts = BudgetVector(calls=1, tokens=tokens)
-    if config.schema_version == "mineagent.factor-research.v2":
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
         from packages.rdagent_provider.accounting import request_reservation
 
         amounts = request_reservation(request, config.model_binding)
@@ -1298,4 +1389,18 @@ def admit_atomic_request(
     )
     session.add(transport)
     session.flush()
+    if config.schema_version == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_prompt_guard import bind_workflow_consumption
+
+        bind_workflow_consumption(
+            session,
+            fence,
+            call=call,
+            member=member,
+            operation=operation,
+            transport=transport,
+            request=request,
+            config=config,
+            settings=settings,
+        )
     return operation, member, transport

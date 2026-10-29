@@ -26,8 +26,23 @@ from backend.app.services import DomainError, owned_run
 from packages.rdagent_adapter.persisted_identity import require_source_identity
 
 
-def rd_config(run):
+def rd_config(run, *, session=None):
     try:
+        if (
+            isinstance(run.config, dict)
+            and run.config.get("schema_version") == "mineagent.factor-research.v3"
+        ):
+            if session is None:
+                raise ValueError("Workflow history requires exact installed schema")
+            from backend.app.rdagent_workflow_capability import (
+                require_workflow_revision,
+            )
+            from packages.rdagent_adapter.workflow_identity import (
+                require_workflow_source_identity,
+            )
+
+            require_workflow_revision(session)
+            return require_workflow_source_identity(run)
         return require_source_identity(run)
     except (ValueError, TypeError, AttributeError):
         raise DomainError(
@@ -37,12 +52,12 @@ def rd_config(run):
 
 def owned_engine_run(session, run_id, owner_id):
     run = owned_run(session, run_id, owner_id)
-    rd_config(run)
+    rd_config(run, session=session)
     return run
 
 
-def summary(run):
-    config = rd_config(run)
+def summary(run, *, session=None):
+    config = rd_config(run, session=session)
     return EngineRunSummary(
         config_schema=config.schema_version,
         id=run.id,
@@ -55,10 +70,10 @@ def summary(run):
     )
 
 
-def detail(run):
-    config = rd_config(run)
+def detail(run, *, session=None):
+    config = rd_config(run, session=session)
     return EngineRunDetail(
-        **summary(run).model_dump(),
+        **summary(run, session=session).model_dump(),
         config_sha256=config.sha256,
         task_description=config.task.description,
         max_iterations=config.max_iterations,
@@ -81,7 +96,7 @@ def list_history_runs(session, owner_id, offset, limit):
         .limit(limit)
     ).all()
     return {
-        "data": [summary(row) for row in rows],
+        "data": [summary(row, session=session) for row in rows],
         "count": session.scalar(
             select(func.count()).select_from(ResearchRun).where(clause)
         ),

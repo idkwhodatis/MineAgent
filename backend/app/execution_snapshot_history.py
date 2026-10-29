@@ -32,8 +32,10 @@ from backend.app.numeric_historical_io import read_historical_numeric_bytes
 from backend.app.rdagent_models import FactorCutoffExecution
 from backend.app.rdagent_snapshot_config import (
     composed_controller_in_session,
+    declared_upload_in_session,
     provider_config_in_session,
     seeded_controller_in_session,
+    workflow_config_in_session,
 )
 from backend.app.research_broker_models import (
     ResearchBudgetReservation,
@@ -98,6 +100,11 @@ def historical_session(factory, owner_id, settings):
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
                 ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
             ):
                 fail()
             yield session
@@ -354,6 +361,11 @@ def check_configured_history(session, publication, settings):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document
@@ -425,6 +437,8 @@ def check_configured_history(session, publication, settings):
         max_rows=10000,
         provider_config=provider_config_in_session(session),
         composed_controller=composed_controller_in_session(session),
+        workflow_config=workflow_config_in_session(session),
+        declared_upload=declared_upload_in_session(session),
         seeded_controller=seeded_controller_in_session(session),
     )
 

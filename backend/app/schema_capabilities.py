@@ -14,6 +14,7 @@ class SchemaCapabilities:
     backup_supported: bool = False
     strategy_packages: bool = False
     note_pins: bool = False
+    normal_oe_note_schema: str | None = None
     factor_closure_schema: str | None = None
     factor_imports: bool = False
     research_closure_schema: str | None = None
@@ -26,6 +27,10 @@ class SchemaCapabilities:
     structured_strategy_schema: str | None = None
     rd_seed_schema: str | None = None
     rd_steer_schema: str | None = None
+    oe_structured_closure_schema: str | None = None
+    declared_upload_schema: str | None = None
+    workflow_schema: str | None = None
+    research_input_schema: str | None = None
 
 
 SCHEMA_CAPABILITIES = MappingProxyType(
@@ -54,6 +59,113 @@ SCHEMA_CAPABILITIES = MappingProxyType(
             native_closure_schema="mineagent.native-hdf-restore-closure.v3",
             execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
             direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+        ),
+        "032_normal_oe_note_pins": SchemaCapabilities(
+            normal_oe_note_schema="mineagent.note-normal-oe-closure.v1",
+            declared_upload_schema="mineagent.declared-upload-restore-closure.v1",
+            workflow_schema="mineagent.research-workflow-closure.v2",
+            research_input_schema="mineagent.research-inputs.v1",
+            oe_structured_closure_schema="mineagent.oe-structured-restore-closure.v2",
+            rd_seed_schema="mineagent.rd-seed-restore-closure.v1",
+            rd_steer_schema="mineagent.rd-steer-closure.v1",
+            process_installation_quota=True,
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v16",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v11",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v3",
+            execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
+            rd_submission_schema="mineagent.rd-submission-restore-closure.v1",
+            direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+            structured_strategy_schema="mineagent.structured-strategy-restore-closure.v1",
+            openevolve_closure_schema="mineagent.openevolve-restore-closure.v1",
+        ),
+        "031_workflow_structured_stage": SchemaCapabilities(
+            declared_upload_schema="mineagent.declared-upload-restore-closure.v1",
+            workflow_schema="mineagent.research-workflow-closure.v2",
+            research_input_schema="mineagent.research-inputs.v1",
+            oe_structured_closure_schema="mineagent.oe-structured-restore-closure.v2",
+            rd_seed_schema="mineagent.rd-seed-restore-closure.v1",
+            rd_steer_schema="mineagent.rd-steer-closure.v1",
+            process_installation_quota=True,
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v16",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v11",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v3",
+            execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
+            rd_submission_schema="mineagent.rd-submission-restore-closure.v1",
+            direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+            structured_strategy_schema="mineagent.structured-strategy-restore-closure.v1",
+            openevolve_closure_schema="mineagent.openevolve-restore-closure.v1",
+        ),
+        "030_declared_upload_basket": SchemaCapabilities(
+            declared_upload_schema="mineagent.declared-upload-restore-closure.v1",
+            workflow_schema="mineagent.research-workflow-closure.v1",
+            research_input_schema="mineagent.research-inputs.v1",
+            oe_structured_closure_schema="mineagent.oe-structured-restore-closure.v1",
+            rd_seed_schema="mineagent.rd-seed-restore-closure.v1",
+            rd_steer_schema="mineagent.rd-steer-closure.v1",
+            process_installation_quota=True,
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v15",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v10",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v3",
+            execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
+            rd_submission_schema="mineagent.rd-submission-restore-closure.v1",
+            direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+            structured_strategy_schema="mineagent.structured-strategy-restore-closure.v1",
+            openevolve_closure_schema="mineagent.openevolve-restore-closure.v1",
+        ),
+        "029_research_workflow": SchemaCapabilities(
+            workflow_schema="mineagent.research-workflow-closure.v1",
+            research_input_schema="mineagent.research-inputs.v1",
+            oe_structured_closure_schema="mineagent.oe-structured-restore-closure.v1",
+            rd_seed_schema="mineagent.rd-seed-restore-closure.v1",
+            rd_steer_schema="mineagent.rd-steer-closure.v1",
+            process_installation_quota=True,
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v14",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v9",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v3",
+            execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
+            rd_submission_schema="mineagent.rd-submission-restore-closure.v1",
+            direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+            structured_strategy_schema="mineagent.structured-strategy-restore-closure.v1",
+            openevolve_closure_schema="mineagent.openevolve-restore-closure.v1",
+        ),
+        "028_oe_structured_search": SchemaCapabilities(
+            oe_structured_closure_schema="mineagent.oe-structured-restore-closure.v1",
+            rd_seed_schema="mineagent.rd-seed-restore-closure.v1",
+            rd_steer_schema="mineagent.rd-steer-closure.v1",
+            process_installation_quota=True,
+            backup_supported=True,
+            strategy_packages=True,
+            note_pins=True,
+            factor_closure_schema="mineagent.factor-restore-closure.v2",
+            factor_imports=True,
+            research_closure_schema="mineagent.research-restore-closure.v13",
+            rd_source_closure_schema="mineagent.rd-source-restore-closure.v8",
+            native_closure_schema="mineagent.native-hdf-restore-closure.v3",
+            execution_snapshot_schema="mineagent.execution-snapshot-restore-closure.v2",
+            rd_submission_schema="mineagent.rd-submission-restore-closure.v1",
+            direct_analysis_schema="mineagent.direct-analysis-restore-closure.v1",
+            structured_strategy_schema="mineagent.structured-strategy-restore-closure.v1",
+            openevolve_closure_schema="mineagent.openevolve-restore-closure.v1",
         ),
         "027c_seeded_controller_v4": SchemaCapabilities(
             rd_seed_schema="mineagent.rd-seed-restore-closure.v1",

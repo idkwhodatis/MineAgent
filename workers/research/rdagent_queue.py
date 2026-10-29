@@ -27,6 +27,18 @@ from packages.research_runtime.fences import AttemptFence
 TASK_NAME = "mineagent.execute_rd_run"
 
 
+def _queued_identity(session, run):
+    if run.config.get("schema_version") == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_capability import require_workflow_revision
+        from packages.rdagent_adapter.workflow_identity import (
+            require_workflow_source_identity,
+        )
+
+        require_workflow_revision(session)
+        return require_workflow_source_identity(run)
+    return require_source_identity(run)
+
+
 def claim_configured_run(factory, run_id, generation, worker_id, settings):
     with factory.begin() as session:
         fence = _claim(session, run_id, generation, worker_id, settings, None, None)
@@ -35,7 +47,7 @@ def claim_configured_run(factory, run_id, generation, worker_id, settings):
     with neutral_transaction(
         factory, fence, resource_scope="factor_numeric"
     ) as session:
-        config = require_source_identity(session.get(ResearchRun, fence.run_id))
+        config = _queued_identity(session, session.get(ResearchRun, fence.run_id))
         initialize_budget(session, fence, config.budget)
         bind_research_attempt(session, fence)
     return fence
@@ -60,6 +72,11 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409
@@ -75,7 +92,7 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
     )
     if run is None or run.status != "queued" or run.generation != generation:
         return None
-    config = require_source_identity(run)
+    config = _queued_identity(session, run)
     if (
         run.active_attempt_id is not None
         or session.scalar(select(ExecutionAttempt.id).filter_by(run_id=run_id).limit(1))
@@ -96,13 +113,23 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
     seeded = seeded_row(session, run, revisions)
     if (
         event is None
-        or (row is None and seeded is None)
+        or (
+            row is None
+            and seeded is None
+            and config.schema_version != "mineagent.factor-research.v3"
+        )
         or (row is not None and seeded is not None)
     ):
         raise DomainError(
             "rd_claim_unbound", "Committed submission and outbox required", 409
         )
-    if seeded is not None:
+    if config.schema_version == "mineagent.factor-research.v3":
+        from workers.research.rdagent_workflow_queue import (
+            require_workflow_queue_binding,
+        )
+
+        require_workflow_queue_binding(session, run, event, settings, read_inputs=True)
+    elif seeded is not None:
         require_seeded_queue_binding(
             session, run, seeded, config, settings, read_inputs=True
         )
@@ -207,7 +234,7 @@ def execute(run_id, generation, *, settings):
 def require_dispatch_binding(session, run, event, settings):
     """Validate an existing durable outbox; no attempt or file access is created."""
     try:
-        config = require_source_identity(run)
+        config = _queued_identity(session, run)
     except (ValueError, TypeError, AttributeError):
         raise DomainError(
             "unsupported_run_identity", "Run identity is unsupported", 409
@@ -222,6 +249,11 @@ def require_dispatch_binding(session, run, event, settings):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409
@@ -230,6 +262,17 @@ def require_dispatch_binding(session, run, event, settings):
         raise DomainError(
             "rd_dispatch_binding", "Exact fresh generation outbox required", 409
         )
+    if config.schema_version == "mineagent.factor-research.v3":
+        from workers.research.rdagent_workflow_queue import (
+            require_workflow_queue_binding,
+        )
+
+        if settings is None:
+            from backend.app.core.config import get_settings
+
+            settings = get_settings()
+        require_workflow_queue_binding(session, run, event, settings, read_inputs=False)
+        return
     row = session.scalar(
         select(FactorResearchSubmission).filter_by(owner_id=run.owner_id, run_id=run.id)
     )

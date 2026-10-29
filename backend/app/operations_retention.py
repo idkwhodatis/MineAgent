@@ -146,6 +146,11 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             else set()
         )
         | (
+            {"oe_structured_closure"}
+            if getattr(capabilities, "oe_structured_closure_schema", None) is not None
+            else set()
+        )
+        | (
             {"structured_strategy_closure"}
             if getattr(capabilities, "structured_strategy_schema", None) is not None
             else set()
@@ -160,11 +165,38 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
             if getattr(capabilities, "rd_seed_schema", None) is not None
             else set()
         )
+        | (
+            {"declared_upload_closure"}
+            if getattr(capabilities, "declared_upload_schema", None) is not None
+            else set()
+        )
+        | (
+            {"workflow_closure", "research_input_closure"}
+            if getattr(capabilities, "workflow_schema", None) is not None
+            else set()
+        )
+        | (
+            {"normal_oe_note_closure"}
+            if getattr(capabilities, "normal_oe_note_schema", None) is not None
+            else set()
+        )
         or snapshot["schema_revision"] not in REVISIONS
         or type(snapshot["postgres_major"]) is not int
         or not 14 <= snapshot["postgres_major"] <= 99
     ):
         raise RetentionError("Unsupported database reference snapshot")
+    from backend.app.normal_oe_note_backup import closure_for as normal_note_closure
+
+    try:
+        normal_note_closure(snapshot, capabilities, limits.max_files)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Normal OE note closure capability differs") from None
+    from backend.app.declared_upload_backup import closure_for as upload_closure
+
+    try:
+        upload_closure(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Declared upload closure capability differs") from None
     from backend.app.rdagent_steer_operations import steer_closure
 
     try:
@@ -292,6 +324,14 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
         keys.update(openevolve_manifest_keys(snapshot, capabilities))
     except (ValueError, TypeError, KeyError, AttributeError):
         raise RetentionError("Invalid OE retained byte inventory") from None
+    from backend.app.oe_structured_operations import (
+        manifest_keys as normal_manifest_keys,
+    )
+
+    try:
+        keys.update(normal_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid normal OE retained byte inventory") from None
     from backend.app.structured_operations import structured_strategy_manifest_keys
 
     try:
@@ -300,6 +340,14 @@ def _snapshot_manifest_keys(snapshot: dict, limits: BackupLimits) -> set[str]:
         raise RetentionError(
             "Invalid structured strategy retained byte inventory"
         ) from None
+    from backend.app.research_workflow_operations import (
+        manifest_keys as workflow_manifest_keys,
+    )
+
+    try:
+        keys.update(workflow_manifest_keys(snapshot, capabilities))
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid workflow input retained byte inventory") from None
     return keys
 
 
@@ -513,11 +561,28 @@ def _protected(snapshot, files, manifests, deadline):
         )
     except (ValueError, TypeError, KeyError, AttributeError):
         raise RetentionError("Seeded RD parent closure failed verification") from None
+    from backend.app.oe_structured_operations import closure_for as normal_closure_for
+
+    try:
+        normal_closure = normal_closure_for(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Invalid normal OE closure capability") from None
+    from backend.app.research_workflow_operations import prepare_context
+
+    try:
+        workflow_context = prepare_context(
+            snapshot, capabilities, read_rd_bytes, 100_000
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Workflow prephysical closure failed verification"
+        ) from None
+    research_records = None
     from backend.app.research_backup import validate_absence, validate_closure
 
     try:
         if "research_closure" in snapshot:
-            validate_closure(
+            research_records = validate_closure(
                 snapshot["research_closure"],
                 check,
                 lambda key: _json_manifest(manifests[key]),
@@ -525,6 +590,24 @@ def _protected(snapshot, files, manifests, deadline):
                 inventory=list(files.values()),
                 read_bytes=read_rd_bytes,
                 rd_source_closure=snapshot.get("rd_source_closure"),
+                **(
+                    {"workflow_links_pending": True}
+                    if workflow_context is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "oe_structured_closure": normal_closure,
+                        "successor_links_pending": True,
+                    }
+                    if normal_closure is not None
+                    else {}
+                ),
+                **(
+                    {"workflow_context": workflow_context}
+                    if workflow_context is not None
+                    else {}
+                ),
                 **(
                     {"seed_context": seed_context}
                     if getattr(capabilities, "rd_seed_schema", None) is not None
@@ -561,6 +644,11 @@ def _protected(snapshot, files, manifests, deadline):
                 read_rd_bytes,
                 100_000,
                 **(
+                    {"workflow_context": workflow_context}
+                    if workflow_context is not None
+                    else {}
+                ),
+                **(
                     {"seed_context": seed_context}
                     if getattr(capabilities, "rd_seed_schema", None) is not None
                     else {}
@@ -569,22 +657,35 @@ def _protected(snapshot, files, manifests, deadline):
                     {"execution_links_pending": True}
                     if snapshot["rd_source_closure"].get("schema_version")
                     in {
+                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v11",
                         "mineagent.rd-source-restore-closure.v3",
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v8",
+                        "mineagent.rd-source-restore-closure.v9",
                         "mineagent.rd-source-restore-closure.v6",
-                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v10",
                     }
+                    else {}
+                ),
+                **(
+                    {"failure_links_pending": True}
+                    if normal_closure is not None
                     else {}
                 ),
                 **(
                     {"configured_inputs_pending": True}
                     if snapshot["rd_source_closure"].get("schema_version")
                     in {
+                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v11",
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v8",
+                        "mineagent.rd-source-restore-closure.v9",
                         "mineagent.rd-source-restore-closure.v6",
-                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v10",
                     }
                     else {}
                 ),
@@ -653,6 +754,23 @@ def _protected(snapshot, files, manifests, deadline):
         raise RetentionError(
             "Structured strategy retention closure failed verification"
         ) from None
+    from backend.app.oe_structured_operations import (
+        validate_snapshot as validate_normal_snapshot,
+    )
+
+    try:
+        oe_facts = validate_normal_snapshot(
+            snapshot,
+            capabilities,
+            read_rd_bytes,
+            100_000,
+            inventory=list(files.values()),
+            process_records=research_records,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Normal OE and numeric failure closure failed verification"
+        ) from None
     from backend.app.rdagent_submission_operations import validate_submission_snapshot
 
     try:
@@ -684,6 +802,29 @@ def _protected(snapshot, files, manifests, deadline):
         raise RetentionError(
             "Execution generation retention closure failed verification"
         ) from None
+    from backend.app.research_workflow_operations import (
+        validate_snapshot as validate_workflow_snapshot,
+    )
+
+    try:
+        validate_workflow_snapshot(
+            snapshot,
+            capabilities,
+            read_rd_bytes,
+            100_000,
+            inventory=list(files.values()),
+            oe_facts=oe_facts,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Workflow final closure failed verification") from None
+    from backend.app.declared_upload_backup import (
+        validate_snapshot as validate_upload_snapshot,
+    )
+
+    try:
+        validate_upload_snapshot(snapshot, capabilities, read_rd_bytes, 100_000)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError("Declared upload lineage failed verification") from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:
@@ -726,6 +867,16 @@ def _protected(snapshot, files, manifests, deadline):
             if type(entry["size_bytes"]) is not int or entry["size_bytes"] < 0:
                 raise RetentionError("Invalid checkpoint file size")
             check(f"{base}/{_key(entry['path'])}", entry["sha256"], entry["size_bytes"])
+    from backend.app.normal_oe_note_backup import (
+        validate_snapshot as validate_normal_notes,
+    )
+
+    try:
+        validate_normal_notes(snapshot, capabilities, 100_000, oe_facts=oe_facts)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise RetentionError(
+            "Normal OE note retention closure failed verification"
+        ) from None
     return exact, trees
 
 

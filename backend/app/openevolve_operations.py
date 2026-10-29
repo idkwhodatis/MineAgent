@@ -33,10 +33,19 @@ def openevolve_closure(snapshot, capabilities):
 def read_openevolve_closure(connection, capabilities, limits):
     if _schema(capabilities) is None:
         return None
+    from backend.app.openevolve_backup_partition import V11, V12
     from backend.app.openevolve_backup_shape import read_closure
 
+    partition = (
+        {"research_schema": capabilities.research_closure_schema}
+        if getattr(capabilities, "research_closure_schema", None) in {V11, V12}
+        else {}
+    )
     closure = read_closure(
-        connection, limits.max_files, maximum_bytes=limits.max_manifest_bytes
+        connection,
+        limits.max_files,
+        maximum_bytes=limits.max_manifest_bytes,
+        **partition,
     )
     openevolve_closure({"openevolve_closure": closure}, capabilities)
     if (

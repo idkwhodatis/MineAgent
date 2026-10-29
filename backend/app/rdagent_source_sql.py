@@ -22,9 +22,9 @@ from pathlib import Path
 
 # Filled from the reviewed source snapshot, not inferred from caller metadata.
 SOURCE_PINS = {
-    "backend/app/rdagent_source_witness_services.py": "0f78664b353206246070d22c0332f4529451cd43fabaa727e70198b22c0322d6",
+    "backend/app/rdagent_source_witness_services.py": "b9d95f57209845e692fc2773f4829464a537f7282404eea106e1f3ddff652061",
     "backend/app/research_process_models.py": "da0a3e80abaac7d5b4099debeedfabe9bb3ac4cf1817a91909f24d00265fa65d",
-    "backend/app/models.py": "80a747e38cd2b126f90572506efd6c3af9ddba28bede697a547a09f01af57615",
+    "backend/app/models.py": "f05b321c5c7e25cc1c532cdc5d5de9de1f218073314ed876aff75096f6327a3e",
     "backend/app/engine_evidence_ddl.py": "401741d6d717dc375c65a7fa9d6c8be035bb2a150e91c5904117fbe1d13c93c4",
     "backend/app/factor_models.py": "a5d3f27f2b8e23048e754b161944bf2f9dde518feff8de716e94748a321dde6b",
     "backend/app/rdagent_models.py": "8c329f76ca273d8f3610ef8a57432a381dfbecdea89d976083f946cd5d15e78e",
@@ -41,6 +41,11 @@ SOURCE_PINS = {
 # 027c adds only the explicitly seeded v4 admission profile; rendered historical
 # SQL stays byte-identical, while the exact reviewed model pin advances.
 SUCCESSOR_SOURCE_PINS = {
+    # 032 adds only the independent normal-note ORM registration import.
+    (
+        "backend/app/models.py",
+        "f05b321c5c7e25cc1c532cdc5d5de9de1f218073314ed876aff75096f6327a3e",
+    ): "b173be5bd7da9740603516180c06d32ba6ee121d82cdb18751ae0d45d1c8fe78",
     (
         "backend/app/rdagent_models.py",
         "8c329f76ca273d8f3610ef8a57432a381dfbecdea89d976083f946cd5d15e78e",

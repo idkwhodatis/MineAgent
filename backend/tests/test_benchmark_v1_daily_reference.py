@@ -829,3 +829,23 @@ def test_source_identity_total_bytes_still_bounded(tmp_path, monkeypatch):
     monkeypatch.setattr(bench, "local_file", lambda relative, cap: block)
     with pytest.raises(bench.BenchmarkError, match="fixture_integrity"):
         bench.code_identity({})
+
+
+def test_identity_inventory_rejects_2049_files_before_reading_content(
+    tmp_path, monkeypatch
+):
+    directory = tmp_path / "packages"
+    directory.mkdir()
+    for ordinal in range(2049):
+        (directory / f"module_{ordinal}.py").write_bytes(b"# bounded inventory test\n")
+    assert bench.SOURCE_FILES_MAX == 2048
+    assert bench.SOURCE_FILE_BYTES_MAX == 2097152
+    assert bench.SOURCE_TOTAL_BYTES_MAX == 16777216
+    monkeypatch.setattr(bench, "ROOT", tmp_path)
+
+    def unexpected(*args):
+        pytest.fail("Oversized source inventory must fail before content reads")
+
+    monkeypatch.setattr(bench, "local_file", unexpected)
+    with pytest.raises(bench.BenchmarkError, match="^fixture_integrity$"):
+        bench.code_identity({})

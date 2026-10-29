@@ -51,6 +51,11 @@ def require_configured_revision(session):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise ProcessError("configured_numeric_schema_closed")
 
@@ -108,6 +113,7 @@ def execute_configured_candidate(
     evaluation_id,
     cutoff_ordinal,
     authorize_submission,
+    capture_rejection=False,
 ):
     """Persist full source/dataset witness atomically before exactly one launch.
 
@@ -120,6 +126,14 @@ def execute_configured_candidate(
             factory, fence, resource_scope="factor_numeric"
         ) as session:
             require_configured_revision(session)
+            if type(capture_rejection) is not bool:
+                raise ProcessError("numeric_rejection_role")
+            if capture_rejection:
+                from backend.app.numeric_rejection_services import (
+                    require_numeric_rejection_schema,
+                )
+
+                require_numeric_rejection_schema(session, fence)
             _authorize(session, fence, authorize_submission)
             _, config = require_research_spec(session, fence)
             locks = {item.role: item.sha256 for item in config.runtime.dependency_locks}
@@ -201,6 +215,7 @@ def execute_configured_candidate(
             input_bytes=dict(resolved.files),
             inventory=inventory,
             authorize_submission=authorize_submission,
+            **({"capture_rejection": True} if capture_rejection else {}),
         )
         return intent.admission.id
 

@@ -85,9 +85,13 @@ def validate_closure(closure, *, rd_source_closure, maximum_rows):
         or set(closure["tables"]) != set(FIELDS)
         or rd_source_closure.get("schema_version")
         not in {
-            "mineagent.rd-source-restore-closure.v5",
-            "mineagent.rd-source-restore-closure.v6",
             "mineagent.rd-source-restore-closure.v7",
+            "mineagent.rd-source-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v5",
+            "mineagent.rd-source-restore-closure.v8",
+            "mineagent.rd-source-restore-closure.v9",
+            "mineagent.rd-source-restore-closure.v6",
+            "mineagent.rd-source-restore-closure.v10",
         }
         or type(maximum_rows) is not int
         or maximum_rows < 1
@@ -165,6 +169,33 @@ def validate_closure(closure, *, rd_source_closure, maximum_rows):
         if config.get("schema_version") == "mineagent.factor-research.v1":
             if "steer_snapshot" in config or "steer_snapshot_sha256" in config:
                 raise ValueError("Historical config cannot carry steer snapshot")
+            continue
+        if (
+            rd_source_closure["schema_version"]
+            in {
+                "mineagent.rd-source-restore-closure.v11",
+                "mineagent.rd-source-restore-closure.v9",
+                "mineagent.rd-source-restore-closure.v10",
+            }
+            and config.get("schema_version") == "mineagent.factor-research.v3"
+        ):
+            from packages.rdagent_adapter.workflow_config import (
+                WorkflowFactorResearchConfig,
+            )
+
+            workflow = WorkflowFactorResearchConfig.model_validate_json(
+                canonical_bytes(config)
+            )
+            if (
+                str(workflow.workflow_child_run_id) != run["id"]
+                or str(workflow.workflow_inputs.binding.owner_id) != run["owner_id"]
+                or workflow.steer_snapshot.versions
+            ):
+                raise ValueError(
+                    "Workflow manual origin must use exact combined snapshot"
+                )
+            # The final workflow closure independently resolves every selected
+            # manual/source version. Never relabel this as a user submission.
             continue
         if config.get("schema_version") != "mineagent.factor-research.v2":
             raise ValueError("Unknown steer research config")

@@ -370,9 +370,35 @@ def _exact_group(selection, values, keys, *, mandatory=()):
 def restore_href(restore, refs, snapshots):
     if restore is None:
         return None
+    from backend.app.normal_oe_note_contracts import (
+        NormalOENoteRestore,
+        exact_normal_restore,
+    )
+
+    if isinstance(restore, NormalOENoteRestore):
+        try:
+            return exact_normal_restore(
+                restore,
+                refs,
+                [
+                    snapshot
+                    == {
+                        "schema_version": "mineagent.normal-oe-note-admission.v1",
+                        "reference": ref.model_dump(mode="json"),
+                    }
+                    for ref, snapshot in zip(refs, snapshots, strict=True)
+                ],
+            )
+        except (ValueError, TypeError):
+            raise DomainError(
+                "note_restore_mismatch",
+                "Exact admitted normal note restore required",
+                422,
+            ) from None
     choices = [
         (ref, *reference_selection(ref, snap))
         for ref, snap in zip(refs, snapshots, strict=True)
+        if not ref.kind.startswith("normal_oe_")
     ]
     selection = restore.selection
     roots = [

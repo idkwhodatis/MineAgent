@@ -1,4 +1,5 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Request } from "@playwright/test";
+import type { DirectDay } from "../../src/client/types.gen";
 import { account, api, authorization, token } from "../e2e/helpers";
 import { assertFactorLibraryNavigation } from "./factor-library";
 
@@ -141,8 +142,164 @@ test("actual configured results require release and survive reload without live 
   expect(data.result.rank_ic).toBe(1);
   expect(data.measurement.value).toBe(1);
   await expect(
-    page.getByText(String(data.result.ic), { exact: true }),
+    page
+      .getByText("Mean IC", { exact: true })
+      .locator("xpath=following-sibling::dd[1]"),
+  ).toHaveText(String(data.result.ic));
+
+  // Read real retained rows; do not synthesize nulls or mock result transport.
+  const days: DirectDay[] = data.result.days;
+  expect(days.length).toBeGreaterThan(0);
+  const diagnostics = page.getByRole("region", {
+    name: "Retained daily factor diagnostics",
+  });
+  const dailyTable = diagnostics.getByRole("table", {
+    name: "Exact retained daily observations",
+  });
+  await expect(dailyTable).toBeVisible();
+  await expect(dailyTable.getByRole("row")).toHaveCount(days.length + 1);
+  for (const day of days) {
+    const row = dailyTable.getByRole("row").filter({
+      has: page.getByRole("cell", { name: day.session, exact: true }),
+    });
+    expect((await row.getByRole("cell").allTextContents()).slice(-5)).toEqual([
+      day.session,
+      day.ic === null ? "Not defined" : String(day.ic),
+      day.rank_ic === null ? "Not defined" : String(day.rank_ic),
+      String(day.pair_count),
+      day.reason,
+    ]);
+  }
+  for (const metric of ["ic", "rank_ic"] as const) {
+    const chart = diagnostics.locator(
+      `svg[aria-label="${metric === "ic" ? "Daily IC" : "Daily rank IC"}"]`,
+    );
+    await expect(chart).toBeVisible();
+    // Every null breaks the real retained series; no invented zero point or
+    // interpolation across a missing observation is permitted. Fixtures with
+    // no nulls test their actual contiguous series, not a fabricated null case.
+    const expectedSegments: number[] = [];
+    let length = 0;
+    for (const day of days) {
+      if (day[metric] !== null) length += 1;
+      else if (length) {
+        expectedSegments.push(length);
+        length = 0;
+      }
+    }
+    if (length) expectedSegments.push(length);
+    const actualSegments = await chart
+      .locator("polyline")
+      .evaluateAll((lines) =>
+        lines.map(
+          (line) =>
+            (line.getAttribute("points") ?? "").trim().split(/\s+/).length,
+        ),
+      );
+    expect(actualSegments).toEqual(expectedSegments);
+    await expect(chart.locator("circle")).toHaveCount(
+      days.filter((day) => day[metric] !== null).length,
+    );
+    for (const day of days) {
+      const value = day[metric];
+      if (value !== null) {
+        const point = chart.getByRole("button", {
+          name: `Select ${day.session}: ${metric === "ic" ? "Daily IC" : "Daily rank IC"} ${value}`,
+          exact: true,
+        });
+        await expect(point).toHaveAttribute(
+          "cy",
+          String(16 + ((1 - value) / 2) * 148),
+        );
+      }
+    }
+  }
+  await expect(
+    diagnostics.locator('svg[aria-label="Daily paired observations"]'),
   ).toBeVisible();
+  await expect(
+    diagnostics.getByText("Group-label spread: not computed", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    diagnostics.getByText("no denominator is inferred", { exact: false }),
+  ).toBeVisible();
+
+  const selectedDay = days.find((day) => day.ic !== null);
+  expect(selectedDay).toBeDefined();
+  const chosen = selectedDay!;
+  const point = diagnostics
+    .locator('svg[aria-label="Daily IC"]')
+    .getByRole("button", {
+      name: `Select ${chosen.session}: Daily IC ${chosen.ic}`,
+      exact: true,
+    });
+  await point.focus();
+  await point.press("Enter");
+  await expect(point).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    diagnostics.getByLabel(
+      `Use session ${chosen.session} as guidance context`,
+      { exact: true },
+    ),
+  ).toBeChecked();
+
+  const mutations: string[] = [];
+  const observeMutation = (request: Request) => {
+    if (
+      !["GET", "HEAD", "OPTIONS"].includes(request.method()) &&
+      new URL(request.url()).pathname.includes("/api/v1/")
+    ) {
+      mutations.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  };
+  page.on("request", observeMutation);
+  try {
+    await diagnostics
+      .getByRole("button", {
+        name: "Prepare guidance from selected sessions",
+        exact: true,
+      })
+      .click();
+    const review = page.getByRole("region", {
+      name: "Review observation-bound guidance",
+    });
+    await expect(review).toBeVisible();
+    for (const exact of [
+      runId,
+      analysisId,
+      snapshotId,
+      data.result_sha256,
+      data.measurement_sha256,
+      data.result.protocol_sha256,
+      chosen.session,
+    ]) {
+      await expect(review.locator("pre")).toContainText(exact);
+    }
+    const save = review.getByRole("button", {
+      name: "Save observation-bound steer version",
+      exact: true,
+    });
+    await expect(save).toBeDisabled();
+    await review
+      .getByLabel("Your research direction", { exact: true })
+      .fill(
+        "Review this retained session before the next eligible research stage.",
+      );
+    await review
+      .getByLabel("I reviewed these exact references and my guidance.", {
+        exact: true,
+      })
+      .check();
+    await expect(save).toBeEnabled();
+    // Deliberately do not save: the fixture's inputs and version counts stay intact.
+    await review
+      .getByRole("button", { name: "Close observation draft", exact: true })
+      .click();
+    await expect(review).toHaveCount(0);
+    expect(mutations).toEqual([]);
+  } finally {
+    page.off("request", observeMutation);
+  }
   await page.reload();
   await expect(
     page.getByRole("heading", {
@@ -150,6 +307,14 @@ test("actual configured results require release and survive reload without live 
       exact: true,
     }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Review observation-bound guidance" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByLabel(`Use session ${chosen.session} as guidance context`, {
+      exact: true,
+    }),
+  ).not.toBeChecked();
   await page.getByRole("link", { name: "Open execution snapshot" }).click();
   await expect(
     page.getByRole("heading", { name: "Released historical factor values" }),
@@ -180,8 +345,10 @@ test("actual configured results require release and survive reload without live 
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(String(data.result.ic), { exact: true }),
-  ).toBeVisible();
+    page
+      .getByText("Mean IC", { exact: true })
+      .locator("xpath=following-sibling::dd[1]"),
+  ).toHaveText(String(data.result.ic));
   await page.reload();
   await expect(
     page.getByRole("heading", {

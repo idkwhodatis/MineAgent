@@ -1,10 +1,11 @@
 """Owner-scoped input origin, not model supervision or human approval authority."""
 
+import os
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select, text
 
@@ -38,9 +39,10 @@ from backend.app.research_broker_models import (
 from backend.app.schema_capabilities import capabilities_for
 from backend.app.services import DomainError
 from packages.rdagent_adapter.steer import SteerSnapshot
+from packages.research_workflow.model_inputs import ModelStageInputSnapshot
 
 router = APIRouter()
-Origin = Literal["user_provided", "agent_generated", "unknown"]
+Origin = Literal["user_provided", "workflow_stage", "agent_generated", "unknown"]
 
 
 class InputOperation(BaseModel):
@@ -57,6 +59,7 @@ class ResearchInputItem(BaseModel):
     title: str
     provenance: Literal[
         "authenticated_submission_receipt",
+        "workflow_stage_submission_receipt",
         "model_response_source_witness",
         "origin_not_established",
     ]
@@ -68,6 +71,8 @@ class ResearchInputItem(BaseModel):
         | RDProviderSeedRequest
         | None
     ) = None
+    workflow_inputs: ModelStageInputSnapshot | None = None
+    workflow_inputs_sha256: str | None = None
     steer_snapshot: SteerSnapshot | None = None
     steer_snapshot_sha256: str | None = None
     model_binding_sha256: str | None = None
@@ -81,7 +86,11 @@ class ResearchInputItem(BaseModel):
 
 class ResearchInputs(BaseModel):
     run_id: UUID
-    group_order: tuple[Origin, ...] = ("user_provided", "agent_generated", "unknown")
+    group_order: tuple[Origin, ...] = (
+        "user_provided",
+        "agent_generated",
+        "unknown",
+    )
     items: tuple[ResearchInputItem, ...]
     has_more_proposals: bool
     qualification: Literal["origin_not_ml_supervision_or_human_approval"] = (
@@ -103,7 +112,7 @@ def same_scope(row, source):
 
 
 def frozen_input_metadata(session, run):
-    config = rd_config(run)
+    config = rd_config(run, session=session)
     if config.schema_version == "mineagent.factor-research.v1":
         return {}
     if config.schema_version != "mineagent.factor-research.v2":
@@ -139,6 +148,30 @@ def submission_item(session, run, row):
         content_sha256=row.request_sha256,
         submission=read_request(row),
         **frozen_input_metadata(session, run),
+    )
+
+
+def workflow_submission_item(session, run, row, settings):
+    from backend.app.rdagent_workflow_saved import verify_workflow_submission
+
+    if os.path.lexists(os.path.join(settings.storage_root, ".restore-incomplete")):
+        mismatch()
+    config = rd_config(run, session=session)
+    verified = verify_workflow_submission(session, run.owner_id, row.id, settings)
+    if verified.run_id != run.id or verified.config_sha256 != config.sha256:
+        mismatch()
+    return ResearchInputItem(
+        id=row.id,
+        origin="workflow_stage",
+        default_pinned=False,
+        created_at=row.created_at,
+        title="Workflow-selected frozen inputs",
+        provenance="workflow_stage_submission_receipt",
+        content_sha256=config.workflow_inputs_sha256,
+        workflow_inputs=config.workflow_inputs,
+        workflow_inputs_sha256=config.workflow_inputs_sha256,
+        model_binding_sha256=config.model_binding.sha256,
+        steer_evidence="accepted_input_snapshot_not_execution_or_compliance",
     )
 
 
@@ -261,7 +294,8 @@ def source_item(session, run, source, *, witnesses_available):
             != {
                 "mineagent.factor-research.v1": "mineagent.rdagent-chat.v1",
                 "mineagent.factor-research.v2": "mineagent.rdagent-provider-chat.v1",
-            }.get(rd_config(run).schema_version)
+                "mineagent.factor-research.v3": "mineagent.rdagent-provider-chat.v1",
+            }.get(rd_config(run, session=session).schema_version)
             or (
                 outcome.response_object_id,
                 outcome.response_sha256,
@@ -291,6 +325,7 @@ def read_inputs(
     run_id: UUID,
     user: CurrentUser,
     session: SessionDep,
+    request: Request,
     offset: int = Query(0, ge=0, le=100000),
 ):
     run = owned_engine_run(session, run_id, user.id)
@@ -323,7 +358,25 @@ def read_inputs(
         )
     if receipt is not None and seeded is not None:
         mismatch()
-    if receipt is not None:
+    workflow = None
+    config = rd_config(run, session=session)
+    if config.schema_version == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_models import FactorWorkflowSubmission
+
+        workflow = session.scalar(
+            select(FactorWorkflowSubmission).filter_by(owner_id=user.id, run_id=run.id)
+        )
+        if workflow is None:
+            mismatch()
+    if sum(row is not None for row in (receipt, seeded, workflow)) > 1:
+        mismatch()
+    if workflow is not None:
+        from backend.app.core.maintenance import shared_lifecycle
+
+        settings = request.app.state.settings
+        with shared_lifecycle(request.app.state.engine, settings.storage_root):
+            rows.append(workflow_submission_item(session, run, workflow, settings))
+    elif receipt is not None:
         rows.append(submission_item(session, run, receipt))
     elif seeded is not None:
         rows.append(seeded_submission_item(session, run, seeded))
@@ -336,7 +389,7 @@ def read_inputs(
                 created_at=run.created_at,
                 title="Run task origin not established",
                 provenance="origin_not_established",
-                content_sha256=rd_config(run).sha256,
+                content_sha256=rd_config(run, session=session).sha256,
             )
         )
     sources = session.scalars(
@@ -352,13 +405,22 @@ def read_inputs(
         "mineagent.rd-source-restore-closure.v5",
         "mineagent.rd-source-restore-closure.v6",
         "mineagent.rd-source-restore-closure.v7",
+        "mineagent.rd-source-restore-closure.v8",
+        "mineagent.rd-source-restore-closure.v9",
+        "mineagent.rd-source-restore-closure.v10",
+        "mineagent.rd-source-restore-closure.v11",
     }
     rows.extend(
         source_item(session, run, source, witnesses_available=witnesses_available)
         for source in sources[:25]
     )
-    rank = {"user_provided": 0, "agent_generated": 1, "unknown": 2}
+    rank = {"user_provided": 0, "workflow_stage": 1, "agent_generated": 2, "unknown": 3}
     rows.sort(key=lambda item: (rank[item.origin], item.created_at, str(item.id)))
     return ResearchInputs(
-        run_id=run.id, items=tuple(rows), has_more_proposals=len(sources) > 25
+        run_id=run.id,
+        items=tuple(rows),
+        has_more_proposals=len(sources) > 25,
+        group_order=("user_provided", "workflow_stage", "agent_generated", "unknown")
+        if workflow is not None
+        else ("user_provided", "agent_generated", "unknown"),
     )

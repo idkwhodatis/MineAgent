@@ -121,6 +121,9 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         n
         for n in ast.walk(gate)
         if isinstance(n, ast.Compare) and isinstance(n.ops[0], ast.NotIn)
+        and isinstance(n.left, ast.Name) and n.left.id == "revisions"
+        and isinstance(n.comparators[0], ast.Tuple)
+        and ast.literal_eval(n.comparators[0])[0] == ["022_factor_analysis"]
     )
     allowed = ast.literal_eval(revision_gate.comparators[0])
     assert allowed == (
@@ -133,6 +136,82 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed
+
+
+def test_normal_027_requires_exact_browser_and_rejection_cases():
+    text = WORKFLOW.read_text()
+    for flag in (
+        "MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED",
+        "MINEAGENT_OE_NORMAL_BROWSER_REQUIRED",
+        "MINEAGENT_RD_REJECTION_FLOW_REQUIRED",
+    ):
+        assert f'{flag}: "1"' in text
+    assert "tests/integration/test_oe_structured_normal_flow.py" in text
+    assert "tests/integration/test_rdagent_provider_rejection.py -q" in text
+    assert (
+        "{'test_normal_demo_generated_factor_and_model_child_reach_actual_engine','test_normal_provider_actual_rejection_preserves_failed_feedback_without_snapshot'}"
+        in text
+    )
+    assert text.count("assert len(cases)==2") == 3
+    assert text.count("('failure','error','skipped')") == 6
+    assert "var/numeric-private/normal-027.xml" in text
+    assert "normal-027-outcomes.xml" in text
+    assert "io.mineagent.managed=mineagent-oe-structured-orchestrator-v1" in text
+
+
+def test_normal_027_builds_pinned_parents_and_isolates_sdk():
+    text = WORKFLOW.read_text()
+    assert "8c65f74aa906abc0b0e9cae948ddf4c4c6570bdc" in text
+    assert (
+        "runtimes/openevolve/verify_build_inputs.py .runtime/openevolve-source" in text
+    )
+    assert "-f runtimes/openevolve_operational/Dockerfile ." in text
+    assert (
+        "python -m script.build_oe_structured_images --output var/numeric-proof/oe-normal"
+        in text
+    )
+    assert (
+        '--controller-parent "$(cat var/numeric-proof/oe-controller-parent.iid)"'
+        in text
+    )
+    assert '--engine-parent "$(cat var/numeric-proof/structured-parent.iid)"' in text
+    assert 'python -m venv "$RUNNER_TEMP/rd-provider-sdk"' in text
+    assert "--require-hashes -r runtimes/rdagent_provider/requirements.lock" in text
+    assert '"$RUNNER_TEMP/rd-provider-sdk/bin/python"' in text
+    assert "realpath" not in text
+    assert "export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE=" in text
+    assert "runtimes.rdagent_operational.build_profile" in text
+    assert "runtimes/rdagent_operational/wheel-proof.json" in text
+
+
+def test_normal_027_gate_keeps_old_pair_and_bounded_sequential_budget():
+    text = WORKFLOW.read_text()
+    assert "timeout-minutes: 120" in text
+    assert "timeout-minutes: 40" in text
+    old = text.index("Require twenty actual units")
+    normal = text.index("Require normal demo RD to OE")
+    cleanup = text.index("Confirm exact normal OE controller units")
+    assert old < normal < cleanup
+    assert text.index("MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED") > normal
+    assert "Seven actual normal-flow Docker units plus two rejection units" in text
+    assert 'docker rm --force --volumes "$id"' in text
+    assert "docker push" not in text
+
+
+def test_declared_upload_gate_runs_actual_data_worker_and_both_required_flows():
+    text = WORKFLOW.read_text()
+    assert 'MINEAGENT_DECLARED_UPLOAD_FLOW_REQUIRED: "1"' in text
+    assert "runtimes/data/requirements.lock" in text
+    assert "tests/integration/test_declared_upload_research_flow.py -q" in text
+    assert (
+        "{'test_actual_upload_api_and_data_worker_preserve_declared_originals','test_actual_declared_upload_rd_release_and_normal_structured_oe'}"
+        in text
+    )

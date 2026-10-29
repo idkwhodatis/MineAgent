@@ -38,7 +38,16 @@ def _locked(session, attempt_id, *, revisions=None):
         .filter_by(id=attempt_id, run_id=run_id)
         .with_for_update(nowait=True)
     )
-    require_source_identity(run)
+    if run.config.get("schema_version") == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_capability import require_workflow_revision
+        from packages.rdagent_adapter.workflow_identity import (
+            require_workflow_source_identity,
+        )
+
+        require_workflow_revision(session)
+        require_workflow_source_identity(run)
+    else:
+        require_source_identity(run)
     if (
         attempt is None
         or attempt.finished_at is not None
@@ -50,6 +59,13 @@ def _locked(session, attempt_id, *, revisions=None):
     receipt = session.scalar(
         select(FactorResearchSubmission.id).filter_by(owner_id=owner_id, run_id=run_id)
     )
+    if (
+        receipt is None
+        or run.config.get("schema_version") == "mineagent.factor-research.v3"
+    ):
+        from backend.app.rdagent_workflow_boundary import workflow_boundary_id
+
+        receipt = workflow_boundary_id(session, run, revisions)
     if receipt is None:
         from backend.app.rdagent_seed_boundary import seeded_boundary_id
 
@@ -74,6 +90,11 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
                 ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)

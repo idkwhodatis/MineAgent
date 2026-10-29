@@ -72,3 +72,16 @@ class ProviderOperationalHost(OperationalHost):
         # Planning only. Host reservation and actual provider usage are separate.
         request = self._chat_request(messages, None)
         return max(1, (len(canonical_bytes(request.schema_version, request)) + 2) // 3)
+
+    def execute_or_reuse(self, *, source_id, evaluation_ticket):
+        from runtimes.rdagent_operational.provider_failure import (
+            decode_provider_evaluation,
+        )
+
+        result = self.channel.call(
+            "execute_or_reuse",
+            {"source_id": str(source_id), "evaluation_id": str(evaluation_ticket)},
+        )
+        return decode_provider_evaluation(
+            result, source_id=source_id, evaluation_ticket=evaluation_ticket
+        )

@@ -246,6 +246,11 @@ def main(argv=None) -> None:
                 from script.compose_provider_runtime import validate_enabled_profiles
 
                 validate_enabled_profiles(get_settings(), args.role)
+                from script.compose_oe_structured_runtime import (
+                    validate_enabled_profiles as validate_oe_profiles,
+                )
+
+                validate_oe_profiles(get_settings(), args.role)
             command = ROLES[args.role]
         elif args.action == "migrate":
             command = ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]

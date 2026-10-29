@@ -1,0 +1,285 @@
+{
+  "components": {
+    "schemas": {
+      "InputDerivationView": {
+        "additionalProperties": false,
+        "properties": {
+          "derivation_id": {
+            "format": "uuid",
+            "title": "Derivation Id",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "mapping_path_missing",
+                  "raw_bytes_required",
+                  "invalid_json_or_mapping",
+                  "bounded_item_list_required",
+                  "text_fields_required",
+                  "invalid_proposal_text",
+                  "normalized_output_limit",
+                  "owner_cancelled",
+                  "worker_interrupted",
+                  "derivation_failed",
+                  "feedback_source_blocked",
+                  "feedback_release_required",
+                  "other_derivation_error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "mapping_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Sha256"
+          },
+          "operation": {
+            "enum": [
+              "external_normalization",
+              "experiment_feedback_projection"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Outputs",
+            "type": "array"
+          },
+          "prepared_at": {
+            "format": "date-time",
+            "title": "Prepared At",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "receipt_metadata_not_live_status_or_content_approval",
+            "default": "receipt_metadata_not_live_status_or_content_approval",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "raw_input_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Input Sha256"
+          },
+          "raw_object_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Object Id"
+          },
+          "source_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "prepared",
+              "started_no_terminal_receipt",
+              "succeeded",
+              "rejected",
+              "failed",
+              "cancelled",
+              "interrupted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "terminal_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal At"
+          },
+          "terminal_event_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Terminal Event Id"
+          },
+          "terminal_event_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Terminal Event Sha256"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "derivation_id",
+          "workflow_id",
+          "stage_id",
+          "operation",
+          "source_sha256",
+          "raw_input_sha256",
+          "mapping_sha256",
+          "status",
+          "error_code",
+          "prepared_at",
+          "started_at",
+          "terminal_at",
+          "outputs"
+        ],
+        "title": "InputDerivationView",
+        "type": "object"
+      },
+      "InputVersionRef": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "manual_user_submission",
+              "normalized_external_proposal",
+              "experiment_feedback_proposal",
+              "unknown"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "record_id",
+          "version_id",
+          "content_sha256"
+        ],
+        "title": "InputVersionRef",
+        "type": "object"
+      },
+      "RetainedExternalInput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "raw_retained_not_normalized",
+            "default": "raw_retained_not_normalized",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 65536,
+            "minimum": 0,
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "workflow_created": {
+            "const": false,
+            "default": false,
+            "title": "Workflow Created",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "size_bytes"
+        ],
+        "title": "RetainedExternalInput",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Unregistered input derivation audit contract",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {}
+}

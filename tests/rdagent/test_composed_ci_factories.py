@@ -93,9 +93,10 @@ def test_submission_factory_requires_explicit_profile_and_preserves_legacy(
         "test_structured_factor_restore.py",
         "test_rdagent_user_flow.py",
         "test_rdagent_provider_user_flow.py",
+        "test_rdagent_workflow_user_flow.py",
     ],
 )
-def test_new_actual_gate_explicitly_migrates_027(file):
+def test_new_actual_gate_explicitly_migrates_controller_capable_revision(file):
     source = (ROOT / "tests/integration" / file).read_text()
     tree = ast.parse(source)
     upgrades = [
@@ -106,7 +107,11 @@ def test_new_actual_gate_explicitly_migrates_027(file):
         and n.func.attr == "_upgrade"
     ]
     assert len(upgrades) == 1
-    assert upgrades[0].args[1].value == "027c_seeded_controller_v4"
+    expected = {
+        "test_rdagent_provider_user_flow.py": "028_oe_structured_search",
+        "test_rdagent_workflow_user_flow.py": "029_research_workflow",
+    }.get(file, "027c_seeded_controller_v4")
+    assert upgrades[0].args[1].value == expected
     if "restore" in file or file == "test_rdagent_user_flow.py":
         assert 'manifest["schema_revision"] == "027c_seeded_controller_v4"' in source
         assert '"mineagent.research-restore-closure.v12"' in source

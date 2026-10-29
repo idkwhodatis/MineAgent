@@ -24,6 +24,11 @@ def controls_for(session, run):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         return DisabledActions()
     receipt = session.scalar(
@@ -31,6 +36,13 @@ def controls_for(session, run):
             owner_id=run.owner_id, run_id=run.id
         )
     )
+    if (
+        receipt is None
+        or run.config.get("schema_version") == "mineagent.factor-research.v3"
+    ):
+        from backend.app.rdagent_workflow_boundary import workflow_boundary_id
+
+        receipt = workflow_boundary_id(session, run, revisions)
     if receipt is None:
         from backend.app.rdagent_seed_boundary import seeded_boundary_id
 
@@ -58,6 +70,11 @@ def request_cancel(session, owner_id, run_id):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "engine_control_not_enabled", "RD control schema is unavailable", 409
@@ -71,12 +88,30 @@ def request_cancel(session, owner_id, run_id):
     if run is None:
         raise DomainError("not_found", "Research run not found", 404)
     try:
-        require_source_identity(run)
+        if run.config.get("schema_version") == "mineagent.factor-research.v3":
+            from backend.app.rdagent_workflow_capability import (
+                require_workflow_revision,
+            )
+            from packages.rdagent_adapter.workflow_identity import (
+                require_workflow_source_identity,
+            )
+
+            require_workflow_revision(session)
+            require_workflow_source_identity(run)
+        else:
+            require_source_identity(run)
     except ValueError:
         raise DomainError("not_found", "Research run not found", 404) from None
     receipt = session.scalar(
         select(FactorResearchSubmission.id).filter_by(owner_id=owner_id, run_id=run_id)
     )
+    if (
+        receipt is None
+        or run.config.get("schema_version") == "mineagent.factor-research.v3"
+    ):
+        from backend.app.rdagent_workflow_boundary import workflow_boundary_id
+
+        receipt = workflow_boundary_id(session, run, revisions)
     if receipt is None:
         from backend.app.rdagent_seed_boundary import seeded_boundary_id
 

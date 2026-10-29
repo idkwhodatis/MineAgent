@@ -6,6 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Path, Query, Request, Response
 
 from backend.app.api.deps import CurrentUser, SessionDep
+from backend.app.normal_oe_note_contracts import NormalOENoteCapture, normal_note_href
+from backend.app.normal_oe_note_evidence import normal_note_route
 from backend.app.research_note_schemas import (
     NoteStatus,
     ResearchNoteCreate,
@@ -39,6 +41,7 @@ Limit = Annotated[int, Query(ge=1, le=100)]
     status_code=201,
     operation_id="create_research_note",
 )
+@normal_note_route
 def create(
     body: ResearchNoteCreate,
     user: CurrentUser,
@@ -58,6 +61,7 @@ def create(
     response_model=Page[ResearchNoteSummary],
     operation_id="list_research_notes",
 )
+@normal_note_route
 def listing(
     user: CurrentUser,
     session: SessionDep,
@@ -87,6 +91,7 @@ def listing(
     response_model=ResearchNoteRevision,
     operation_id="read_research_note",
 )
+@normal_note_route
 def latest(note_id: UUID, user: CurrentUser, session: SessionDep, request: Request):
     response = read_revision(session, note_id, user.id, request.app.state.settings)
     session.commit()
@@ -98,6 +103,7 @@ def latest(note_id: UUID, user: CurrentUser, session: SessionDep, request: Reque
     response_model=Page[ResearchNoteSummary],
     operation_id="list_research_note_revisions",
 )
+@normal_note_route
 def history(
     note_id: UUID,
     user: CurrentUser,
@@ -124,6 +130,7 @@ def history(
     status_code=201,
     operation_id="create_research_note_revision",
 )
+@normal_note_route
 def revise(
     note_id: UUID,
     body: ResearchNoteEdit,
@@ -144,6 +151,7 @@ def revise(
     response_model=ResearchNoteRevision,
     operation_id="read_research_note_revision",
 )
+@normal_note_route
 def exact(
     note_id: UUID,
     revision: Revision,
@@ -170,6 +178,7 @@ def exact(
     responses={200: {"content": {"text/markdown": {"schema": {"type": "string"}}}}},
     operation_id="export_research_note_revision",
 )
+@normal_note_route
 def export(
     note_id: UUID,
     revision: Revision,
@@ -198,3 +207,34 @@ def export(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get(
+    "/research-note-evidence/normal-oe/{run_id}/{execution_id}",
+    response_model=NormalOENoteCapture,
+)
+@normal_note_route
+def capture_normal_oe_evidence(
+    run_id: UUID,
+    execution_id: UUID,
+    user: CurrentUser,
+    session: SessionDep,
+    request: Request,
+    kind: str = Query(pattern="^normal_oe_(execution|decision|fill)$"),
+    decision_sequence: int | None = Query(None, ge=0, lt=8),
+    native_fill_id: str | None = Query(None, min_length=1, max_length=200),
+):
+    from backend.app.normal_oe_note_evidence import capture
+
+    response = capture(
+        session,
+        user.id,
+        request.app.state.settings,
+        run_id,
+        execution_id,
+        kind,
+        decision_sequence=decision_sequence,
+        native_fill_id=native_fill_id,
+    )
+    session.commit()
+    return NormalOENoteCapture(evidence=response, href=normal_note_href(response))

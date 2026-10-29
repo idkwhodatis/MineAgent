@@ -109,6 +109,7 @@ class RDPreflight(Contract):
 
 
 class EngineDatasetOption(Contract):
+    source: str | None = None
     id: UUID
     name: str
     start_date: date

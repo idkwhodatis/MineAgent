@@ -32,7 +32,7 @@ def test_unknown_revisions_do_not_claim_dispatch_or_cancel(versions, monkeypatch
     session = revision_session(versions)
     with pytest.raises(DomainError, match="RD queue schema unavailable"):
         queue._claim(session, uuid4(), 1, "worker", None, None, None)
-    monkeypatch.setattr(queue, "require_source_identity", lambda run: object())
+    monkeypatch.setattr(queue, "_queued_identity", lambda session, run: object())
     with pytest.raises(DomainError, match="RD queue schema unavailable"):
         queue.require_dispatch_binding(session, object(), object(), None)
     with pytest.raises(DomainError, match="RD control schema is unavailable"):
@@ -56,7 +56,7 @@ def test_unknown_revisions_do_not_claim_dispatch_or_cancel(versions, monkeypatch
 def test_successor_dispatch_reaches_exact_outbox_check_not_new_authority(
     revision, monkeypatch
 ):
-    monkeypatch.setattr(queue, "require_source_identity", lambda run: object())
+    monkeypatch.setattr(queue, "_queued_identity", lambda session, run: object())
     run = SimpleNamespace(id=uuid4(), generation=1)
     event = SimpleNamespace(run_id=uuid4(), generation=1)
     with pytest.raises(DomainError) as exc:
@@ -116,7 +116,7 @@ def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
     ]
     assert len(exact) == 1
     items = exact[0].test.comparators[0].elts
-    assert len(items) == 8
+    assert len(items) == 11
     assert isinstance(items[0].elts[0], ast.Name) and items[0].elts[0].id == "REVISION"
     assert [ast.literal_eval(x) for x in items[1:]] == [
         ["024_openevolve_initial"],
@@ -126,6 +126,9 @@ def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
     ]
 
 

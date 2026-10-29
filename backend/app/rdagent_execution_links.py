@@ -35,10 +35,14 @@ def validate_execution_generation_links(
 
     require(type(max_rows) is int and max_rows > 0)
     configured = rd_source_closure["schema_version"] in {
+        "mineagent.rd-source-restore-closure.v7",
+        "mineagent.rd-source-restore-closure.v11",
         "mineagent.rd-source-restore-closure.v4",
         "mineagent.rd-source-restore-closure.v5",
+        "mineagent.rd-source-restore-closure.v8",
+        "mineagent.rd-source-restore-closure.v9",
         "mineagent.rd-source-restore-closure.v6",
-        "mineagent.rd-source-restore-closure.v7",
+        "mineagent.rd-source-restore-closure.v10",
     }
     require(
         (
@@ -48,6 +52,11 @@ def validate_execution_generation_links(
         )
         in (
             {
+                (
+                    "mineagent.rd-source-restore-closure.v7",
+                    "mineagent.execution-snapshot-restore-closure.v2",
+                    "mineagent.research-restore-closure.v12",
+                ),
                 (
                     "mineagent.rd-source-restore-closure.v4",
                     "mineagent.execution-snapshot-restore-closure.v2",
@@ -69,14 +78,29 @@ def validate_execution_generation_links(
                     "mineagent.research-restore-closure.v10",
                 ),
                 (
+                    "mineagent.rd-source-restore-closure.v8",
+                    "mineagent.execution-snapshot-restore-closure.v2",
+                    "mineagent.research-restore-closure.v13",
+                ),
+                (
+                    "mineagent.rd-source-restore-closure.v9",
+                    "mineagent.execution-snapshot-restore-closure.v2",
+                    "mineagent.research-restore-closure.v14",
+                ),
+                (
                     "mineagent.rd-source-restore-closure.v6",
                     "mineagent.execution-snapshot-restore-closure.v2",
                     "mineagent.research-restore-closure.v11",
                 ),
                 (
-                    "mineagent.rd-source-restore-closure.v7",
+                    "mineagent.rd-source-restore-closure.v10",
                     "mineagent.execution-snapshot-restore-closure.v2",
-                    "mineagent.research-restore-closure.v12",
+                    "mineagent.research-restore-closure.v15",
+                ),
+                (
+                    "mineagent.rd-source-restore-closure.v11",
+                    "mineagent.execution-snapshot-restore-closure.v2",
+                    "mineagent.research-restore-closure.v16",
                 ),
             }
             if configured

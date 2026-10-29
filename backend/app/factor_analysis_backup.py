@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
+from backend.app.declared_upload_backup import retained_artifacts
 from backend.app.factor_analysis_canonical import read_objective
 from backend.app.factor_analysis_reconstruction import reconstruct_direct_input
 from backend.app.rdagent_configured_backup import validate_configured_input_closure
@@ -173,6 +174,14 @@ def validate_closure(
         rd_source_closure.get("schema_version"),
     ) not in {
         (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
+        (
             "mineagent.research-restore-closure.v7",
             "mineagent.rd-source-restore-closure.v4",
         ),
@@ -189,12 +198,20 @@ def validate_closure(
             "mineagent.rd-source-restore-closure.v5",
         ),
         (
+            "mineagent.research-restore-closure.v13",
+            "mineagent.rd-source-restore-closure.v8",
+        ),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
+        ),
+        (
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
         ),
         (
-            "mineagent.research-restore-closure.v12",
-            "mineagent.rd-source-restore-closure.v7",
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
         ),
     } or execution_closure.get(
         "schema_version"
@@ -205,16 +222,49 @@ def validate_closure(
         rd_source_closure.get("schema_version"),
     ) in {
         (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
+        (
             "mineagent.research-restore-closure.v10",
             "mineagent.rd-source-restore-closure.v5",
+        ),
+        (
+            "mineagent.research-restore-closure.v13",
+            "mineagent.rd-source-restore-closure.v8",
+        ),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
         ),
         (
             "mineagent.research-restore-closure.v11",
             "mineagent.rd-source-restore-closure.v6",
         ),
         (
-            "mineagent.research-restore-closure.v12",
-            "mineagent.rd-source-restore-closure.v7",
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
+        ),
+    }
+    workflow_config = (
+        research_closure.get("schema_version"),
+        rd_source_closure.get("schema_version"),
+    ) in {
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
+        ),
+        (
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
         ),
     }
     own = indexes(closure, maximum_rows)
@@ -279,14 +329,26 @@ def validate_closure(
         config = parse_snapshot_config(
             spec["config"],
             owner_id=spec["owner_id"],
+            run_id=spec["run_id"],
             provider_config=provider_config,
-            composed_controller=research_closure["schema_version"]
+            workflow_config=workflow_config,
+            composed_controller=research_closure.get("schema_version")
             in {
-                "mineagent.research-restore-closure.v11",
                 "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
             },
-            seeded_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v12",
+            seeded_controller=research_closure.get("schema_version")
+            in {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
+                "mineagent.research-restore-closure.v16",
+            },
         )
         objective = read_objective(plan)
         policy = ConfiguredSourcePolicy.model_validate(plan["source_policy"])
@@ -323,10 +385,22 @@ def validate_closure(
             manifest_bytes=read_bytes(
                 ds["storage_key"] + "/manifest.json", 2 * 1024**2
             ),
-            artifacts={
-                n: read_bytes(ds["storage_key"] + "/" + n, 32 * 1024**2)
-                for n in ("preview.json", "sessions.json")
+            artifacts=retained_artifacts(
+                ds["manifest"],
+                ds["storage_key"],
+                read_bytes,
+                declared_upload=research_closure["schema_version"]
+                in {
+                    "mineagent.research-restore-closure.v16",
+                    "mineagent.research-restore-closure.v15",
+                },
+            ),
+            declared_upload=research_closure["schema_version"]
+            in {
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v15",
             },
+            owner_id=UUID(ds["owner_id"]),
             policy=policy,
             input_names=("close",),
         )
@@ -348,13 +422,29 @@ def validate_closure(
         read_bytes=read_bytes,
         max_rows=maximum_rows,
         provider_config=provider_config,
-        composed_controller=research_closure["schema_version"]
+        declared_upload=research_closure["schema_version"]
         in {
-            "mineagent.research-restore-closure.v11",
-            "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v16",
+            "mineagent.research-restore-closure.v15",
         },
-        seeded_controller=research_closure["schema_version"]
-        == "mineagent.research-restore-closure.v12",
+        workflow_config=workflow_config,
+        composed_controller=research_closure.get("schema_version")
+        in {
+            "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v16",
+            "mineagent.research-restore-closure.v11",
+            "mineagent.research-restore-closure.v13",
+            "mineagent.research-restore-closure.v14",
+            "mineagent.research-restore-closure.v15",
+        },
+        seeded_controller=research_closure.get("schema_version")
+        in {
+            "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v13",
+            "mineagent.research-restore-closure.v14",
+            "mineagent.research-restore-closure.v15",
+            "mineagent.research-restore-closure.v16",
+        },
     )
     inputs = {}
     pairs = set()
@@ -376,14 +466,30 @@ def validate_closure(
             spec=specs[plan["spec_id"]],
             dataset=datasets[plan["label_source_dataset_id"]],
             read_bytes=read_bytes,
-            provider_config=provider_config,
-            composed_controller=research_closure["schema_version"]
+            declared_upload=research_closure["schema_version"]
             in {
-                "mineagent.research-restore-closure.v11",
-                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v15",
             },
-            seeded_controller=research_closure["schema_version"]
-            == "mineagent.research-restore-closure.v12",
+            provider_config=provider_config,
+            workflow_config=workflow_config,
+            composed_controller=research_closure.get("schema_version")
+            in {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
+            },
+            seeded_controller=research_closure.get("schema_version")
+            in {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
+                "mineagent.research-restore-closure.v16",
+            },
         )
     # Every retained analysis admission, including stopped/no-result attempts,
     # must bind a real declared input; outcome-only checks miss pending authority.

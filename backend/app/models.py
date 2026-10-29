@@ -1024,3 +1024,20 @@ from backend.app import rdagent_steer_models as _rdagent_steer_models  # noqa: F
 # isort: split
 # Revision026 SDK process evidence is retained through charged research objects.
 from backend.app import rdagent_provider_models as _rdagent_provider_models  # noqa: F401
+
+# isort: split
+# Revision027 core registers its dependent models after shared scope definitions.
+from backend.app import oe_structured_models as _oe_structured_models  # noqa: F401
+from backend.app import (
+    rdagent_numeric_failure_models as _rdagent_numeric_failure_models,  # noqa: F401
+)
+
+# isort: split
+# Revision028 finite stages, retained source objects and distinct new-child origin.
+from backend.app import rdagent_workflow_models as _rdagent_workflow_models  # noqa: F401
+from backend.app import research_input_models as _research_input_models  # noqa: F401
+from backend.app import research_workflow_models as _research_workflow_models  # noqa: F401
+
+# isort: split
+# Revision032 typed normal OE note references, without changing legacy notes.
+from backend.app import normal_oe_note_models as _normal_oe_note_models  # noqa: F401

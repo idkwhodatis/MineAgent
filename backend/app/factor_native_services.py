@@ -231,6 +231,7 @@ def _capacity(session, fence, settings, factor_fd, *, extra=(0, 0)):
         allow_staging=True,
         native=True,
         native_entries=entries,
+        storage_root=settings.storage_root,
     )
     verify_native_journals(session, entries, settings)
     pending_total, pending_owned, pending_count = pending_native_usage(

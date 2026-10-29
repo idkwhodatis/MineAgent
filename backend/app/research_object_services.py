@@ -29,7 +29,7 @@ from backend.app.research_object_models import (
     ResearchObjectPublication,
 )
 from backend.app.services import DomainError
-from packages.rdagent_provider.object_identity import (
+from packages.openevolve_structured.object_identity import (
     identity_for_content,
     parse_storage_key,
     publication_journal,
@@ -46,6 +46,22 @@ MAX_FILES = 10000
 
 
 def _versioned_identity(session, owner, kind, content):
+    from packages.openevolve_structured.object_identity import KINDS as STRUCTURED_KINDS
+
+    if kind in STRUCTURED_KINDS:
+        from sqlalchemy import text
+
+        if session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all() not in (
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
+        ):
+            raise _error("oe_structured_object_revision")
+        return identity_for_content(owner, kind, content)
     if kind == "rd_provider_process_receipt":
         from sqlalchemy import text
 
@@ -57,6 +73,11 @@ def _versioned_identity(session, owner, kind, content):
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         ):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
@@ -68,6 +89,24 @@ def _versioned_identity(session, owner, kind, content):
             version = json.loads(content).get("schema_version")
         except (ValueError, AttributeError, UnicodeError, RecursionError):
             version = None
+        if version == "mineagent.rd-numeric-failure-feedback.v1":
+            from sqlalchemy import text
+
+            from packages.rdagent_adapter.numeric_failure_codec import (
+                identity_for_content as failure_identity,
+            )
+
+            if session.scalars(
+                text("SELECT version_num FROM alembic_version")
+            ).all() not in (
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
+            ):
+                raise _error("rd_numeric_failure_feedback_revision")
+            return failure_identity(owner, kind, content)
         if version == "mineagent.rd-execution-feedback.v2":
             from sqlalchemy import text
 
@@ -87,6 +126,11 @@ def _versioned_identity(session, owner, kind, content):
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
                 ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -139,6 +183,12 @@ def physical_inventory(
                             "model_response",
                             "process_receipt",
                             "rd_provider_process_receipt",
+                            "oe_structured_provider_request",
+                            "oe_structured_provider_response",
+                            "oe_structured_provider_receipt",
+                            "oe_structured_checkpoint_chunk",
+                            "oe_structured_checkpoint_file",
+                            "oe_structured_checkpoint_inventory",
                             "factor_response_assembly",
                             "factor_generation_proposal",
                             "factor_generation_feedback",
@@ -325,7 +375,12 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
     """Create immutable pre-admission inside caller's committed neutral boundary."""
     require_neutral_transaction(session, fence, resource_scope="objects")
     from backend.app.research_broker_services import require_reservation
+    from packages.openevolve_structured.object_identity import KINDS as STRUCTURED_KINDS
 
+    if kind in STRUCTURED_KINDS:
+        from backend.app.oe_structured_object_scope import require_object_scope
+
+        require_object_scope(session, fence, kind, content)
     if kind == "rd_provider_process_receipt":
         from backend.app.rdagent_services import require_research_spec
         from packages.rdagent_provider.process_receipts import parse_receipt
@@ -333,7 +388,8 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
         _, config = require_research_spec(session, fence)
         document = parse_receipt(content)
         if (
-            config.schema_version != "mineagent.factor-research.v2"
+            config.schema_version
+            not in ("mineagent.factor-research.v2", "mineagent.factor-research.v3")
             or any(
                 getattr(document, key) != getattr(fence, key)
                 for key in ("owner_id", "run_id", "attempt_id", "generation")
@@ -367,6 +423,11 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -380,6 +441,11 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
         document = parse_document(kind, content)
@@ -411,6 +477,11 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

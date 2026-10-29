@@ -224,6 +224,11 @@ jobs:
           --ignore=tests/integration/test_rdagent_provider_user_flow.py
           --ignore=tests/integration/test_structured_factor_runtime.py
           --ignore=tests/integration/test_structured_factor_restore.py
+          --ignore=tests/integration/test_oe_structured_normal_flow.py
+          --ignore=tests/integration/test_rdagent_provider_rejection.py
+          --ignore=tests/integration/test_rdagent_workflow_user_flow.py
+          --ignore=tests/integration/test_declared_upload_research_flow.py
+          --ignore=tests/integration/test_workflow_structured_stage_flow.py
           --junitxml=m1-m2-postgres-junit.xml
       - name: Require real provider material differential proof without skips
         run: |

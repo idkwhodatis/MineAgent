@@ -1,3 +1,6 @@
+import { DeclaredUploadBasket } from "./declared-upload-basket";
+import { DemoDatasetOnboarding } from "./demo-dataset";
+import type { StructuredDemoReceipt } from "@/client/types.gen";
 import {
   generationCanCreate,
   preflightMatchesSelection,
@@ -24,6 +27,7 @@ import {
   prepareEngineSubmission,
   saveEngineSubmission,
   type EngineSubmissionEnvelope,
+  type SavedEngineSubmission,
 } from "@/lib/engine-submission-draft";
 import { submitSavedEngineRequest } from "@/lib/engine-submission-api";
 
@@ -46,15 +50,19 @@ export function EnginePreflightPage() {
   );
 }
 
-function EngineEntryForm({
+export function EngineEntryForm({
   ownerId,
   initialParent,
+  workflowDeclaration,
 }: {
   ownerId: string;
   initialParent: string;
+  workflowDeclaration?: (value: EngineRequest | null) => void;
 }) {
   const navigate = useNavigate();
-  const [saved, setSaved] = useState(() => loadEngineSubmission(ownerId));
+  const [saved, setSaved] = useState<SavedEngineSubmission>(() =>
+    workflowDeclaration ? { state: "empty" } : loadEngineSubmission(ownerId),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<unknown>(null);
   const [acceptedRun, setAcceptedRun] = useState<{
@@ -70,6 +78,9 @@ function EngineEntryForm({
     };
   }, []);
   const [offset, setOffset] = useState(0);
+  const [demo, setDemo] = useState<StructuredDemoReceipt | null>(null);
+  const [presetRevision, setPresetRevision] = useState(0);
+  const preset = demo?.rd_preset;
   const capabilities = useQuery(engineCapabilitiesOptions);
   const datasets = useQuery(engineDatasetsOptions(offset));
   const [result, setResult] = useState<EnginePreflight | null>(null);
@@ -79,18 +90,21 @@ function EngineEntryForm({
     (v) => v.engine === "rdagent" && v.purpose === "factor_research",
   );
   const [mode, setMode] = useState<"fixture" | "configured">(
-    initialParent ? "configured" : "fixture",
+    initialParent || workflowDeclaration ? "configured" : "fixture",
   );
   const [modelId, setModelId] = useState("");
   const [parentVersionId, setParentVersionId] = useState(initialParent);
   const [selectedSteers, setSelectedSteers] = useState<string[]>([]);
   const steerCapability = useQuery({
     ...steerCapabilityOptions,
-    enabled: mode === "configured",
+    enabled: mode === "configured" && !workflowDeclaration,
   });
   const steers = useQuery({
     ...steerListOptions,
-    enabled: mode === "configured" && steerCapability.data?.can_manage === true,
+    enabled:
+      mode === "configured" &&
+      !workflowDeclaration &&
+      steerCapability.data?.can_manage === true,
   });
   const selectedModel = profile?.model_profiles?.find(
     (option) => option.id === modelId,
@@ -114,11 +128,12 @@ function EngineEntryForm({
     selectedSteers,
   );
   function invalidatePreflight() {
+    workflowDeclaration?.(null);
     setResult(null);
     setError(null);
   }
   async function send(envelope: EngineSubmissionEnvelope) {
-    if (submissionLock.current) return;
+    if (workflowDeclaration || submissionLock.current) return;
     submissionLock.current = true;
     setSubmitting(true);
     setSubmissionError(null);
@@ -154,6 +169,7 @@ function EngineEntryForm({
     }
   }
   function create() {
+    if (workflowDeclaration) return;
     if (
       !canCreate ||
       !matchesSelection ||
@@ -194,7 +210,7 @@ function EngineEntryForm({
       ) as RdSubmissionRequest["input_fields"],
       lookback_sessions: number("lookback"),
       lag_sessions: number("lag"),
-      max_iterations: number("iterations"),
+      max_iterations: workflowDeclaration ? 1 : number("iterations"),
       task: {
         name: text("name"),
         description: text("description"),
@@ -253,6 +269,7 @@ function EngineEntryForm({
       );
       return;
     }
+    workflowDeclaration?.(null);
     setPending(true);
     setResult(null);
     setError(null);
@@ -346,6 +363,7 @@ function EngineEntryForm({
               <label htmlFor="engine-generation-mode">Generation mode</label>
               <select
                 id="engine-generation-mode"
+                disabled={Boolean(workflowDeclaration)}
                 value={mode}
                 onChange={(event) => {
                   setMode(event.target.value as "fixture" | "configured");
@@ -428,7 +446,13 @@ function EngineEntryForm({
                     exact code and definition; an ID alone is not an execution
                     grant.
                   </p>
-                  {steerCapability.isPending ? (
+                  {workflowDeclaration ? (
+                    <p>
+                      Workflow guidance is selected separately as ordered
+                      immutable input versions. No steer is silently embedded in
+                      this research template.
+                    </p>
+                  ) : steerCapability.isPending ? (
                     <Loading />
                   ) : steerCapability.error ? (
                     <ErrorState error={steerCapability.error} />
@@ -485,6 +509,43 @@ function EngineEntryForm({
               <pre>{JSON.stringify(budget ?? null, null, 2)}</pre>
             </details>
           </Panel>
+          <DemoDatasetOnboarding
+            disabled={
+              pending ||
+              submitting ||
+              saved.state !== "empty" ||
+              Boolean(acceptedRun)
+            }
+            onApply={(receipt) => {
+              if (
+                pending ||
+                submitting ||
+                saved.state !== "empty" ||
+                acceptedRun
+              )
+                return;
+              setDemo(receipt);
+              setPresetRevision((value) => value + 1);
+              setResult(null);
+              setError(null);
+              void datasets.refetch();
+            }}
+          />
+          <DeclaredUploadBasket
+            ownerId={ownerId}
+            datasets={datasets.data?.data ?? []}
+            disabled={
+              pending ||
+              submitting ||
+              saved.state !== "empty" ||
+              Boolean(acceptedRun)
+            }
+            onCreated={() => {
+              setResult(null);
+              setError(null);
+              void datasets.refetch();
+            }}
+          />
           {datasets.isPending ? (
             <Loading />
           ) : datasets.error ? (
@@ -495,11 +556,9 @@ function EngineEntryForm({
           ) : (
             <Panel title="Retained dataset and objective">
               <form
+                key={presetRevision}
                 onSubmit={check}
-                onChange={() => {
-                  setResult(null);
-                  setError(null);
-                }}
+                onChange={invalidatePreflight}
               >
                 <fieldset
                   disabled={
@@ -516,12 +575,21 @@ function EngineEntryForm({
                     id="engine-retained-dataset"
                     name="dataset"
                     required
-                    defaultValue=""
-                    key={offset}
+                    defaultValue={demo?.dataset.id ?? ""}
+                    key={`${offset}:${presetRevision}`}
                   >
                     <option value="" disabled>
                       Select an owned dataset
                     </option>
+                    {demo &&
+                      !datasets.data.data.some(
+                        (d) => d.id === demo.dataset.id,
+                      ) && (
+                        <option value={demo.dataset.id}>
+                          {demo.dataset.name} · synthetic · eligibility not yet
+                          checked
+                        </option>
+                      )}
                     {datasets.data.data.map((d) => (
                       <option
                         key={d.id}
@@ -536,7 +604,7 @@ function EngineEntryForm({
                       </option>
                     ))}
                   </select>
-                  {!datasets.data.data.length && (
+                  {!datasets.data.data.length && !demo && (
                     <p>
                       No retained datasets on this page. Import a dataset before
                       checking eligibility.
@@ -547,7 +615,7 @@ function EngineEntryForm({
                     disabled={offset === 0}
                     onClick={() => {
                       setOffset(Math.max(0, offset - 25));
-                      setResult(null);
+                      invalidatePreflight();
                     }}
                   >
                     Previous datasets
@@ -557,18 +625,28 @@ function EngineEntryForm({
                     disabled={offset + 25 >= datasets.data.count}
                     onClick={() => {
                       setOffset(offset + 25);
-                      setResult(null);
+                      invalidatePreflight();
                     }}
                   >
                     Next datasets
                   </button>
                   <label>
                     Output window start (inclusive)
-                    <input name="start" type="date" required />
+                    <input
+                      name="start"
+                      type="date"
+                      defaultValue={preset?.window.start}
+                      required
+                    />
                   </label>
                   <label>
                     Output window end (exclusive)
-                    <input name="end" type="date" required />
+                    <input
+                      name="end"
+                      type="date"
+                      defaultValue={preset?.window.end}
+                      required
+                    />
                   </label>
                   <fieldset>
                     <legend>Input fields</legend>
@@ -578,7 +656,13 @@ function EngineEntryForm({
                           type="checkbox"
                           name="input_fields"
                           value={field}
-                          defaultChecked={field === "close"}
+                          defaultChecked={
+                            preset
+                              ? preset.input_fields.some(
+                                  (value) => value === field,
+                                )
+                              : field === "close"
+                          }
                         />
                         {field}
                       </label>
@@ -591,7 +675,7 @@ function EngineEntryForm({
                       type="number"
                       min="1"
                       max="63"
-                      defaultValue="1"
+                      defaultValue={preset?.lookback_sessions ?? 1}
                       required
                     />
                   </label>
@@ -602,7 +686,7 @@ function EngineEntryForm({
                       type="number"
                       min="0"
                       max="8"
-                      defaultValue="0"
+                      defaultValue={preset?.lag_sessions ?? 0}
                       required
                     />
                   </label>
@@ -613,37 +697,65 @@ function EngineEntryForm({
                       type="number"
                       min="1"
                       max="8"
-                      defaultValue={profile.max_iterations ?? 1}
+                      defaultValue={
+                        workflowDeclaration
+                          ? 1
+                          : (preset?.max_iterations ??
+                            profile.max_iterations ??
+                            1)
+                      }
+                      readOnly={Boolean(workflowDeclaration)}
                       required
                     />
                   </label>
                   <label>
                     Task identifier
-                    <input name="name" required maxLength={128} />
+                    <input
+                      name="name"
+                      defaultValue={preset?.task.name}
+                      required
+                      maxLength={128}
+                    />
                   </label>
                   <label>
                     Task description
-                    <textarea name="description" required />
+                    <textarea
+                      name="description"
+                      defaultValue={preset?.task.description}
+                      required
+                    />
                   </label>
                   <label>
                     Factor formulation
-                    <textarea name="formulation" required />
+                    <textarea
+                      name="formulation"
+                      defaultValue={preset?.task.formulation}
+                      required
+                    />
                   </label>
                   <label htmlFor="engine-factor-kind">Factor kind</label>
                   <select
                     id="engine-factor-kind"
                     name="kind"
-                    defaultValue="time_series"
+                    defaultValue={preset?.task.factor_kind ?? "time_series"}
                   >
                     <option value="cross_sectional">Cross-sectional</option>
                     <option value="time_series">Time series</option>
                   </select>
                   <label>
                     Output unit identifier
-                    <input name="unit" defaultValue="return" required />
+                    <input
+                      name="unit"
+                      defaultValue={preset?.task.output_unit ?? "return"}
+                      required
+                    />
                   </label>
                   <label htmlFor="engine-interpretation">Interpretation</label>
-                  <select id="engine-interpretation" name="interpretation">
+                  <select
+                    id="engine-interpretation"
+                    name="interpretation"
+                    defaultValue={preset?.task.interpretation}
+                  >
                     <option value="higher_preferred">Higher preferred</option>
                     <option value="lower_preferred">Lower preferred</option>
                     <option value="unsigned">Unsigned</option>
@@ -655,21 +767,31 @@ function EngineEntryForm({
                       type="number"
                       min="1"
                       max="4096"
-                      defaultValue="1"
+                      defaultValue={
+                        preset?.objective.label_horizon_sessions ?? 1
+                      }
                       required
                     />
                   </label>
                   <label htmlFor="engine-objective-metric">
                     Objective metric
                   </label>
-                  <select id="engine-objective-metric" name="metric">
+                  <select
+                    id="engine-objective-metric"
+                    name="metric"
+                    defaultValue={preset?.objective.metric}
+                  >
                     <option value="ic">IC</option>
                     <option value="rank_ic">Rank IC</option>
                   </select>
                   <label htmlFor="engine-threshold-direction">
                     Threshold direction
                   </label>
-                  <select id="engine-threshold-direction" name="direction">
+                  <select
+                    id="engine-threshold-direction"
+                    name="direction"
+                    defaultValue={preset?.objective.direction}
+                  >
                     <option value="at_least">At least</option>
                     <option value="at_most">At most</option>
                   </select>
@@ -677,6 +799,7 @@ function EngineEntryForm({
                     Threshold
                     <input
                       name="threshold"
+                      defaultValue={preset?.objective.threshold}
                       type="number"
                       min="-1"
                       max="1"
@@ -691,7 +814,7 @@ function EngineEntryForm({
                       type="number"
                       min="1"
                       max="4096"
-                      defaultValue="1"
+                      defaultValue={preset?.objective.minimum_defined_days ?? 1}
                       required
                     />
                   </label>
@@ -702,7 +825,7 @@ function EngineEntryForm({
                       type="number"
                       min="2"
                       max="10000"
-                      defaultValue="2"
+                      defaultValue={preset?.objective.minimum_pairs ?? 2}
                       required
                     />
                   </label>
@@ -811,9 +934,22 @@ function EngineEntryForm({
               saved.state !== "empty" ||
               Boolean(acceptedRun)
             }
-            onClick={create}
+            onClick={() => {
+              if (workflowDeclaration) {
+                if (
+                  result?.can_submit &&
+                  matchesSelection &&
+                  mode === "configured"
+                )
+                  workflowDeclaration(result.normalized_request);
+              } else create();
+            }}
           >
-            {canCreate ? "Create RD-Agent run" : "Create run — not enabled"}
+            {workflowDeclaration
+              ? "Use this declaration for workflow preflight — no run created"
+              : canCreate
+                ? "Create RD-Agent run"
+                : "Create run — not enabled"}
           </button>
         </>
       )}

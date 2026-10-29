@@ -203,7 +203,9 @@ def read_run(run_id: UUID, user: CurrentUser, session: SessionDep):
     from backend.app.rdagent_control_services import controls_for
 
     run = owned_engine_run(session, run_id, user.id)
-    return detail(run).model_copy(update={"actions": controls_for(session, run)})
+    return detail(run, session=session).model_copy(
+        update={"actions": controls_for(session, run)}
+    )
 
 
 @router.get("/engine-runs/{run_id}/history", response_model=Page[EngineHistoryItem])

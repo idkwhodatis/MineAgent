@@ -21,8 +21,8 @@ from packages.rdagent_adapter.controller_profile import (
 )
 from packages.rdagent_adapter.seeded_bootstrap import (
     RDSeededOperationalBootstrap,
-    parse_bootstrap,
 )
+from packages.rdagent_adapter.workflow_bootstrap import parse_workflow_bootstrap
 from runtimes.rdagent_operational.client import OperationalHost
 from runtimes.rdagent_operational.deadline import remaining_seconds
 from runtimes.rdagent_operational.rpc import Client, RPCError
@@ -73,7 +73,7 @@ def main():
     }:
         raise RPCError("fixed_input_layout")
     raw = read_fixed("/input/bootstrap.json", 262144)
-    bootstrap = parse_bootstrap(raw)
+    bootstrap = parse_workflow_bootstrap(raw)
     from packages.factors.contracts import canonical_bytes
 
     if canonical_bytes(bootstrap) != raw or bootstrap.config.max_iterations != 1:
@@ -133,7 +133,17 @@ def main():
             },
         )
         with use_host_broker(host):
-            if isinstance(config, ProviderFactorResearchConfig):
+            from packages.rdagent_adapter.workflow_config import (
+                WorkflowFactorResearchConfig,
+            )
+
+            if type(config) is WorkflowFactorResearchConfig:
+                from runtimes.rdagent_operational.workflow_scenario import (
+                    WorkflowOperationalCoSTEER,
+                )
+
+                engine = WorkflowOperationalCoSTEER(config, host, bootstrap.seed)
+            elif isinstance(config, ProviderFactorResearchConfig):
                 from runtimes.rdagent_operational.provider_scenario import (
                     ProviderOperationalCoSTEER,
                 )

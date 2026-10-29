@@ -40,6 +40,7 @@ def _execute_committed_numeric_unit(
     input_bytes,
     inventory,
     authorize_submission=None,
+    capture_rejection=False,
 ):
     """Internal post-resolution boundary; no caller DTO is a launch token.
 
@@ -49,11 +50,21 @@ def _execute_committed_numeric_unit(
     """
     with shared_lifecycle(factory.kw["bind"], storage_root):
         with neutral_transaction(factory, fence, resource_scope="processes") as session:
+            if type(capture_rejection) is not bool:
+                raise ProcessError("numeric_rejection_role")
+            if capture_rejection:
+                from backend.app.numeric_rejection_services import (
+                    require_numeric_rejection_schema,
+                )
+
+                require_numeric_rejection_schema(session, fence)
             intent = claim_numeric_launch(session, fence, admission_id)
+            if capture_rejection and intent.admission.role != "factor_cutoff_candidate":
+                raise ProcessError("numeric_rejection_role")
             check_input_bytes(intent, input_bytes)
             if inventory["image_id"] != intent.admission.image_id:
                 raise ProcessError("numeric_process_image")
-        _execute_claimed_numeric_unit(
+        return _execute_claimed_numeric_unit(
             factory,
             fence,
             storage_root,
@@ -61,6 +72,7 @@ def _execute_committed_numeric_unit(
             input_bytes=input_bytes,
             inventory=inventory,
             authorize_submission=authorize_submission,
+            **({"capture_rejection": True} if capture_rejection else {}),
         )
 
 
@@ -74,9 +86,14 @@ def _execute_claimed_numeric_unit(
     inventory,
     settings=None,
     authorize_submission=None,
+    capture_rejection=False,
 ):
     # Caller invokes this only immediately following its successful claim commit.
     # This private function is never a request/DTO entrypoint.
+    if type(capture_rejection) is not bool or (
+        capture_rejection and intent.admission.role != "factor_cutoff_candidate"
+    ):
+        raise ProcessError("numeric_rejection_role")
     admission_id = intent.admission.id
     scope = (
         "factor_numeric"
@@ -95,6 +112,12 @@ def _execute_claimed_numeric_unit(
     try:
         with neutral_transaction(factory, fence, resource_scope=scope) as session:
             check_numeric_claim(session, fence, intent)
+            if capture_rejection:
+                from backend.app.numeric_rejection_services import (
+                    require_numeric_rejection_schema,
+                )
+
+                require_numeric_rejection_schema(session, fence)
             _authorize_submission(session, fence, authorize_submission)
             if scope == "factor_numeric":
                 from backend.app.native_normalizer_claim import (
@@ -115,7 +138,12 @@ def _execute_claimed_numeric_unit(
                 check_numeric_claim(session, fence, intent)
                 _authorize_submission(session, fence, authorize_submission)
 
-        supervisor.execute(
+        execute = (
+            supervisor.execute_with_rejection
+            if capture_rejection
+            else supervisor.execute
+        )
+        result = execute(
             storage_root,
             authority,
             on_identity=identity_observed,
@@ -124,6 +152,20 @@ def _execute_claimed_numeric_unit(
             else None,
         )
         with neutral_transaction(factory, fence, resource_scope="processes") as session:
+            from packages.research_runtime.numeric_rejection import NumericRejection
+
+            if capture_rejection and isinstance(result, NumericRejection):
+                from backend.app.numeric_rejection_services import (
+                    record_numeric_rejection,
+                    settle_numeric_rejection,
+                )
+
+                record_numeric_rejection(
+                    session, fence, admission_id, storage_root=storage_root
+                )
+                return settle_numeric_rejection(
+                    session, fence, admission_id, storage_root=storage_root
+                )
             record_numeric_stopped(
                 session,
                 fence,

@@ -683,6 +683,14 @@ class PostgresDatabase:
                 raise BackupError(
                     "Invalid structured strategy restore closure"
                 ) from None
+            from backend.app.oe_structured_operations import (
+                read_closure as read_normal_closure,
+            )
+
+            try:
+                normal_closure = read_normal_closure(connection, capabilities, limits)
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid normal OE restore closure") from None
             from backend.app.rdagent_seed_operations import read_seed_closure
 
             try:
@@ -695,9 +703,37 @@ class PostgresDatabase:
                 steer_closure = read_steer_closure(connection, capabilities, limits)
             except (ValueError, TypeError, KeyError, AttributeError):
                 raise BackupError("Invalid RD steer restore closure") from None
+            from backend.app.research_workflow_operations import (
+                read_snapshot as read_workflow_snapshot,
+            )
+
+            try:
+                workflow_snapshot = read_workflow_snapshot(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid workflow restore closures") from None
+            from backend.app.declared_upload_backup import (
+                read_snapshot as read_upload_snapshot,
+            )
+
+            upload_snapshot = read_upload_snapshot(connection, capabilities, limits)
+            from backend.app.normal_oe_note_backup import (
+                read_snapshot as read_note_snapshot,
+            )
+
+            try:
+                normal_note_snapshot = read_note_snapshot(
+                    connection, capabilities, limits
+                )
+            except (ValueError, TypeError, KeyError, AttributeError):
+                raise BackupError("Invalid normal OE note restore closure") from None
             if len(references) + len(datasets) > limits.max_files:
                 raise BackupError("Database reference inventory exceeds its limit")
             return {
+                **workflow_snapshot,
+                **upload_snapshot,
+                **normal_note_snapshot,
                 **(
                     {"rd_steer_closure": steer_closure}
                     if steer_closure is not None
@@ -706,6 +742,11 @@ class PostgresDatabase:
                 **(
                     {"rd_seed_closure": seed_closure}
                     if seed_closure is not None
+                    else {}
+                ),
+                **(
+                    {"oe_structured_closure": normal_closure}
+                    if normal_closure is not None
                     else {}
                 ),
                 **(
@@ -1003,6 +1044,17 @@ def _validate_references(
             raise BackupError("RD retained evidence changed while read")
         return content
 
+    from backend.app.declared_upload_backup import (
+        validate_snapshot as validate_upload_snapshot,
+    )
+
+    try:
+        validate_upload_snapshot(
+            snapshot, capabilities, read_rd_bytes, limits.max_files
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Declared upload lineage failed verification") from None
+
     from backend.app.openevolve_operations import openevolve_closure
 
     try:
@@ -1026,6 +1078,21 @@ def _validate_references(
         )
     except (ValueError, TypeError, KeyError, AttributeError):
         raise BackupError("Seeded RD parent closure failed verification") from None
+    from backend.app.oe_structured_operations import closure_for as normal_closure_for
+
+    try:
+        normal_closure = normal_closure_for(snapshot, capabilities)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Invalid normal OE closure capability") from None
+    from backend.app.research_workflow_operations import prepare_context
+
+    try:
+        workflow_context = prepare_context(
+            snapshot, capabilities, read_rd_bytes, limits.max_files
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Workflow prephysical closure failed verification") from None
+    research_records = None
     from backend.app.research_backup import validate_absence, validate_closure
 
     try:
@@ -1035,7 +1102,7 @@ def _validate_references(
                 != capabilities.research_closure_schema
             ):
                 raise ValueError("Neutral closure revision mismatch")
-            validate_closure(
+            research_records = validate_closure(
                 snapshot["research_closure"],
                 check,
                 lambda path: _read_json(root, path, limits)[0],
@@ -1043,6 +1110,24 @@ def _validate_references(
                 inventory=inventory,
                 read_bytes=read_rd_bytes,
                 rd_source_closure=snapshot.get("rd_source_closure"),
+                **(
+                    {"workflow_links_pending": True}
+                    if workflow_context is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "oe_structured_closure": normal_closure,
+                        "successor_links_pending": True,
+                    }
+                    if normal_closure is not None
+                    else {}
+                ),
+                **(
+                    {"workflow_context": workflow_context}
+                    if workflow_context is not None
+                    else {}
+                ),
                 **(
                     {"seed_context": seed_context}
                     if getattr(capabilities, "rd_seed_schema", None) is not None
@@ -1080,6 +1165,11 @@ def _validate_references(
                 read_rd_bytes,
                 limits.max_files,
                 **(
+                    {"workflow_context": workflow_context}
+                    if workflow_context is not None
+                    else {}
+                ),
+                **(
                     {"seed_context": seed_context}
                     if getattr(capabilities, "rd_seed_schema", None) is not None
                     else {}
@@ -1088,22 +1178,35 @@ def _validate_references(
                     {"execution_links_pending": True}
                     if snapshot["rd_source_closure"].get("schema_version")
                     in {
+                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v11",
                         "mineagent.rd-source-restore-closure.v3",
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v8",
+                        "mineagent.rd-source-restore-closure.v9",
                         "mineagent.rd-source-restore-closure.v6",
-                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v10",
                     }
+                    else {}
+                ),
+                **(
+                    {"failure_links_pending": True}
+                    if normal_closure is not None
                     else {}
                 ),
                 **(
                     {"configured_inputs_pending": True}
                     if snapshot["rd_source_closure"].get("schema_version")
                     in {
+                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v11",
                         "mineagent.rd-source-restore-closure.v4",
                         "mineagent.rd-source-restore-closure.v5",
+                        "mineagent.rd-source-restore-closure.v8",
+                        "mineagent.rd-source-restore-closure.v9",
                         "mineagent.rd-source-restore-closure.v6",
-                        "mineagent.rd-source-restore-closure.v7",
+                        "mineagent.rd-source-restore-closure.v10",
                     }
                     else {}
                 ),
@@ -1164,6 +1267,23 @@ def _validate_references(
         raise BackupError(
             "Structured strategy restore closure failed verification"
         ) from None
+    from backend.app.oe_structured_operations import (
+        validate_snapshot as validate_normal_snapshot,
+    )
+
+    try:
+        oe_facts = validate_normal_snapshot(
+            snapshot,
+            capabilities,
+            read_rd_bytes,
+            limits.max_files,
+            inventory=inventory,
+            process_records=research_records,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Normal OE and numeric failure closure failed verification"
+        ) from None
     from backend.app.rdagent_submission_operations import validate_submission_snapshot
 
     try:
@@ -1192,6 +1312,21 @@ def _validate_references(
         raise BackupError(
             "Execution generation restore closure failed verification"
         ) from None
+    from backend.app.research_workflow_operations import (
+        validate_snapshot as validate_workflow_snapshot,
+    )
+
+    try:
+        validate_workflow_snapshot(
+            snapshot,
+            capabilities,
+            read_rd_bytes,
+            limits.max_files,
+            inventory=inventory,
+            oe_facts=oe_facts,
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError("Workflow final closure failed verification") from None
     for item in snapshot["references"]:
         check(item["path"], item["sha256"], item.get("size_bytes"))
     for item in snapshot["datasets"]:
@@ -1234,6 +1369,19 @@ def _validate_references(
                 raise BackupError("Invalid checkpoint size")
             base = PurePosixPath(item["path"]).parent.as_posix()
             check(f"{base}/{_key(entry['path'])}", entry["sha256"], entry["size_bytes"])
+
+    from backend.app.normal_oe_note_backup import (
+        validate_snapshot as validate_normal_notes,
+    )
+
+    try:
+        validate_normal_notes(
+            snapshot, capabilities, limits.max_files, oe_facts=oe_facts
+        )
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise BackupError(
+            "Normal OE note restore closure failed verification"
+        ) from None
 
 
 def _write_new(path: Path, content: bytes):

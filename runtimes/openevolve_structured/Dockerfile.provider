@@ -1,0 +1,17 @@
+# Normal027 operator-backed derivative; old fixture image recipe unchanged.
+# No dependency install/provider configuration; never claims the old wheel/source hash.
+ARG OPENEvolve_PARENT_IMAGE
+FROM ${OPENEvolve_PARENT_IMAGE}
+USER 0:0
+LABEL io.mineagent.managed="mineagent-oe-structured-orchestrator-v1"
+COPY packages/openevolve_structured/__init__.py packages/openevolve_structured/broker_client.py packages/openevolve_structured/candidate.py packages/openevolve_structured/checkpoint.py packages/openevolve_structured/checkpoint_runtime.py packages/openevolve_structured/contracts.py packages/openevolve_structured/evaluator_bridge.py packages/openevolve_structured/objective.py packages/openevolve_structured/observer.py packages/openevolve_structured/observer_transport.py packages/openevolve_structured/placement_observer.py packages/openevolve_structured/provider_bootstrap.py packages/openevolve_structured/provider_broker_client.py packages/openevolve_structured/provider_contracts.py packages/openevolve_structured/provider_operation.py packages/openevolve_structured/provider_prompt.py packages/openevolve_structured/provider_response.py packages/openevolve_structured/provider_runtime_config.py packages/openevolve_structured/runtime_config.py packages/openevolve_structured/runtime_profile.py packages/openevolve_structured/sampling_control.py packages/openevolve_structured/worker_outcome.py packages/openevolve_structured/workflow_context.py packages/openevolve_structured/workflow_bootstrap.py packages/openevolve_structured/workflow_prompt.py /usr/local/lib/python3.12/site-packages/packages/openevolve_structured/
+COPY packages/factors/__init__.py packages/factors/contracts.py packages/factors/execution_snapshot.py /usr/local/lib/python3.12/site-packages/packages/factors/
+COPY packages/structured_factor_strategy/__init__.py packages/structured_factor_strategy/contracts.py /usr/local/lib/python3.12/site-packages/packages/structured_factor_strategy/
+COPY packages/strategy_sdk /usr/local/lib/python3.12/site-packages/packages/strategy_sdk/
+COPY packages/research_inputs/__init__.py packages/research_inputs/contracts.py packages/research_inputs/resolved.py /usr/local/lib/python3.12/site-packages/packages/research_inputs/
+COPY packages/research_workflow/__init__.py packages/research_workflow/contracts.py packages/research_workflow/model_inputs.py /usr/local/lib/python3.12/site-packages/packages/research_workflow/
+COPY runtimes/openevolve_structured /usr/local/lib/python3.12/site-packages/runtimes/openevolve_structured/
+RUN python -I /usr/local/lib/python3.12/site-packages/runtimes/openevolve_structured/install_hooks.py /usr/local/lib/python3.12/site-packages
+ENV HOME=/tmp PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /tmp
+ENTRYPOINT ["python","-I","-m","runtimes.openevolve_structured.deadline"]

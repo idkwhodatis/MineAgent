@@ -2,10 +2,15 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState, Loading, Panel } from "@/components/common";
 import { deploymentUrl } from "@/lib/deployment";
-import { engineInputsOptions, groupInputs } from "@/lib/engine-inputs";
+import {
+  engineInputsOptions,
+  groupInputs,
+  groupWorkflowInputs,
+} from "@/lib/engine-inputs";
 import type { ResearchInputs } from "@/client/types.gen";
 const titles = {
   user_provided: "User-provided submissions (pinned)",
+  workflow_stage: "Workflow-selected frozen inputs",
   agent_generated: "Agent-generated proposals",
   unknown: "Origin not established",
 };
@@ -85,6 +90,55 @@ export function InputOriginGroups({ data }: { data: ResearchInputs }) {
                       </li>
                     ))}
                   </ol>
+                </section>
+              )}
+              {item.origin === "workflow_stage" && item.workflow_inputs && (
+                <section aria-label="Frozen workflow inputs by origin">
+                  <p>
+                    Workflow-selected versions, not a new user submission.
+                    Selection does not prove model consumption, compliance or
+                    approval.
+                  </p>
+                  <p className="break-all">
+                    Combined input SHA-256: {item.workflow_inputs_sha256}
+                  </p>
+                  <p>
+                    Stage: {item.workflow_inputs.binding.stage_id}. Input
+                    revision: {item.workflow_inputs.selection.revision_id}.
+                  </p>
+                  {groupWorkflowInputs(item.workflow_inputs.inputs ?? []).map(
+                    (group) => (
+                      <div key={group.origin}>
+                        <h4>
+                          {group.origin === "manual_user_submission"
+                            ? "User manual guidance (pinned)"
+                            : group.origin === "normalized_external_proposal"
+                              ? "Normalized external evidence"
+                              : group.origin === "experiment_feedback_proposal"
+                                ? "Derived experiment feedback"
+                                : "Origin not established"}
+                        </h4>
+                        {group.items.map(({ input, position }) => (
+                          <article key={input.ref.version_id}>
+                            {group.origin === "manual_user_submission" && (
+                              <strong aria-label="Pinned manual guidance">
+                                Pinned manual guidance
+                              </strong>
+                            )}
+                            <p>
+                              Frozen position {position} ·{" "}
+                              {input.ref.version_id}
+                            </p>
+                            <p>{input.title}</p>
+                            <p className="whitespace-pre-wrap">{input.text}</p>
+                            <p className="break-all">
+                              Text SHA-256: {input.text_sha256}
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    ),
+                  )}
                 </section>
               )}
               {item.factor_id && item.factor_version_id && (

@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select, text
 
 from backend.app.core.atomic_storage import (
+    _open_directory,
     _prepare_directory,
     publish_bytes,
 )
@@ -84,6 +85,8 @@ def physical_inventory(
     allow_staging=False,
     native=False,
     native_entries=None,
+    storage_root=None,
+    include_dataset_inventory=False,
 ):
     """Descriptor-pinned, bounded no-follow traversal; unknown staging fails closed."""
     total = owned = count = 0
@@ -232,21 +235,64 @@ def physical_inventory(
         raise DomainError(
             "factor_storage_uncertain", "Factor inventory could not be verified", 409
         ) from None
+    if storage_root is not None:
+        from backend.app.structured_demo_storage import demo_physical_usage
+
+        parent = _open_directory(Path(storage_root).absolute())
+        try:
+            factor = os.stat("factors", dir_fd=parent, follow_symlinks=False)
+            pinned = os.fstat(root_fd)
+            if not stat.S_ISDIR(factor.st_mode) or (factor.st_dev, factor.st_ino) != (
+                pinned.st_dev,
+                pinned.st_ino,
+            ):
+                raise ValueError("Factor namespace differs from exact storage root")
+            if include_dataset_inventory:
+                from backend.app.declared_upload_capacity import dataset_physical_usage
+
+                inventory = dataset_physical_usage
+            else:
+                inventory = demo_physical_usage
+            demo_total, demo_owned, demo_count = inventory(
+                parent, owner_id, deadline, max_files
+            )
+            total += demo_total
+            owned += demo_owned
+            count += demo_count
+            if count > max_files:
+                raise ValueError("Combined physical file budget exceeded")
+        except (OSError, ValueError):
+            raise DomainError(
+                "factor_storage_uncertain",
+                "Structured demo inventory requires recovery",
+                409,
+            ) from None
+        finally:
+            os.close(parent)
     return total, owned, count
 
 
 class PublicationAdmission(float):
     """Trusted in-process fence capability, never serialized or passed to parser."""
 
-    def __new__(cls, deadline, root_fd, factor_fd):
+    def __new__(cls, deadline, root_fd, factor_fd, *, include_dataset_inventory=False):
         instance = super().__new__(cls, deadline)
         instance.root_fd = root_fd
         instance.factor_fd = factor_fd
+        instance.include_dataset_inventory = include_dataset_inventory
         return instance
 
 
 @contextmanager
-def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
+def publication(
+    session,
+    owner_id,
+    settings,
+    *,
+    peak_bytes,
+    peak_files=4,
+    include_dataset_inventory=False,
+):
     enabled(settings)
     # Authentication reads do not retain stale authority while entering publication.
     session.rollback()
@@ -312,6 +358,19 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                 )
 
                 native = native_capability(session)
+                # At the new dataset capability every writer shares the same
+                # conservative pool, not merely the basket HTTP caller.
+                revisions = session.scalars(
+                    text("SELECT version_num FROM alembic_version")
+                ).all()
+                dataset_capability = revisions == ["030_declared_upload_basket"]
+                if include_dataset_inventory and not dataset_capability:
+                    raise DomainError(
+                        "schema_version",
+                        "Declared upload quota requires its schema",
+                        409,
+                    )
+                include_dataset_inventory = dataset_capability
                 native_entries = []
                 total, owned, count = physical_inventory(
                     fd,
@@ -321,6 +380,8 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                     allow_staging=True,
                     native=native,
                     native_entries=native_entries,
+                    storage_root=settings.storage_root,
+                    include_dataset_inventory=include_dataset_inventory,
                 )
                 if native:
                     verify_native_journals(session, native_entries, settings)
@@ -350,7 +411,12 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                     raise DomainError(
                         "factor_capacity", "Factor physical quota exceeded", 409
                     )
-                yield PublicationAdmission(deadline, root_fd, fd)
+                yield PublicationAdmission(
+                    deadline,
+                    root_fd,
+                    fd,
+                    include_dataset_inventory=include_dataset_inventory,
+                )
                 check_deadline(deadline)
                 try:
                     assert_quiescent(settings.storage_root)
@@ -367,6 +433,8 @@ def publication(session, owner_id, settings, *, peak_bytes, peak_files=4):
                     allow_staging=True,
                     native=native,
                     native_entries=native_entries,
+                    storage_root=settings.storage_root,
+                    include_dataset_inventory=include_dataset_inventory,
                 )
                 if native:
                     verify_native_journals(session, native_entries, settings)

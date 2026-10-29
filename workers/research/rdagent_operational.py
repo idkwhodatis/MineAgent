@@ -98,6 +98,11 @@ def require_maintained_revision(session):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -223,7 +228,14 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 bootstrap.config
             ) == "mineagent.rdagent-orchestrator.v4" and session.scalars(
                 text("SELECT version_num FROM alembic_version")
-            ).all() != ["027c_seeded_controller_v4"]:
+            ).all() not in (
+                ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
+            ):
                 raise ProcessError("rd_controller_seeded_revision")
             if controller_profile(
                 bootstrap.config
@@ -234,8 +246,25 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 ["027a_contract_repairs"],
                 ["027b_provider_material"],
                 ["027c_seeded_controller_v4"],
+                ["028_oe_structured_search"],
+                ["029_research_workflow"],
+                ["030_declared_upload_basket"],
+                ["031_workflow_structured_stage"],
+                ["032_normal_oe_note_pins"],
             ):
                 raise ProcessError("rd_controller_composed_revision")
+        from backend.app.rdagent_workflow_controller import (
+            reread_workflow_bootstrap_inputs,
+        )
+        from packages.rdagent_adapter.workflow_bootstrap import (
+            RDWorkflowOperationalBootstrap,
+        )
+
+        if type(bootstrap) is RDWorkflowOperationalBootstrap:
+            with neutral_transaction(
+                factory, fence, resource_scope="factor_numeric"
+            ) as session:
+                reread_workflow_bootstrap_inputs(session, fence, bootstrap, settings)
         from backend.app.rdagent_seed_controller import reread_bootstrap_parent
         from packages.rdagent_adapter.seeded_bootstrap import (
             RDSeededOperationalBootstrap,

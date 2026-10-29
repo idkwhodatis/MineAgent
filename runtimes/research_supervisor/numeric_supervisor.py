@@ -398,6 +398,33 @@ class NumericSupervisor:
         return state
 
     def execute(self, root, authority, *, on_identity, before_submission=None):
+        return self._execute(
+            root,
+            authority,
+            on_identity=on_identity,
+            before_submission=before_submission,
+            capture_rejection=False,
+        )
+
+    def execute_with_rejection(
+        self, root, authority, *, on_identity, before_submission=None
+    ):
+        """Explicit successor: success extraction OR timely protected rejection.
+
+        Caller must persist/resolve the separate receipt under its current fence;
+        neither a return value nor containment alone settles the obligation.
+        """
+        return self._execute(
+            root,
+            authority,
+            on_identity=on_identity,
+            before_submission=before_submission,
+            capture_rejection=True,
+        )
+
+    def _execute(
+        self, root, authority, *, on_identity, before_submission, capture_rejection
+    ):
         if type(authority) is not NumericAuthority:
             raise ProcessError("numeric_process_authority")
         inventory = authority.consume()
@@ -412,6 +439,7 @@ class NumericSupervisor:
             raise ProcessError("numeric_process_root")
         reader = None
         launch = None
+        stop_verified = False
         try:
             with process_fence(root) as namespace:
                 owner = _mkdir(namespace, str(admission.owner_id))
@@ -489,6 +517,46 @@ class NumericSupervisor:
                 if admission.role == "factor_cutoff_candidate"
                 else "values.parquet"
             )
+            if kind == 3 and capture_rejection:
+                if admission.role != "factor_cutoff_candidate":
+                    raise ProcessError("numeric_rejection_role")
+                from packages.research_runtime.numeric_rejection import (
+                    NumericRejection,
+                    parse_rejection_payload,
+                )
+                from runtimes.research_supervisor.numeric_rejection import (
+                    read_rejection_journal,
+                )
+
+                code = parse_rejection_payload(payload)
+                self._complete_original_stream(reader, cid, authority.deadline)
+                reader.close()
+                reader = None
+                stop = self.stop_and_verify(
+                    root, admission, original_deadline=authority.deadline + 1
+                )
+                if not stop.deadline_bound_met:
+                    raise ProcessError("numeric_process_original_deadline")
+                stop_verified = True
+                rejection = NumericRejection(
+                    schema_version="mineagent.numeric-process-rejection.v1",
+                    launch_sha256=digest(launch.model_dump(mode="json")),
+                    identity_sha256=digest(identity.model_dump(mode="json")),
+                    stop_sha256=digest(stop.model_dump(mode="json")),
+                    container_id=identity.container_id,
+                    protocol="MANU2-kind3",
+                    basename="result.h5",
+                    payload_utf8=payload.decode("utf-8"),
+                    payload_sha256=hashlib.sha256(payload).hexdigest(),
+                    child_exit_code=code,
+                    descendants_reaped=True,
+                    complete_eof=True,
+                )
+                with process_fence(root):
+                    write_record(
+                        control / "rejection.json", rejection.model_dump(mode="json")
+                    )
+                    return read_rejection_journal(root, admission)[3]
             wants_report = (
                 admission.role == "factor_normalizer"
                 and json.loads(authority.inputs["/input/manifest.json"])[
@@ -515,16 +583,7 @@ class NumericSupervisor:
                 content = validate_export(payload, expected_basename=basename)
             # Do not persist any successful extraction until the channel reaches
             # EOF with no trailing/duplicate bytes under the original unit deadline.
-            require_complete_numeric_stream(reader, authority.deadline + 1)
-            while True:
-                stopped = self.client._inspect(cid)
-                if stopped is None or time.monotonic() > authority.deadline + 1:
-                    raise ProcessError("numeric_process_original_deadline")
-                if stopped["State"]["Running"] is False:
-                    if stopped["State"]["ExitCode"] != 124:
-                        raise ProcessError("numeric_process_original_deadline")
-                    break
-                time.sleep(0.01)
+            self._complete_original_stream(reader, cid, authority.deadline)
             extraction = NumericExtraction(
                 schema_version="mineagent.numeric-process-extraction.v2",
                 launch_sha256=digest(launch.model_dump(mode="json")),
@@ -567,7 +626,7 @@ class NumericSupervisor:
             try:
                 if reader is not None:
                     reader.close()
-                if launch is not None:
+                if launch is not None and not stop_verified:
                     try:
                         self.stop_and_verify(
                             root, admission, original_deadline=authority.deadline + 1
@@ -586,6 +645,19 @@ class NumericSupervisor:
                     "Numeric physical containment unconfirmed: "
                     + type(containment_error).__name__
                 )
+
+    def _complete_original_stream(self, reader, cid, deadline):
+        require_complete_numeric_stream(reader, deadline + 1)
+        while True:
+            stopped = self.client._inspect(cid)
+            if stopped is None or time.monotonic() > deadline + 1:
+                raise ProcessError("numeric_process_original_deadline")
+            if stopped["State"]["Running"] is False:
+                # This is the guardian exit, NOT the candidate child exit code.
+                if stopped["State"]["ExitCode"] != 124:
+                    raise ProcessError("numeric_process_original_deadline")
+                return
+            time.sleep(0.01)
 
     def _verify_staged_launch(self, root, operation, launch):
         if self._launch(operation) != launch:

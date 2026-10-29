@@ -41,6 +41,10 @@ SCHEMA_V4 = "mineagent.rd-source-restore-closure.v4"
 SCHEMA_V5 = "mineagent.rd-source-restore-closure.v5"
 SCHEMA_V6 = "mineagent.rd-source-restore-closure.v6"
 SCHEMA_V7 = "mineagent.rd-source-restore-closure.v7"
+SCHEMA_V8 = "mineagent.rd-source-restore-closure.v8"
+SCHEMA_V9 = "mineagent.rd-source-restore-closure.v9"
+SCHEMA_V10 = "mineagent.rd-source-restore-closure.v10"
+SCHEMA_V11 = "mineagent.rd-source-restore-closure.v11"
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 MAX_BYTES = 32_000_000
 # Literal inventory: changing a model never silently widens a backup grammar.
@@ -78,13 +82,16 @@ FIELDS_V5 = {
     "rd_provider_transport_receipts": "transport_id kind receipt_object_id receipt_object_kind receipt_sha256 size_bytes attempt_id generation id owner_id run_id created_at",
 }
 
+FIELDS_V7 = {
+    **FIELDS_V5,
+    "factor_numeric_failure_feedbacks": "evaluation_id evaluation_outcome_id cutoff_execution_id candidate_admission_id controller_launch_id final_decision_call_id rejection_receipt_id rejection_kind rejection_sha256 stop_receipt_id stop_kind stop_sha256 feedback_object_id feedback_object_kind feedback_sha256 attempt_id generation id owner_id run_id created_at",
+}
+
 
 def closure_fields(schema):
-    if schema in {
-        SCHEMA_V5,
-        SCHEMA_V6,
-        SCHEMA_V7,
-    }:
+    if schema in {SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}:
+        return FIELDS_V7
+    if schema in {SCHEMA_V7, SCHEMA_V5, SCHEMA_V6}:
         return FIELDS_V5
     if schema == SCHEMA_V4:
         return FIELDS_V4
@@ -1073,6 +1080,63 @@ FOREIGN_KEYS = {
     ],
 }
 
+
+# Exact027 membership inventory; historical constraints remain unchanged.
+UNIQUE_KEYS_V7 = {
+    **UNIQUE_KEYS,
+    "factor_numeric_failure_feedbacks": [
+        (*SCOPE, "id"),
+        ("evaluation_id",),
+        ("evaluation_outcome_id",),
+        ("cutoff_execution_id",),
+    ],
+}
+FOREIGN_KEYS_V7 = {
+    **FOREIGN_KEYS,
+    "factor_numeric_failure_feedbacks": [
+        (("owner_id", "run_id"), "research_runs", ("owner_id", "id")),
+        (
+            ("run_id", "generation", "attempt_id"),
+            "execution_attempts",
+            ("run_id", "generation", "id"),
+        ),
+        *(
+            ((*SCOPE, field), target, (*SCOPE, "id"))
+            for field, target in (
+                ("evaluation_id", "factor_evaluation_starts"),
+                ("evaluation_outcome_id", "factor_evaluation_outcomes"),
+                ("cutoff_execution_id", "factor_cutoff_executions"),
+                ("candidate_admission_id", "research_process_admissions"),
+                ("controller_launch_id", "factor_controller_launches"),
+                ("final_decision_call_id", "factor_upstream_calls"),
+            )
+        ),
+        *(
+            (
+                (
+                    *SCOPE,
+                    "candidate_admission_id",
+                    prefix + "_receipt_id",
+                    prefix + "_kind",
+                ),
+                "research_process_receipts",
+                (*SCOPE, "admission_id", "id", "kind"),
+            )
+            for prefix in ("rejection", "stop")
+        ),
+        (
+            (
+                "owner_id",
+                "feedback_object_id",
+                "feedback_object_kind",
+                "feedback_sha256",
+            ),
+            "research_objects",
+            ("owner_id", "id", "object_kind", "sha256"),
+        ),
+    ],
+}
+
 INTEGER_FIELDS = {
     "factor_research_specs": (),
     "factor_generation_starts": ("logical_step", "task_index", "generation"),
@@ -1127,13 +1191,17 @@ def read_closure(connection, maximum_rows, *, revision, maximum_bytes=MAX_BYTES)
     _require(
         capabilities_for(revision).rd_source_closure_schema
         in {
+            SCHEMA_V7,
+            SCHEMA_V11,
             SCHEMA,
             SCHEMA_V2,
             SCHEMA_V3,
             SCHEMA_V4,
             SCHEMA_V5,
+            SCHEMA_V8,
+            SCHEMA_V9,
             SCHEMA_V6,
-            SCHEMA_V7,
+            SCHEMA_V10,
         },
         "revision capability",
     )
@@ -1196,13 +1264,17 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
         == {"schema_version", "tables", "consumer_claims", "external_bindings"}
         and closure["schema_version"]
         in {
+            SCHEMA_V7,
+            SCHEMA_V11,
             SCHEMA,
             SCHEMA_V2,
             SCHEMA_V3,
             SCHEMA_V4,
             SCHEMA_V5,
+            SCHEMA_V8,
+            SCHEMA_V9,
             SCHEMA_V6,
-            SCHEMA_V7,
+            SCHEMA_V10,
         },
         "schema",
     )
@@ -1281,12 +1353,22 @@ def _indexes(closure, maximum_rows, maximum_bytes=MAX_BYTES):
                     {"factor_generation_outcomes"}
                     if closure["schema_version"]
                     in {
+                        SCHEMA_V7,
+                        SCHEMA_V11,
                         SCHEMA_V3,
                         SCHEMA_V4,
                         SCHEMA_V5,
+                        SCHEMA_V8,
+                        SCHEMA_V9,
                         SCHEMA_V6,
-                        SCHEMA_V7,
+                        SCHEMA_V10,
                     }
+                    else set()
+                )
+                - (
+                    {"factor_evaluation_outcomes"}
+                    if closure["schema_version"]
+                    in {SCHEMA_V11, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
                     else set()
                 )
             )
@@ -1306,6 +1388,8 @@ def validate_closure(
     execution_links_pending=False,
     configured_inputs_pending=False,
     seed_context=None,
+    failure_links_pending=False,
+    workflow_context=None,
 ):
     """Cross-close already independently checked shared closures and actual bytes.
 
@@ -1313,24 +1397,54 @@ def validate_closure(
     inventoried bounded no-follow reader. We still check exact byte count/hash.
     Pending source publications may lack final files/outcomes; their reservations
     remain charged and global inventory preserves every physical orphan.
+    RDv6 additionally requires the caller to run validate_failure_links after
+    independently validating numeric rejection and execution evidence. The
+    mandatory pending flag schedules that dependency; it is not a success grant.
     """
     from collections.abc import Mapping
 
+    if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}:
+        _require(failure_links_pending is True, "numeric failure links must follow")
+    else:
+        _require(failure_links_pending is False, "historical failure links unsupported")
     if closure["schema_version"] in {
-        SCHEMA_V5,
-        SCHEMA_V6,
         SCHEMA_V7,
+        SCHEMA_V11,
+        SCHEMA_V5,
+        SCHEMA_V8,
+        SCHEMA_V9,
+        SCHEMA_V6,
+        SCHEMA_V10,
     }:
         if not isinstance(seed_context, Mapping):
             raise ValueError("Seed context required before RD domain closure")
     elif seed_context is not None:
         raise ValueError("Historical RD closure cannot acquire seed authority")
+    if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}:
+        if not isinstance(workflow_context, Mapping):
+            raise ValueError("Actual workflow cold context required")
+    elif workflow_context is not None:
+        raise ValueError("Historical RD closure cannot acquire workflow context")
     idx = _indexes(closure, maximum_rows)
+    if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}:
+        expected_workflows = {
+            r["id"]
+            for r in idx["runs"].values()
+            if r["config"].get("schema_version") == "mineagent.factor-research.v3"
+        }
+        _require(
+            set(workflow_context) == expected_workflows,
+            "exact workflow context run inventory",
+        )
     if closure["schema_version"] in {
+        SCHEMA_V7,
+        SCHEMA_V11,
         SCHEMA_V4,
         SCHEMA_V5,
+        SCHEMA_V8,
+        SCHEMA_V9,
         SCHEMA_V6,
-        SCHEMA_V7,
+        SCHEMA_V10,
     }:
         _require(
             configured_inputs_pending is True, "configured input closure must follow"
@@ -1338,11 +1452,15 @@ def validate_closure(
     if (
         closure["schema_version"]
         in {
+            SCHEMA_V7,
+            SCHEMA_V11,
             SCHEMA_V3,
             SCHEMA_V4,
             SCHEMA_V5,
+            SCHEMA_V8,
+            SCHEMA_V9,
             SCHEMA_V6,
-            SCHEMA_V7,
+            SCHEMA_V10,
         }
         and idx["factor_generation_outcomes"]
     ):
@@ -1359,6 +1477,10 @@ def validate_closure(
             SCHEMA_V5: {"mineagent.research-restore-closure.v10"},
             SCHEMA_V6: {"mineagent.research-restore-closure.v11"},
             SCHEMA_V7: {"mineagent.research-restore-closure.v12"},
+            SCHEMA_V8: {"mineagent.research-restore-closure.v13"},
+            SCHEMA_V9: {"mineagent.research-restore-closure.v14"},
+            SCHEMA_V10: {"mineagent.research-restore-closure.v15"},
+            SCHEMA_V11: {"mineagent.research-restore-closure.v16"},
             SCHEMA_V4: {
                 "mineagent.research-restore-closure.v7",
                 "mineagent.research-restore-closure.v8",
@@ -1394,7 +1516,17 @@ def validate_closure(
         "execution_attempts": shared["attempts"],
         "research_runs": idx["runs"],
     }
-    for table, keys in UNIQUE_KEYS.items():
+    unique_keys = (
+        UNIQUE_KEYS_V7
+        if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+        else UNIQUE_KEYS
+    )
+    foreign_keys = (
+        FOREIGN_KEYS_V7
+        if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10}
+        else FOREIGN_KEYS
+    )
+    for table, keys in unique_keys.items():
         for columns in keys:
             seen = set()
             for row in idx[table].values():
@@ -1402,7 +1534,7 @@ def validate_closure(
                 if None not in values:
                     _require(values not in seen, "unique " + table)
                     seen.add(values)
-    for table, references in FOREIGN_KEYS.items():
+    for table, references in foreign_keys.items():
         for columns, target, target_columns in references:
             if not idx[table]:
                 continue
@@ -1470,14 +1602,33 @@ def validate_closure(
         _require(
             closure["schema_version"]
             in {
-                SCHEMA_V5,
-                SCHEMA_V6,
                 SCHEMA_V7,
+                SCHEMA_V11,
+                SCHEMA_V5,
+                SCHEMA_V8,
+                SCHEMA_V9,
+                SCHEMA_V6,
+                SCHEMA_V10,
             }
             or run["config"].get("schema_version") == "mineagent.factor-research.v1",
             "historical config grammar",
         )
-        config = require_source_identity(SimpleNamespace(**values))
+        if (
+            closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}
+            and run["id"] in workflow_context
+        ):
+            from packages.rdagent_adapter.workflow_identity import (
+                require_workflow_source_identity,
+            )
+
+            values["id"] = UUID(values["id"])
+            config = require_workflow_source_identity(SimpleNamespace(**values))
+            _require(
+                config == workflow_context[run["id"]].config,
+                "workflow context config differs",
+            )
+        else:
+            config = require_source_identity(SimpleNamespace(**values))
         dataset = link(run, "dataset_version_id", "datasets", scope=False)
         _require(
             dataset["content_sha256"] == config.input.dataset.content_sha256,
@@ -1493,9 +1644,13 @@ def validate_closure(
         _require(control["limits"] == config.budget.model_dump(), "config budget")
         configs[run["id"]] = config
     if closure["schema_version"] in {
-        SCHEMA_V5,
-        SCHEMA_V6,
         SCHEMA_V7,
+        SCHEMA_V11,
+        SCHEMA_V5,
+        SCHEMA_V8,
+        SCHEMA_V9,
+        SCHEMA_V6,
+        SCHEMA_V10,
     }:
         from backend.app.rdagent_provider_backup import (
             validate_operation_membership,
@@ -1517,17 +1672,24 @@ def validate_closure(
             settlements=shared["research_budget_settlements"],
             outcomes=shared["research_model_outcomes"],
             read_bytes=read_bytes,
+            workflow=closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10},
         )
 
     def model_codec(run_id):
-        provider = (
-            closure["schema_version"]
-            in {
-                SCHEMA_V5,
-                SCHEMA_V6,
-                SCHEMA_V7,
-            }
-            and configs[run_id].model_profile == "configured.rdagent.v1"
+        provider = closure["schema_version"] in {
+            SCHEMA_V7,
+            SCHEMA_V11,
+            SCHEMA_V5,
+            SCHEMA_V8,
+            SCHEMA_V9,
+            SCHEMA_V6,
+            SCHEMA_V10,
+        } and (
+            configs[run_id].model_profile == "configured.rdagent.v1"
+            or (
+                closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}
+                and configs[run_id].model_profile == "workflow.rdagent.v1"
+            )
         )
         if provider:
             from packages.rdagent_provider import codec
@@ -1573,10 +1735,25 @@ def validate_closure(
             config_sha256=spec["config_sha256"],
             input_sha256=spec["input_sha256"],
         )
-        if closure["schema_version"] in {
-            SCHEMA_V5,
-            SCHEMA_V6,
+        if (
+            closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}
+            and launch["run_id"] in workflow_context
+        ):
+            from packages.rdagent_adapter.workflow_bootstrap import (
+                RDWorkflowOperationalBootstrap,
+            )
+
+            expected = RDWorkflowOperationalBootstrap(
+                **bootstrap_values, seed=workflow_context[launch["run_id"]].parent
+            )
+        elif closure["schema_version"] in {
             SCHEMA_V7,
+            SCHEMA_V11,
+            SCHEMA_V5,
+            SCHEMA_V8,
+            SCHEMA_V9,
+            SCHEMA_V6,
+            SCHEMA_V10,
         }:
             from backend.app.rdagent_seed_backup import build_expected_bootstrap
 
@@ -1605,25 +1782,38 @@ def validate_closure(
                     admission["profile"]
                     if closure["schema_version"]
                     in {
+                        SCHEMA_V7,
+                        SCHEMA_V11,
                         SCHEMA_V2,
                         SCHEMA_V3,
                         SCHEMA_V4,
                         SCHEMA_V5,
+                        SCHEMA_V8,
+                        SCHEMA_V9,
                         SCHEMA_V6,
-                        SCHEMA_V7,
+                        SCHEMA_V10,
                     }
                     and admission["profile"]
                     in {
                         "mineagent.rdagent-orchestrator.v1",
                         "mineagent.rdagent-orchestrator.v2",
                         *(
-                            {"mineagent.rdagent-orchestrator.v3"}
-                            if closure["schema_version"] in {SCHEMA_V6, SCHEMA_V7}
+                            {"mineagent.rdagent-orchestrator.v4"}
+                            if closure["schema_version"]
+                            in {SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, SCHEMA_V11}
                             else set()
                         ),
                         *(
-                            {"mineagent.rdagent-orchestrator.v4"}
-                            if closure["schema_version"] == SCHEMA_V7
+                            {"mineagent.rdagent-orchestrator.v3"}
+                            if closure["schema_version"]
+                            in {
+                                SCHEMA_V7,
+                                SCHEMA_V11,
+                                SCHEMA_V6,
+                                SCHEMA_V8,
+                                SCHEMA_V9,
+                                SCHEMA_V10,
+                            }
                             else set()
                         ),
                     }
@@ -1672,12 +1862,25 @@ def validate_closure(
             start["logical_step"] == 0
             and start["parent_factor_version_id"]
             == (
-                str(seed_context[start["run_id"]].parent.reference.factor_version_id)
+                (
+                    None
+                    if config.workflow_parent is None
+                    else str(config.workflow_parent.factor_version_id)
+                )
+                if closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}
+                and start["run_id"] in workflow_context
+                else str(
+                    seed_context[start["run_id"]].parent.reference.factor_version_id
+                )
                 if closure["schema_version"]
                 in {
-                    SCHEMA_V5,
-                    SCHEMA_V6,
                     SCHEMA_V7,
+                    SCHEMA_V11,
+                    SCHEMA_V5,
+                    SCHEMA_V8,
+                    SCHEMA_V9,
+                    SCHEMA_V6,
+                    SCHEMA_V10,
                 }
                 and start["run_id"] in seed_context
                 else None
@@ -1768,10 +1971,23 @@ def validate_closure(
                     first_provider_messages,
                 )
 
-                prepared = seed_context.get(member["run_id"])
-                system, user = first_provider_messages(
-                    configs[member["run_id"]], prepared.parent if prepared else None
-                )
+                if (
+                    closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10}
+                    and member["run_id"] in workflow_context
+                ):
+                    from packages.rdagent_adapter.workflow_prompt import (
+                        first_workflow_messages,
+                    )
+
+                    prepared = workflow_context[member["run_id"]]
+                    system, user = first_workflow_messages(
+                        prepared.config, prepared.parent
+                    )
+                else:
+                    prepared = seed_context.get(member["run_id"])
+                    system, user = first_provider_messages(
+                        configs[member["run_id"]], prepared.parent if prepared else None
+                    )
                 _require(
                     tuple(
                         (message.role, message.content) for message in request.messages
@@ -2059,6 +2275,7 @@ def validate_closure(
             members_by_call,
             read_bytes,
             parse_responses=source_parser(source["run_id"]),
+            workflow=closure["schema_version"] in {SCHEMA_V11, SCHEMA_V9, SCHEMA_V10},
         )
     _require(
         {
@@ -2071,12 +2288,16 @@ def validate_closure(
     )
     _validate_pending(idx, shared, configs, link)
     if closure["schema_version"] in {
+        SCHEMA_V7,
+        SCHEMA_V11,
         SCHEMA_V2,
         SCHEMA_V3,
         SCHEMA_V4,
         SCHEMA_V5,
+        SCHEMA_V8,
+        SCHEMA_V9,
         SCHEMA_V6,
-        SCHEMA_V7,
+        SCHEMA_V10,
     }:
         from backend.app.rdagent_controller_cold_links import validate_controller_links
 
@@ -2097,7 +2318,13 @@ def _validate_source(
     read_bytes,
     *,
     parse_responses=parse_selected_responses,
+    workflow=False,
 ):
+    if type(workflow) is not bool:
+        raise ValueError("Explicit workflow source grammar required")
+    profile = configs[source["run_id"]].model_profile
+    if profile == "workflow.rdagent.v1" and not workflow:
+        raise ValueError("Workflow source requires explicit successor")
     start = link(source, "start_id", "factor_generation_starts")
     call = link(source, "call_id", "factor_upstream_calls")
     assembly = link(source, "assembly_id", "factor_response_assemblies")
@@ -2133,7 +2360,8 @@ def _validate_source(
         witness["parser_profile"]
         == (
             "mineagent.rdagent-provider-source-parser.v1"
-            if configs[source["run_id"]].model_profile == "configured.rdagent.v1"
+            if profile == "configured.rdagent.v1"
+            or (workflow and profile == "workflow.rdagent.v1")
             else "mineagent.rdagent-source-parser.v1"
         )
         and witness["parser_source_sha256"] == UPSTREAM_FRAGMENT_SHA256,

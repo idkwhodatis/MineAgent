@@ -106,8 +106,26 @@ def _read_frame(session, fence, peer, evaluation_id, settings):
 
 
 def execute_configured_evaluation(
-    factory, fence, peer, *, source_id, evaluation_id, settings
+    factory, fence, peer, *, source_id, evaluation_id, settings, capture_rejection=False
 ):
+    if type(capture_rejection) is not bool:
+        raise RPCError("numeric_rejection_profile")
+
+    def rejected(session):
+        if not capture_rejection:
+            return None
+        from backend.app.rdagent_numeric_failure_services import read_candidate_failure
+
+        value = read_candidate_failure(
+            session,
+            fence,
+            peer,
+            source_id=source_id,
+            evaluation_id=evaluation_id,
+            settings=settings,
+        )
+        return value.frame.model_dump(mode="json") if value is not None else None
+
     def authorize(session, current):
         require_rd_controller(session, current, peer)
         return peer
@@ -126,6 +144,9 @@ def execute_configured_evaluation(
             source.start_id,
         ) or evaluation.expected_cutoffs != 1:
             raise RPCError("configured_complete_single_cutoff_required")
+        failure_frame = rejected(session)
+        if failure_frame is not None:
+            return failure_frame
         existing = session.scalar(
             select(ExecutionSnapshotPublication).filter_by(
                 **_scope(fence), evaluation_id=evaluation_id
@@ -173,9 +194,13 @@ def execute_configured_evaluation(
             evaluation_id=evaluation_id,
             cutoff_ordinal=0,
             authorize_submission=authorize,
+            **({"capture_rejection": True} if capture_rejection else {}),
         )
         with snapshot_transaction(factory, fence, settings) as session:
             authorize(session, fence)
+            failure_frame = rejected(session)
+            if failure_frame is not None:
+                return failure_frame
         native = publish_completed_candidate(factory, fence, admission, settings)
         execute_configured_normalizer(
             factory,

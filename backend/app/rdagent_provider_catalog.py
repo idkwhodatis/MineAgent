@@ -46,6 +46,11 @@ def provider_options(settings, owner_id, revision):
                 "027a_contract_repairs",
                 "027b_provider_material",
                 "027c_seeded_controller_v4",
+                "028_oe_structured_search",
+                "029_research_workflow",
+                "030_declared_upload_basket",
+                "031_workflow_structured_stage",
+                "032_normal_oe_note_pins",
             ) or (
                 runtime.controller_profile is not None
                 and revision
@@ -54,6 +59,11 @@ def provider_options(settings, owner_id, revision):
                     "027a_contract_repairs",
                     "027b_provider_material",
                     "027c_seeded_controller_v4",
+                    "028_oe_structured_search",
+                    "029_research_workflow",
+                    "030_declared_upload_basket",
+                    "031_workflow_structured_stage",
+                    "032_normal_oe_note_pins",
                 )
             ):
                 reason, enabled = "runtime_schema_unavailable", False
@@ -64,10 +74,15 @@ def provider_options(settings, owner_id, revision):
         if enabled:
             try:
                 seeded_runtime = resolve_provider_runtime(settings, seeded=True)
-                if (
-                    provider_seed_controller_profile(seeded_runtime)
-                    == SEEDED_CONTROLLER_PROFILE
-                    and revision != "027c_seeded_controller_v4"
+                if provider_seed_controller_profile(
+                    seeded_runtime
+                ) == SEEDED_CONTROLLER_PROFILE and revision not in (
+                    "027c_seeded_controller_v4",
+                    "028_oe_structured_search",
+                    "029_research_workflow",
+                    "030_declared_upload_basket",
+                    "031_workflow_structured_stage",
+                    "032_normal_oe_note_pins",
                 ):
                     seeded_enabled = False
                     seeded_reason = "runtime_schema_unavailable"

@@ -73,12 +73,15 @@ def _terminal_fence_matches(run, attempt, terminal):
     # Same engine family does not make initial and structured provider profiles
     # interchangeable. Normal identity validation still runs below this seal.
     schemas = {
-        "oe_initial_succeeded": "mineagent.strategy-search.v1",
-        "oe_structured_succeeded": "mineagent.oe-structured-provider-run.v1",
+        "oe_initial_succeeded": {"mineagent.strategy-search.v1"},
+        "oe_structured_succeeded": {
+            "mineagent.oe-structured-provider-run.v1",
+            "mineagent.oe-structured-provider-run.v2",
+        },
     }
     if terminal[0] in schemas and (
         type(run.config) is not dict
-        or run.config.get("schema_version") != schemas[terminal[0]]
+        or run.config.get("schema_version") not in schemas[terminal[0]]
     ):
         return False
     measured = attempt.exit_code
@@ -104,7 +107,7 @@ def _terminal_fence_matches(run, attempt, terminal):
     )
 
 
-def _check_neutral_fence(run, attempt, fence, *, terminal=None):
+def _check_neutral_fence(run, attempt, fence, *, workflow=False, terminal=None):
     from backend.app.models import utcnow
 
     if (
@@ -138,7 +141,14 @@ def _check_neutral_fence(run, attempt, fence, *, terminal=None):
         from packages.rdagent_adapter.persisted_identity import require_source_identity
 
         try:
-            require_source_identity(run)
+            if workflow:
+                from packages.rdagent_adapter.workflow_identity import (
+                    require_workflow_source_identity,
+                )
+
+                require_workflow_source_identity(run)
+            else:
+                require_source_identity(run)
         except ValueError:
             raise _neutral_error("unsupported_run_identity") from None
     elif (run.purpose, run.engine) == ("strategy_search", "openevolve"):
@@ -147,7 +157,15 @@ def _check_neutral_fence(run, attempt, fence, *, terminal=None):
         )
 
         try:
-            require_search_identity(run)
+            if isinstance(run.config, dict) and run.config.get("schema_version") in {
+                "mineagent.oe-structured-provider-run.v1",
+                "mineagent.oe-structured-provider-run.v2",
+            }:
+                from backend.app.oe_structured_identity import require_run_identity
+
+                require_run_identity(run)
+            else:
+                require_search_identity(run)
         except ValueError:
             raise _neutral_error("unsupported_run_identity") from None
     elif (run.purpose, run.engine) == ("factor_strategy", "structured"):
@@ -156,6 +174,17 @@ def _check_neutral_fence(run, attempt, fence, *, terminal=None):
         require_structured_identity(run)
     else:
         require_legacy_run(run)
+
+
+def _require_workflow_oe_metadata(session, run):
+    if (
+        type(run.config) is dict
+        and run.config.get("schema_version")
+        == "mineagent.oe-structured-provider-run.v2"
+    ):
+        from backend.app.oe_structured_identity import decode_spec
+
+        decode_spec(session, run)
 
 
 def require_neutral_transaction(
@@ -181,9 +210,57 @@ def require_neutral_transaction(
     ):
         raise _neutral_error()
     _check_neutral_fence(
-        state["run"], state["attempt"], fence, terminal=state.get("terminal")
+        state["run"],
+        state["attempt"],
+        fence,
+        workflow=state.get("workflow", False),
+        terminal=state.get("terminal"),
     )
+    _require_workflow_oe_metadata(session, state["run"])
     return state["run"], state["attempt"]
+
+
+def finish_oe_structured_transaction(session, fence, epoch_id, settings):
+    """Closed normal027 terminal transition, never a generic caller stop flag.
+
+    The fixed validator freshly checks durable positive completion, full physical
+    graph and charges while caller retains the native storage guard. The marker
+    permits ONLY this exact terminal row state through the existing commit veto;
+    fence, lease, scope, identity and transaction checks remain active.
+    """
+    run, attempt = require_neutral_transaction(
+        session, fence, resource_scope="factor_numeric"
+    )
+    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
+    ):
+        raise _neutral_error("unsupported_run_identity")
+    from backend.app.models import utcnow
+    from workers.research.oe_structured_finish import _validate_current_success
+
+    final_id = _validate_current_success(session, fence, epoch_id, settings)
+    require_neutral_transaction(session, fence, resource_scope="factor_numeric")
+    if session.info[_NEUTRAL_KEY].get("terminal") is not None:
+        raise _neutral_error()
+    finished_at = utcnow()
+    run.status = attempt.status = "succeeded"
+    attempt.sandbox_stopped = True
+    attempt.finished_at = finished_at
+    attempt.exit_code = None
+    session.info[_NEUTRAL_KEY]["terminal"] = (
+        "oe_structured_succeeded",
+        run.id,
+        attempt.id,
+        finished_at,
+    )
+    require_neutral_transaction(
+        session, fence, resource_scope="factor_numeric", _terminal_commit=True
+    )
+    return final_id
 
 
 @contextmanager
@@ -233,8 +310,21 @@ def _neutral_transaction_once(factory, fence: AttemptFence, *, resource_scope="n
                 )
                 .with_for_update()
             )
-            _check_neutral_fence(run, attempt, fence)
+            workflow = (
+                run is not None
+                and type(run.config) is dict
+                and run.config.get("schema_version") == "mineagent.factor-research.v3"
+            )
+            if workflow:
+                from backend.app.rdagent_workflow_capability import (
+                    require_workflow_revision,
+                )
+
+                require_workflow_revision(session)
+            _check_neutral_fence(run, attempt, fence, workflow=workflow)
+            _require_workflow_oe_metadata(session, run)
             state = {
+                "workflow": workflow,
                 "fence": fence,
                 "run": run,
                 "attempt": attempt,

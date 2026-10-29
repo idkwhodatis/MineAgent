@@ -21,6 +21,28 @@ from workers.research.queue import create_queue_app
 logger = logging.getLogger(__name__)
 
 
+def dispatch_workflow_tick(factory, settings):
+    """Bounded successor tick after the outbox transaction, never an engine worker."""
+    from sqlalchemy import text
+
+    with factory() as session:
+        revisions = session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all()
+    if revisions not in (
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
+    ):
+        return ()
+    from workers.research.workflow_tick import tick_workflows
+
+    # The tick independently checks the exact installed capability, shared
+    # lifecycle, source bytes and root CAS. No caller status grants a claim.
+    return tick_workflows(factory, settings, limit=4)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("role", choices=["worker", "dispatcher", "reconciler"])
@@ -106,6 +128,19 @@ def main():
     while True:
         try:
             rd_ids = []
+            structured_ids = []
+            structured_family = (
+                (ResearchRun.purpose == "strategy_search")
+                & (ResearchRun.engine == "openevolve")
+                & (
+                    ResearchRun.config["schema_version"].astext.in_(
+                        (
+                            "mineagent.oe-structured-provider-run.v1",
+                            "mineagent.oe-structured-provider-run.v2",
+                        )
+                    )
+                )
+            ).is_(True)
             with factory.begin() as session:
                 session.execute(
                     insert(WorkerHeartbeat)
@@ -126,6 +161,7 @@ def main():
                                 (ResearchRun.purpose == "factor_research")
                                 & (ResearchRun.engine == "rdagent")
                             ),
+                            ~structured_family,
                             ExecutionAttempt.finished_at.is_(None),
                             ExecutionAttempt.lease_expires_at <= utcnow(),
                         )
@@ -140,6 +176,17 @@ def main():
                             ExecutionAttempt.finished_at.is_(None),
                             ResearchRun.purpose == "factor_research",
                             ResearchRun.engine == "rdagent",
+                            (ExecutionAttempt.lease_expires_at <= utcnow())
+                            | (ResearchRun.status == "cancel_requested"),
+                        )
+                        .limit(100)
+                    ).all()
+                    structured_ids = session.scalars(
+                        select(ExecutionAttempt.id)
+                        .join(ResearchRun)
+                        .where(
+                            structured_family,
+                            ExecutionAttempt.finished_at.is_(None),
                             (ExecutionAttempt.lease_expires_at <= utcnow())
                             | (ResearchRun.status == "cancel_requested"),
                         )
@@ -172,12 +219,23 @@ def main():
                         ["027a_contract_repairs"],
                         ["027b_provider_material"],
                         ["027c_seeded_controller_v4"],
+                        ["028_oe_structured_search"],
+                        ["029_research_workflow"],
+                        ["030_declared_upload_basket"],
                     ):
                         recover_stalled_jobs(session, rd=True)
+            if args.role == "dispatcher":
+                dispatch_workflow_tick(factory, settings)
             for attempt_id in rd_ids:
                 from workers.research.rdagent_recovery import reconcile_rd_attempt
 
                 reconcile_rd_attempt(factory, attempt_id, settings)
+            for attempt_id in structured_ids:
+                from workers.research.oe_structured_recovery import (
+                    reconcile_structured_attempt,
+                )
+
+                reconcile_structured_attempt(factory, attempt_id, settings)
             if (
                 args.role == "reconciler"
                 and settings.factor_library_enabled

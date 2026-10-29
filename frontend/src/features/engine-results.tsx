@@ -10,6 +10,14 @@ import {
   type EngineResultKind,
 } from "@/lib/engine-runs-api";
 
+import {
+  RDAnalysisChart,
+  observationForAnalysis,
+  type RDAnalysisObservation,
+} from "./rd-analysis-chart";
+
+import { ObservationSteer } from "./observation-steer";
+
 function requiresRelease(error: unknown) {
   return (
     !!error &&
@@ -192,15 +200,21 @@ export function DirectAnalysisPanel({
   runId,
   analysisId,
   expectedSnapshotId,
+  onObservation,
 }: {
   runId: string;
   analysisId: string;
   expectedSnapshotId?: string;
+  onObservation?: (observation: RDAnalysisObservation) => void;
 }) {
+  const [observation, setObservation] = useState<RDAnalysisObservation>();
   const result = useQuery({
     ...releasedAnalysisOptions(runId, analysisId),
     retry: false,
   });
+  const currentObservation = result.data
+    ? observationForAnalysis(observation, result.data)
+    : undefined;
   if (
     result.data &&
     (result.data.run_id !== runId ||
@@ -268,7 +282,19 @@ export function DirectAnalysisPanel({
             </Link>
           </Panel>
           <Panel title="Retained daily analysis">
-            <pre>{JSON.stringify(result.data.result.days, null, 2)}</pre>
+            <RDAnalysisChart
+              key={`${result.data.analysis_id}:${result.data.result_sha256}`}
+              analysis={result.data}
+              onObservation={onObservation ?? setObservation}
+            />
+            {currentObservation && (
+              <ObservationSteer
+                prepared
+                key={JSON.stringify(currentObservation)}
+                observation={currentObservation}
+                onClose={() => setObservation(undefined)}
+              />
+            )}
           </Panel>
         </>
       )}

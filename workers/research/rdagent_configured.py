@@ -37,7 +37,14 @@ from packages.research_runtime.fences import AttemptFence
 from packages.research_runtime.process_contracts import ProcessError
 
 
-def validate_configured_work(config, source, objective):
+def validate_configured_work(config, source, objective, *, workflow=False):
+    from packages.rdagent_adapter.workflow_config import WorkflowFactorResearchConfig
+
+    if (
+        type(workflow) is not bool
+        or (type(config) is WorkflowFactorResearchConfig) != workflow
+    ):
+        raise ProcessError("configured_workflow_profile")
     days = tuple(
         day
         for day in source.calendar.sessions
@@ -46,16 +53,19 @@ def validate_configured_work(config, source, objective):
     if (
         config.max_iterations != 1
         or len(days) != 1
-        or config.model_profile not in ("fixture.rdagent.v1", "configured.rdagent.v1")
+        or config.model_profile
+        not in ("fixture.rdagent.v1", "configured.rdagent.v1", "workflow.rdagent.v1")
     ):
         raise ProcessError("configured_work_exceeds_controller_profile")
-    if config.model_profile == "configured.rdagent.v1":
+    if config.model_profile in ("configured.rdagent.v1", "workflow.rdagent.v1"):
         from backend.app.rdagent_provider_preflight import provider_budget_floor
         from packages.rdagent_adapter.provider_config import (
             ProviderFactorResearchConfig,
         )
 
-        if type(config) is not ProviderFactorResearchConfig or not config.budget.covers(
+        if type(config) is not (
+            WorkflowFactorResearchConfig if workflow else ProviderFactorResearchConfig
+        ) or not config.budget.covers(
             provider_budget_floor(
                 config.model_binding, profile=controller_profile(config)
             )
@@ -92,7 +102,15 @@ def require_controller_revision(session, config):
     revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
     if (
         config.controller_profile == "mineagent.rdagent-orchestrator.v4"
-        and revisions != ["027c_seeded_controller_v4"]
+        and revisions
+        not in (
+            ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
+        )
     ):
         raise ProcessError("rd_controller_revision")
     if revisions not in (
@@ -105,6 +123,11 @@ def require_controller_revision(session, config):
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ) or (
         config.controller_profile is not None
         and revisions
@@ -113,6 +136,11 @@ def require_controller_revision(session, config):
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         )
     ):
         raise ProcessError("rd_controller_revision")
@@ -246,10 +274,25 @@ def execute_configured_controller(factory, fence, settings):
         _, config = require_research_spec(session, fence)
         source = resolve_configured_source(session, fence, settings)
         _plan_row, objective = _plan(session, fence)
-        validate_configured_work(config, source, objective)
-    handler_type = ConfiguredHandler
-    if config.schema_version == "mineagent.factor-research.v2":
-        from backend.app.rdagent_provider_handler import ProviderHandler
+        workflow = config.schema_version == "mineagent.factor-research.v3"
+        if workflow:
+            from backend.app.rdagent_workflow_capability import (
+                require_workflow_revision,
+            )
 
-        handler_type = ProviderHandler
+            require_workflow_revision(session)
+        validate_configured_work(config, source, objective, workflow=workflow)
+        revisions = session.scalars(
+            text("SELECT version_num FROM alembic_version")
+        ).all()
+    handler_type = ConfiguredHandler
+    if config.schema_version in (
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
+    ):
+        from backend.app.rdagent_numeric_failure_handler import (
+            select_provider_result_handler,
+        )
+
+        handler_type = select_provider_result_handler(config, revisions)
     return _execute_controller(factory, fence, settings, handler_type=handler_type)

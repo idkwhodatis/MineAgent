@@ -1,3 +1,4 @@
+import { safeNormalOENoteHref } from "./normal-oe-note-selection";
 import {
   workbenchSearch,
   selectionProblem,
@@ -43,6 +44,8 @@ export function noteRestoreSelection(
 export function safeNoteEvidenceHref(
   href: string | null | undefined,
 ): string | null {
+  const normal = safeNormalOENoteHref(href);
+  if (normal) return normal;
   if (!href || !href.startsWith("/strategies/") || href.startsWith("//"))
     return null;
   try {

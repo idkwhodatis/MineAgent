@@ -58,8 +58,9 @@ from script.benchmark_v1_workloads import (
 
 ROOT = Path(__file__).resolve().parents[1]
 # Source identity inventory only: these are not workload/performance budgets.
-# The versioned engine runtimes exceed the former 512-file legacy inventory.
-SOURCE_FILES_MAX = 1024
+# Revision028 trusted source exceeds the former 1024-file identity inventory.
+# Hash every included file; retain the independent per-file/total byte ceilings.
+SOURCE_FILES_MAX = 2048
 SOURCE_FILE_BYTES_MAX = 2097152
 SOURCE_TOTAL_BYTES_MAX = 16777216
 PROFILE_ID = "cn-one-listing-six-year-v1"

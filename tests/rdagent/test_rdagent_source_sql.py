@@ -32,8 +32,10 @@ def test_schema_identifier_is_not_arbitrary_sql(schema):
         sql.render_sql(schema)
 
 
-def test_source_pin_drift_is_fail_closed(monkeypatch):
-    name = "backend/app/rdagent_models.py"
+@pytest.mark.parametrize(
+    "name", ["backend/app/rdagent_models.py", "backend/app/models.py"]
+)
+def test_source_pin_drift_is_fail_closed(monkeypatch, name):
     original = sql.SOURCE_PINS[name]
     # Registering one exact reviewed successor never accepts a changed pin or
     # another purported successor hash, including the known historic source.

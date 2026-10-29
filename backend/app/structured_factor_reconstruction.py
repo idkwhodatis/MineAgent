@@ -4,6 +4,7 @@ import hashlib
 from types import SimpleNamespace
 from uuid import UUID
 
+from backend.app.declared_upload_backup import retained_artifacts
 from packages.factors.contracts import FeatureRow, canonical_bytes, digest
 from packages.factors.execution_snapshot import ExecutionSnapshotManifest
 from packages.marketdata.normalize import canonical_json as marketdata_bytes
@@ -18,7 +19,15 @@ from packages.structured_factor_strategy.wire import write_input
 
 
 def reconstruct_input(
-    *, run, spec, version, execution, publication, dataset, read_bytes
+    *,
+    run,
+    spec,
+    version,
+    execution,
+    publication,
+    dataset,
+    read_bytes,
+    declared_upload=False,
 ):
     """Caller independently validates predecessor DB closures before invoking."""
     config = StructuredRunConfig.model_validate_json(spec["config_canonical"])
@@ -102,16 +111,27 @@ def reconstruct_input(
     raw_manifest = read_bytes(key + "/manifest.json", 2 * 1024**2)
     if raw_manifest != marketdata_bytes(dataset["manifest"]):
         raise ValueError("Retained dataset manifest differs")
-    artifacts = {
-        name: read_bytes(key + "/" + name, 32 * 1024**2) for name in sorted(ARTIFACTS)
-    }
+    artifacts = (
+        retained_artifacts(
+            dataset["manifest"], key, read_bytes, declared_upload=declared_upload
+        )
+        if dataset["manifest"].get("schema_version") == 3
+        else {
+            name: read_bytes(key + "/" + name, 32 * 1024**2)
+            for name in sorted(ARTIFACTS)
+        }
+    )
     if len(raw_manifest) + sum(map(len, artifacts.values())) > 64 * 1024**2:
         raise ValueError("Structured source read bound")
     source = parse_retained_source(
         dataset_id=config.dataset_version_id,
         manifest_sha256=config.dataset_sha256,
         manifest_bytes=raw_manifest,
-        artifacts={k: artifacts[k] for k in SOURCE_ARTIFACTS},
+        artifacts=artifacts
+        if dataset["manifest"].get("schema_version") == 3
+        else {k: artifacts[k] for k in SOURCE_ARTIFACTS},
+        declared_upload=declared_upload,
+        owner_id=UUID(owner),
         policy=config.source_policy,
         input_names=tuple(x.name for x in manifest.input.definition.input_fields),
     )
@@ -125,6 +145,9 @@ def reconstruct_input(
         artifacts,
         dataset_sha256=config.dataset_sha256,
         window=config.execution_window,
+        declared_upload=declared_upload,
+        dataset_id=config.dataset_version_id,
+        owner_id=UUID(owner),
     )
     rows_raw = read_bytes(manifest.assembled_rows.storage_key, 16 * 1024**2)
     rows_doc = parse_json(

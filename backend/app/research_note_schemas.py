@@ -11,6 +11,12 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 
 from backend.app.comparison_schemas import ComparisonSideCreate
+from backend.app.normal_oe_note_contracts import (
+    NormalOEDecisionNoteEvidence,
+    NormalOEExecutionNoteEvidence,
+    NormalOEFillNoteEvidence,
+    NormalOENoteRestore,
+)
 from packages.research_trace.contracts import (
     Contract,
     EvaluationBinding,
@@ -170,7 +176,10 @@ NoteEvidence = Annotated[
     | NoteEvaluationEvidence
     | NoteComparisonEvidence
     | NoteDiagnosticEvidence
-    | NoteControlledEvidence,
+    | NoteControlledEvidence
+    | NormalOEExecutionNoteEvidence
+    | NormalOEDecisionNoteEvidence
+    | NormalOEFillNoteEvidence,
     Field(discriminator="kind"),
 ]
 
@@ -206,7 +215,7 @@ class ResearchNoteContent(Contract):
     applicability: str = Field(default="", max_length=8000)
     next_steps: str = Field(default="", max_length=8000)
     evidence: tuple[NoteEvidence, ...] = Field(default=(), max_length=32)
-    restore: NoteRestore | None = None
+    restore: NoteRestore | NormalOENoteRestore | None = None
 
     @model_validator(mode="after")
     def bounded(self):

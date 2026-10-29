@@ -136,9 +136,9 @@ def _catalog(sql, keys, references):
                 constraint(table, part.removeprefix("ADD "))
 
 
-def test_every_024_025_026_frozen_fk_has_exact_nondeferrable_target_key():
+def test_every_024_through_029_frozen_fk_has_exact_nondeferrable_target_key():
     keys, refs = {}, []
-    for number in range(1, 27):
+    for number in range(1, 30):
         paths = sorted(ROOT.glob(f"{number:03}_*.sql")) or sorted(
             ROOT.glob(f"{number:03}_*.py")
         )
@@ -195,7 +195,7 @@ def test_every_024_metadata_fk_target_is_emitted_not_merely_an_orm_index():
             )
             assert expected in refs, expected
     # Reconcile historical migration-only external keys against frozen bytes.
-    for number in (25, 26):
+    for number in (25, 26, 27, 28, 29):
         for path in ROOT.glob(f"{number:03}_*.py"):
             for sql in _literals(path):
                 _catalog(sql, keys, refs)

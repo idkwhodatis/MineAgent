@@ -409,6 +409,38 @@ def test_binding_hash_and_foreign_owner_rejected(retained):
         retained["validate"]()
 
 
+@pytest.mark.parametrize(
+    "research,source", [("v10", "v5"), ("v11", "v6"), ("v12", "v7")]
+)
+def test_explicit_seed_capable_controller_reconstructs_actual_bytes(
+    retained, research, source
+):
+    retained["rd"]["schema_version"] = "mineagent.rd-source-restore-closure." + source
+    assert (
+        retained["validate"](
+            research_schema="mineagent.research-restore-closure." + research,
+            seed_context={},
+        )
+        is True
+    )
+    with pytest.raises(ValueError, match="Seed context required"):
+        retained["validate"](
+            research_schema="mineagent.research-restore-closure." + research
+        )
+
+
+@pytest.mark.parametrize(
+    "research,source", [("v11", "v5"), ("v10", "v6"), ("v12", "v6"), ("v11", "v7")]
+)
+def test_controller_rejects_mixed_or_future_seed_pairs(retained, research, source):
+    retained["rd"]["schema_version"] = "mineagent.rd-source-restore-closure." + source
+    with pytest.raises(ValueError, match="Explicit research-v5"):
+        retained["validate"](
+            research_schema="mineagent.research-restore-closure." + research,
+            seed_context={},
+        )
+
+
 @pytest.mark.parametrize("retained", ["v3"], indirect=True)
 def test_composed_controller_retained_bytes_and_budget(retained):
     retained["validate"]()
@@ -427,6 +459,21 @@ def test_composed_controller_cannot_be_relabelled_as_old_closure(retained):
         retained["validate"](
             research_schema="mineagent.research-restore-closure.v10", seed_context={}
         )
+
+
+@pytest.mark.parametrize("retained", ["v3"], indirect=True)
+@pytest.mark.parametrize("research,source", [("v13", "v8"), ("v14", "v9")])
+def test_successor_preserves_actual_composed_controller_bytes(
+    retained, research, source
+):
+    retained["rd"]["schema_version"] = "mineagent.rd-source-restore-closure." + source
+    kwargs = {
+        "research_schema": "mineagent.research-restore-closure." + research,
+        "seed_context": {},
+    }
+    if research == "v14":
+        kwargs["workflow_context"] = {}
+    assert retained["validate"](**kwargs) is True
 
 
 @pytest.mark.parametrize("retained", [None, "v3"], indirect=True)

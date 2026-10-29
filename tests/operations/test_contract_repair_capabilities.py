@@ -49,8 +49,8 @@ def test_actual_empty_backup_retention_fanout_preserves_all_domains(tmp_path, re
 @pytest.mark.parametrize(
     "field,bad",
     [
-        ("research_closure", "mineagent.research-restore-closure.v12"),
-        ("rd_source_closure", "mineagent.rd-source-restore-closure.v7"),
+        ("research_closure", "mineagent.research-restore-closure.v13"),
+        ("rd_source_closure", "mineagent.rd-source-restore-closure.v8"),
     ],
 )
 def test_maintenance_does_not_acquire_successor_closure(tmp_path, field, bad):

@@ -692,6 +692,26 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     from backend.app.rdagent_steer_routes import router as rdagent_steer_router
 
     app.include_router(rdagent_steer_router, prefix=PREFIX)
+    from backend.app.oe_structured_routes import router as oe_structured_router
+
+    app.include_router(oe_structured_router, prefix=PREFIX)
+    from backend.app.oe_structured_result_routes import (
+        router as oe_structured_result_router,
+    )
+
+    app.include_router(oe_structured_result_router, prefix=PREFIX)
+    from backend.app.research_input_routes import router as research_input_router
+    from backend.app.research_workflow_routes import router as research_workflow_router
+
+    app.include_router(research_workflow_router, prefix=PREFIX)
+    app.include_router(research_input_router, prefix=PREFIX)
+
+    from backend.app.structured_demo_routes import router as structured_demo_router
+
+    app.include_router(structured_demo_router, prefix=PREFIX)
+    from backend.app.declared_upload_routes import router as declared_upload_router
+
+    app.include_router(declared_upload_router, prefix=PREFIX)
     from backend.app.engine_snapshot_routes import router as engine_snapshot_router
 
     app.include_router(engine_snapshot_router, prefix=PREFIX)

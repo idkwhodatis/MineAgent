@@ -37,9 +37,26 @@ def _rows(session, model, **filters):
 def provider_attempt_stopped(session, run, attempt, settings):
     """Verify every admitted SDK group and its charge; unknown stays nonterminal."""
     try:
-        config = require_source_identity(run)
-        if config.model_profile != "configured.rdagent.v1":
+        workflow = (
+            isinstance(getattr(run, "config", None), dict)
+            and run.config.get("schema_version") == "mineagent.factor-research.v3"
+        )
+        if workflow:
+            from backend.app.rdagent_workflow_capability import (
+                require_workflow_revision,
+            )
+            from packages.rdagent_adapter.workflow_identity import (
+                require_workflow_source_identity,
+            )
+
+            require_workflow_revision(session)
+            config = require_workflow_source_identity(run)
+        else:
+            config = require_source_identity(run)
+        if config.model_profile == "fixture.rdagent.v1":
             return True  # Historical v1 has no host SDK transport protocol.
+        if config.model_profile not in {"configured.rdagent.v1", "workflow.rdagent.v1"}:
+            return False
         if attempt.run_id != run.id or attempt.generation != run.generation:
             return False
         from backend.app.rdagent_models import FactorGenerationModelOperation
@@ -126,6 +143,7 @@ def provider_attempt_stopped(session, run, attempt, settings):
             settlements=settlements,
             outcomes=outcomes,
             read_bytes=read,
+            workflow=workflow,
         )
         return True
     except (ValueError, KeyError, OSError, DomainError):

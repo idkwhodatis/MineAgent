@@ -197,15 +197,30 @@ def validate_closure(
     direct_analysis_closure,
     read_bytes,
     maximum_rows=100000,
+    oe_structured_links_pending=False,
 ):
     """Invoke after exact predecessor validators; reconstruct all owned result bytes."""
     if RESEARCH_SCHEMA is None or research_closure.get("schema_version") not in {
+        "mineagent.research-restore-closure.v12",
+        "mineagent.research-restore-closure.v16",
         RESEARCH_SCHEMA,
         "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v13",
+        "mineagent.research-restore-closure.v14",
         "mineagent.research-restore-closure.v11",
-        "mineagent.research-restore-closure.v12",
+        "mineagent.research-restore-closure.v15",
     }:
         raise ValueError("Exact structured research closure version required")
+    successor = research_closure.get("schema_version") in {
+        "mineagent.research-restore-closure.v16",
+        "mineagent.research-restore-closure.v13",
+        "mineagent.research-restore-closure.v14",
+        "mineagent.research-restore-closure.v15",
+    }
+    if successor != (oe_structured_links_pending is True):
+        raise ValueError(
+            "Exact normal OE final links must follow structured predecessor"
+        )
     idx = indexes(closure, maximum_rows)
     runs = {row["id"]: row for row in idx["research_runs"].values()}
     shared_runs = {r["id"]: r for r in research_closure["external_bindings"]["runs"]}
@@ -214,7 +229,15 @@ def validate_closure(
     }:
         raise ValueError("Structured full/shared run inventory differs")
     for key, row in runs.items():
-        if any(row[field] != value for field, value in shared_runs[key].items()):
+        if any(
+            (
+                row["config"].get("schema_version")
+                if field == "config_schema_version" and successor
+                else row[field]
+            )
+            != value
+            for field, value in shared_runs[key].items()
+        ):
             raise ValueError("Structured full/shared run binding differs")
     admissions = _table(research_closure, "research_process_admissions")
     receipts = _table(research_closure, "research_process_receipts")
@@ -342,6 +365,11 @@ def validate_closure(
                 )
             ],
             read_bytes=read_bytes,
+            declared_upload=research_closure["schema_version"]
+            in {
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v15",
+            },
         )
         dataset = datasets[str(config.dataset_version_id)]
         owned = exposure_by_key[
@@ -520,6 +548,26 @@ def validate_closure(
         if any((row["execution_id"],) not in outcomes for row in idx[table].values()):
             raise ValueError("Orphan structured observed record")
     for admission in admissions.values():
+        shared_run = shared_runs.get(admission["run_id"])
+        if (
+            successor
+            and shared_run is not None
+            and (
+                shared_run["purpose"],
+                shared_run["engine"],
+                shared_run.get("config_schema_version"),
+            )
+            == (
+                "strategy_search",
+                "openevolve",
+                "mineagent.oe-structured-provider-run.v1",
+            )
+        ):
+            if admission["owner_id"] != shared_run["owner_id"]:
+                raise ValueError("Normal OE native process owner differs")
+            # Only the mandatory new domain validator may consume this row;
+            # never relabel it as a025 acceptance execution.
+            continue
         if (admission["run_id"],) in specs or admission[
             "profile"
         ] == "mineagent.factor-strategy-engine.v1":

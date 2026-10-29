@@ -134,6 +134,7 @@ def _capacity(session, fence, settings, fd, *, extra=(0, 0)):
         allow_staging=True,
         native=True,
         native_entries=native_entries,
+        storage_root=settings.storage_root,
     )
     verify_native_journals(session, native_entries, settings)
     for reader in (pending_native_usage, pending_source_usage, pending_snapshot_usage):

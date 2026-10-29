@@ -146,14 +146,30 @@ def validate_closure(
             rd_source_closure.get("schema_version"),
         )
         not in {
+            (
+                "mineagent.research-restore-closure.v12",
+                "mineagent.rd-source-restore-closure.v7",
+            ),
+            (
+                "mineagent.research-restore-closure.v16",
+                "mineagent.rd-source-restore-closure.v11",
+            ),
             (RESEARCH, RD),
             (
                 "mineagent.research-restore-closure.v11",
                 "mineagent.rd-source-restore-closure.v6",
             ),
             (
-                "mineagent.research-restore-closure.v12",
-                "mineagent.rd-source-restore-closure.v7",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.rd-source-restore-closure.v8",
+            ),
+            (
+                "mineagent.research-restore-closure.v14",
+                "mineagent.rd-source-restore-closure.v9",
+            ),
+            (
+                "mineagent.research-restore-closure.v15",
+                "mineagent.rd-source-restore-closure.v10",
             ),
         }
         or factor_closure.get("schema_version") != "mineagent.factor-restore-closure.v2"

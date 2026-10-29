@@ -37,4 +37,18 @@ def create_queue_app(settings: Settings | None = None, database_url: str | None 
 
         execute(run_id, generation, settings=settings or get_settings())
 
+    from workers.research.oe_structured_queue import TASK_NAME as OE_TASK_NAME
+
+    @app.task(
+        name=OE_TASK_NAME,
+        queue="research",
+        retry=procrastinate.RetryStrategy(max_attempts=3, wait=5),
+    )
+    def execute_oe_structured_run(run_id: str, generation: int):
+        from workers.research.oe_structured_queue import execute
+
+        # Redelivery can only claim an untouched queued run, never restart an
+        # already-created attempt or an uncertain physical unit.
+        execute(run_id, generation, settings=settings or get_settings())
+
     return app

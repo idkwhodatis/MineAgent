@@ -359,6 +359,22 @@ const enginePreflightRoute = createRoute({
     "EnginePreflightPage",
   ),
 });
+const oeProviderRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/structured-search",
+  component: lazyRouteComponent(
+    () => import("@/features/oe-provider-page"),
+    "OEProviderPage",
+  ),
+});
+const oeProviderRunRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/engine-runs/structured-search/runs/$runId",
+  component: lazyRouteComponent(
+    () => import("@/features/oe-provider-page"),
+    "OEProviderRunPage",
+  ),
+});
 const engineHistoryDetailRoute = createRoute({
   getParentRoute: () => privateRoute,
   path: "/engine-runs/$runId",
@@ -401,6 +417,22 @@ const structuredComparisonRoute = createRoute({
     "StructuredComparisonPage",
   ),
 });
+const researchWorkflowRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/research-workflows",
+  component: lazyRouteComponent(
+    () => import("@/features/research-workflow-page"),
+    "ResearchWorkflowPage",
+  ),
+});
+const researchWorkflowDetailRoute = createRoute({
+  getParentRoute: () => privateRoute,
+  path: "/research-workflows/$workflowId",
+  component: lazyRouteComponent(
+    () => import("@/features/research-workflow-page"),
+    "ResearchWorkflowDetailPage",
+  ),
+});
 const rdSteersRoute = createRoute({
   getParentRoute: () => privateRoute,
   path: "/rd-steers",
@@ -415,7 +447,11 @@ const routeTree = rootRoute.addChildren([
     overviewRoute,
     engineHistoryRoute,
     rdSteersRoute,
+    researchWorkflowRoute,
+    researchWorkflowDetailRoute,
     enginePreflightRoute,
+    oeProviderRoute,
+    oeProviderRunRoute,
     engineHistoryDetailRoute,
     executionSnapshotRoute,
     structuredExecutionRoute,

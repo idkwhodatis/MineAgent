@@ -8,6 +8,7 @@ import hashlib
 from types import SimpleNamespace
 from uuid import UUID
 
+from backend.app.declared_upload_backup import retained_artifacts
 from backend.app.rdagent_configured_inputs import build_candidate_projection
 from backend.app.rdagent_snapshot_config import parse_snapshot_config
 from packages.factors.contracts import SnapshotInput, canonical_bytes, digest
@@ -27,7 +28,9 @@ def validate_configured_input_closure(
     read_bytes,
     max_rows=100000,
     provider_config=False,
+    workflow_config=False,
     composed_controller=False,
+    declared_upload=False,
     seeded_controller=False,
 ):
     """read_bytes(storage_key, maximum) must reject unsafe paths/oversized files.
@@ -92,7 +95,9 @@ def validate_configured_input_closure(
             spec["config"],
             owner_id=spec["owner_id"],
             provider_config=provider_config,
+            workflow_config=workflow_config,
             composed_controller=composed_controller,
+            run_id=spec["run_id"],
             seeded_controller=seeded_controller,
             json_mode=True,
         )
@@ -129,10 +134,11 @@ def validate_configured_input_closure(
             dataset_id=UUID(str(d["id"])),
             manifest_sha256=d["content_sha256"],
             manifest_bytes=manifest,
-            artifacts={
-                name: read_bytes(key + "/" + name, 32 * 1024**2)
-                for name in ("preview.json", "sessions.json")
-            },
+            artifacts=retained_artifacts(
+                parsed, key, read_bytes, declared_upload=declared_upload
+            ),
+            declared_upload=declared_upload,
+            owner_id=UUID(str(scope["owner_id"])),
             policy=policy,
             input_names=tuple(field.name for field in config.input.input_fields),
         )

@@ -36,7 +36,9 @@ def _limits(rows, size):
         raise ValueError("Positive exact OE closure limits required")
 
 
-def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
+def read_closure(
+    connection, maximum_rows, *, maximum_bytes=32_000_000, research_schema=None
+):
     _limits(maximum_rows, maximum_bytes)
     total = size = 0
 
@@ -65,10 +67,20 @@ def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
         name: read(name, fields, ",".join(PRIMARY_KEYS[name]))
         for name, fields in FIELDS.items()
     }
+    from backend.app.openevolve_backup_partition import (
+        NORMAL,
+        V11,
+        V12,
+        require_read_family,
+    )
+
+    run_where = " WHERE engine='openevolve'"
+    if research_schema in {V11, V12}:
+        # Exclude only the explicitly versioned normal family. Missing/unknown
+        # config schemas remain selected and are rejected below, not omitted.
+        run_where += f" AND config->>'schema_version' IS DISTINCT FROM '{NORMAL}'"
     external = {
-        "runs": read(
-            "research_runs", EXTERNAL_FIELDS["runs"], "id", " WHERE engine='openevolve'"
-        ),
+        "runs": read("research_runs", EXTERNAL_FIELDS["runs"], "id", run_where),
         "dataset_versions": read(
             "dataset_versions",
             EXTERNAL_FIELDS["dataset_versions"],
@@ -82,6 +94,7 @@ def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
             " WHERE id IN (SELECT original_strategy_id FROM strategy_search_specs UNION SELECT prepared_strategy_id FROM strategy_search_specs)",
         ),
     }
+    require_read_family(external["runs"], research_schema)
     return {"schema_version": SCHEMA, "tables": tables, "external_bindings": external}
 
 
@@ -163,10 +176,19 @@ def validate_references(
                     raise ValueError("Duplicate OE unique tuple")
                 keys.add(key)
         indexes[name] = rows
+    from backend.app.openevolve_backup_partition import V11, V12, validate_partition
+
+    legacy_runs = validate_partition(
+        closure["external_bindings"]["runs"], research_closure
+    )
     # The shared closure must already have passed its own typed/budget/physical
     # checks. This consumer never supplies omitted rows or coerces scope types.
     indexes.update(research_closure["tables"])
-    indexes["research_runs"] = research_closure["external_bindings"]["runs"]
+    indexes["research_runs"] = (
+        legacy_runs
+        if research_closure.get("schema_version") in {V11, V12}
+        else research_closure["external_bindings"]["runs"]
+    )
     indexes["execution_attempts"] = research_closure["external_bindings"]["attempts"]
     references = {}
     for name, local, remote, columns in FOREIGN_KEYS:

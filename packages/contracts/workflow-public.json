@@ -1,0 +1,2723 @@
+{
+  "components": {
+    "schemas": {
+      "BudgetVector": {
+        "additionalProperties": false,
+        "properties": {
+          "calls": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Calls",
+            "type": "integer"
+          },
+          "cost_microunits": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Cost Microunits",
+            "type": "integer"
+          },
+          "evaluator_executions": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Evaluator Executions",
+            "type": "integer"
+          },
+          "mutation_slots": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Mutation Slots",
+            "type": "integer"
+          },
+          "process_slots": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Process Slots",
+            "type": "integer"
+          },
+          "storage_bytes": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Storage Bytes",
+            "type": "integer"
+          },
+          "tokens": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "wall_milliseconds": {
+            "default": 0,
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "title": "Wall Milliseconds",
+            "type": "integer"
+          }
+        },
+        "title": "BudgetVector",
+        "type": "object"
+      },
+      "ConfiguredSourcePolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledged_unverified": {
+            "const": true,
+            "title": "Acknowledged Unverified",
+            "type": "boolean"
+          },
+          "availability": {
+            "const": "declared_session_close_not_verified",
+            "default": "declared_session_close_not_verified",
+            "title": "Availability",
+            "type": "string"
+          },
+          "membership": {
+            "const": "user_fixed_declared_at_source_start",
+            "default": "user_fixed_declared_at_source_start",
+            "title": "Membership",
+            "type": "string"
+          },
+          "price_basis": {
+            "const": "unadjusted",
+            "default": "unadjusted",
+            "title": "Price Basis",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.rdagent-declared-daily-source.v1",
+            "default": "mineagent.rdagent-declared-daily-source.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "acknowledged_unverified"
+        ],
+        "title": "ConfiguredSourcePolicy",
+        "type": "object"
+      },
+      "DateWindow": {
+        "additionalProperties": false,
+        "properties": {
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "DateWindow",
+        "type": "object"
+      },
+      "DirectObjectiveDeclaration": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {
+            "const": "arithmetic_mean_of_defined_days",
+            "default": "arithmetic_mean_of_defined_days",
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "at_least",
+              "at_most"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "kind": {
+            "const": "direct_factor_analysis",
+            "default": "direct_factor_analysis",
+            "title": "Kind",
+            "type": "string"
+          },
+          "label_horizon_sessions": {
+            "maximum": 4096,
+            "minimum": 1,
+            "title": "Label Horizon Sessions",
+            "type": "integer"
+          },
+          "metric": {
+            "enum": [
+              "ic",
+              "rank_ic"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "minimum_defined_days": {
+            "maximum": 4096,
+            "minimum": 1,
+            "title": "Minimum Defined Days",
+            "type": "integer"
+          },
+          "minimum_pairs": {
+            "maximum": 10000,
+            "minimum": 2,
+            "title": "Minimum Pairs",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.direct-factor-objective.v1",
+            "default": "mineagent.direct-factor-objective.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selection_claim": {
+            "const": "research_selection_not_out_of_sample_performance",
+            "default": "research_selection_not_out_of_sample_performance",
+            "title": "Selection Claim",
+            "type": "string"
+          },
+          "threshold": {
+            "maximum": 1,
+            "minimum": -1,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DateWindow"
+          }
+        },
+        "required": [
+          "window",
+          "label_horizon_sessions",
+          "metric",
+          "direction",
+          "threshold",
+          "minimum_defined_days",
+          "minimum_pairs"
+        ],
+        "title": "DirectObjectiveDeclaration",
+        "type": "object"
+      },
+      "ExternalFeedMapping": {
+        "additionalProperties": false,
+        "description": "Owner/workflow-selected JSON paths; no JSONPath evaluation or URL fetch.",
+        "properties": {
+          "items_path": {
+            "default": [
+              "items"
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "title": "Items Path",
+            "type": "array"
+          },
+          "kind": {
+            "default": "direction",
+            "enum": [
+              "direction",
+              "hypothesis",
+              "constraints"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.external-feed-mapping.v1",
+            "default": "mineagent.external-feed-mapping.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "text_path": {
+            "default": [
+              "text"
+            ],
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Text Path",
+            "type": "array"
+          },
+          "title_path": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": [
+              "title"
+            ],
+            "title": "Title Path"
+          }
+        },
+        "title": "ExternalFeedMapping",
+        "type": "object"
+      },
+      "ExternalNormalizationDefinition": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping": {
+            "$ref": "#/components/schemas/ExternalFeedMapping"
+          },
+          "raw_object_id": {
+            "format": "uuid",
+            "title": "Raw Object Id",
+            "type": "string"
+          },
+          "raw_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Raw Sha256",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.external-normalization-stage.v1",
+            "default": "mineagent.external-normalization-stage.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "raw_object_id",
+          "raw_sha256",
+          "mapping"
+        ],
+        "title": "ExternalNormalizationDefinition",
+        "type": "object"
+      },
+      "FactorTaskSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "pattern": "^[^\\x00]+$",
+            "title": "Description",
+            "type": "string"
+          },
+          "explanation_origin": {
+            "const": "task_declaration",
+            "default": "task_declaration",
+            "title": "Explanation Origin",
+            "type": "string"
+          },
+          "factor_kind": {
+            "enum": [
+              "cross_sectional",
+              "time_series"
+            ],
+            "title": "Factor Kind",
+            "type": "string"
+          },
+          "formulation": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "pattern": "^[^\\x00]+$",
+            "title": "Formulation",
+            "type": "string"
+          },
+          "interpretation": {
+            "enum": [
+              "higher_preferred",
+              "lower_preferred",
+              "unsigned"
+            ],
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "output_unit": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Output Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "formulation",
+          "factor_kind",
+          "output_unit",
+          "interpretation"
+        ],
+        "title": "FactorTaskSpec",
+        "type": "object"
+      },
+      "InputVersionRef": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "manual_user_submission",
+              "normalized_external_proposal",
+              "experiment_feedback_proposal",
+              "unknown"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "record_id",
+          "version_id",
+          "content_sha256"
+        ],
+        "title": "InputVersionRef",
+        "type": "object"
+      },
+      "RDProviderSeedRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetVector"
+          },
+          "dataset_version_id": {
+            "format": "uuid",
+            "title": "Dataset Version Id",
+            "type": "string"
+          },
+          "engine": {
+            "const": "rdagent",
+            "default": "rdagent",
+            "title": "Engine",
+            "type": "string"
+          },
+          "input_fields": {
+            "items": {
+              "enum": [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Input Fields",
+            "type": "array"
+          },
+          "lag_sessions": {
+            "maximum": 8,
+            "minimum": 0,
+            "title": "Lag Sessions",
+            "type": "integer"
+          },
+          "lookback_sessions": {
+            "maximum": 63,
+            "minimum": 1,
+            "title": "Lookback Sessions",
+            "type": "integer"
+          },
+          "max_iterations": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Max Iterations",
+            "type": "integer"
+          },
+          "model_profile_id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "title": "Model Profile Id",
+            "type": "string"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/DirectObjectiveDeclaration"
+          },
+          "parent_factor_version_id": {
+            "format": "uuid",
+            "title": "Parent Factor Version Id",
+            "type": "string"
+          },
+          "purpose": {
+            "const": "factor_research",
+            "default": "factor_research",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.rdagent-provider-seeded-submission.v1",
+            "default": "mineagent.rdagent-provider-seeded-submission.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selected_steer_version_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Selected Steer Version Ids",
+            "type": "array"
+          },
+          "source_policy": {
+            "$ref": "#/components/schemas/ConfiguredSourcePolicy"
+          },
+          "task": {
+            "$ref": "#/components/schemas/FactorTaskSpec"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DateWindow"
+          }
+        },
+        "required": [
+          "dataset_version_id",
+          "window",
+          "input_fields",
+          "lookback_sessions",
+          "lag_sessions",
+          "task",
+          "objective",
+          "budget",
+          "max_iterations",
+          "source_policy",
+          "model_profile_id",
+          "parent_factor_version_id"
+        ],
+        "title": "RDProviderSeedRequest",
+        "type": "object"
+      },
+      "RDProviderSubmissionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetVector"
+          },
+          "dataset_version_id": {
+            "format": "uuid",
+            "title": "Dataset Version Id",
+            "type": "string"
+          },
+          "engine": {
+            "const": "rdagent",
+            "default": "rdagent",
+            "title": "Engine",
+            "type": "string"
+          },
+          "input_fields": {
+            "items": {
+              "enum": [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+              ],
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Input Fields",
+            "type": "array"
+          },
+          "lag_sessions": {
+            "maximum": 8,
+            "minimum": 0,
+            "title": "Lag Sessions",
+            "type": "integer"
+          },
+          "lookback_sessions": {
+            "maximum": 63,
+            "minimum": 1,
+            "title": "Lookback Sessions",
+            "type": "integer"
+          },
+          "max_iterations": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Max Iterations",
+            "type": "integer"
+          },
+          "model_profile_id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "title": "Model Profile Id",
+            "type": "string"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/DirectObjectiveDeclaration"
+          },
+          "purpose": {
+            "const": "factor_research",
+            "default": "factor_research",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.rdagent-provider-submission.v1",
+            "default": "mineagent.rdagent-provider-submission.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selected_steer_version_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Selected Steer Version Ids",
+            "type": "array"
+          },
+          "source_policy": {
+            "$ref": "#/components/schemas/ConfiguredSourcePolicy"
+          },
+          "task": {
+            "$ref": "#/components/schemas/FactorTaskSpec"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DateWindow"
+          }
+        },
+        "required": [
+          "dataset_version_id",
+          "window",
+          "input_fields",
+          "lookback_sessions",
+          "lag_sessions",
+          "task",
+          "objective",
+          "budget",
+          "max_iterations",
+          "source_policy",
+          "model_profile_id"
+        ],
+        "title": "RDProviderSubmissionRequest",
+        "type": "object"
+      },
+      "SelectWorkflowInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Refs",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-select-inputs.v1",
+            "default": "mineagent.workflow-select-inputs.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "expected_revision",
+          "idempotency_key"
+        ],
+        "title": "SelectWorkflowInputs",
+        "type": "object"
+      },
+      "SourceOutputRef": {
+        "additionalProperties": false,
+        "description": "Identity only, not evidence that a stage completed or release is allowed.\n\nThe host must join the exact owner/workflow/stage/child run and typed retained\noutput, then independently recheck development eligibility and release ledger.\nNo caller boolean may certify success, disclosure, sealed status or eligibility.",
+        "properties": {
+          "child_run_id": {
+            "format": "uuid",
+            "title": "Child Run Id",
+            "type": "string"
+          },
+          "content_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "output_id": {
+            "format": "uuid",
+            "title": "Output Id",
+            "type": "string"
+          },
+          "output_kind": {
+            "enum": [
+              "direct_analysis",
+              "structured_execution"
+            ],
+            "title": "Output Kind",
+            "type": "string"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "stage_id",
+          "child_run_id",
+          "output_kind",
+          "output_id",
+          "content_sha256"
+        ],
+        "title": "SourceOutputRef",
+        "type": "object"
+      },
+      "StageConsumption": {
+        "additionalProperties": false,
+        "description": "Read projection, never accepted as execution/stop authority.",
+        "properties": {
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "input_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "model_operation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Operation Id"
+          },
+          "request_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Sha256"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "not_observed",
+              "selected_not_submitted",
+              "included_in_submitted_prompt",
+              "submission_uncertain",
+              "not_consumed_numeric",
+              "not_submitted_to_model"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "transport_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Transport Id"
+          }
+        },
+        "required": [
+          "stage_id",
+          "input_revision_id",
+          "input_sha256",
+          "state",
+          "model_operation_id",
+          "request_sha256"
+        ],
+        "title": "StageConsumption",
+        "type": "object"
+      },
+      "SteerVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "direction",
+              "hypothesis",
+              "constraints"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 64,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.rdagent-steer-version.v1",
+            "default": "mineagent.rdagent-steer-version.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "steer_id": {
+            "format": "uuid",
+            "title": "Steer Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "text_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Text Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steer_id",
+          "version_id",
+          "ordinal",
+          "kind",
+          "text",
+          "text_sha256"
+        ],
+        "title": "SteerVersion",
+        "type": "object"
+      },
+      "StructuredObjective": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "const": "maximize",
+            "default": "maximize",
+            "title": "Direction",
+            "type": "string"
+          },
+          "initial_cash": {
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000.0,
+            "title": "Initial Cash",
+            "type": "number"
+          },
+          "metric": {
+            "const": "total_return_pct_minus_max_drawdown_pct",
+            "default": "total_return_pct_minus_max_drawdown_pct",
+            "title": "Metric",
+            "type": "string"
+          },
+          "minimum_closed_trades": {
+            "anyOf": [
+              {
+                "maximum": 1000000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Minimum Closed Trades"
+          },
+          "missing_policy": {
+            "const": "ineligible_null_score",
+            "default": "ineligible_null_score",
+            "title": "Missing Policy",
+            "type": "string"
+          },
+          "precision": {
+            "const": "unrounded_native_accounting",
+            "default": "unrounded_native_accounting",
+            "title": "Precision",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.oe-structured-objective.v1",
+            "default": "mineagent.oe-structured-objective.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source": {
+            "const": "validated_closed_engine_accounting_summary",
+            "default": "validated_closed_engine_accounting_summary",
+            "title": "Source",
+            "type": "string"
+          },
+          "unit": {
+            "const": "percentage_points",
+            "default": "percentage_points",
+            "title": "Unit",
+            "type": "string"
+          },
+          "window": {
+            "$ref": "#/components/schemas/DateWindow"
+          }
+        },
+        "required": [
+          "window",
+          "initial_cash"
+        ],
+        "title": "StructuredObjective",
+        "type": "object"
+      },
+      "StructuredSeedParameters": {
+        "additionalProperties": false,
+        "properties": {
+          "maximum_gross_weight": {
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Maximum Gross Weight",
+            "type": "number"
+          },
+          "maximum_weight": {
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "title": "Maximum Weight",
+            "type": "number"
+          },
+          "threshold": {
+            "maximum": 1000000000000000.0,
+            "minimum": -1000000000000000.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "top_k": {
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold",
+          "top_k",
+          "maximum_weight",
+          "maximum_gross_weight"
+        ],
+        "title": "StructuredSeedParameters",
+        "type": "object"
+      },
+      "StructuredWorkflowPreflight": {
+        "additionalProperties": false,
+        "properties": {
+          "can_create": {
+            "const": true,
+            "default": true,
+            "title": "Can Create",
+            "type": "boolean"
+          },
+          "plan_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Plan Sha256",
+            "type": "string"
+          },
+          "preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Preflight Sha256",
+            "type": "string"
+          },
+          "provider_preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Provider Preflight Sha256",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "fresh_declaration_not_stage_execution_or_release",
+            "default": "fresh_declaration_not_stage_execution_or_release",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "request_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "resolved_inputs_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Resolved Inputs Sha256",
+            "type": "string"
+          },
+          "runtime_profile_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Runtime Profile Sha256",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-preflight.v2",
+            "default": "mineagent.workflow-public-preflight.v2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "structured_template_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Structured Template Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_sha256",
+          "preflight_sha256",
+          "plan_sha256",
+          "provider_preflight_sha256",
+          "resolved_inputs_sha256",
+          "runtime_profile_sha256",
+          "structured_template_sha256"
+        ],
+        "title": "StructuredWorkflowPreflight",
+        "type": "object"
+      },
+      "StructuredWorkflowRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_workflow_development_feedback_release": {
+            "default": false,
+            "title": "Allow Workflow Development Feedback Release",
+            "type": "boolean"
+          },
+          "budget_ceiling": {
+            "$ref": "#/components/schemas/BudgetVector"
+          },
+          "external_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalNormalizationDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "maximum_iterations": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Maximum Iterations",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "continuous",
+            "enum": [
+              "continuous",
+              "pause_after_stage"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Refs",
+            "type": "array"
+          },
+          "research": {
+            "discriminator": {
+              "mapping": {
+                "mineagent.rdagent-provider-seeded-submission.v1": "#/components/schemas/RDProviderSeedRequest",
+                "mineagent.rdagent-provider-submission.v1": "#/components/schemas/RDProviderSubmissionRequest"
+              },
+              "propertyName": "schema_version"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RDProviderSubmissionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/RDProviderSeedRequest"
+              }
+            ],
+            "title": "Research"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-request.v2",
+            "default": "mineagent.workflow-public-request.v2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "structured": {
+            "$ref": "#/components/schemas/WorkflowStructuredChoice"
+          }
+        },
+        "required": [
+          "research",
+          "maximum_iterations",
+          "budget_ceiling",
+          "structured"
+        ],
+        "title": "StructuredWorkflowRequest",
+        "type": "object"
+      },
+      "StructuredWorkflowSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Preflight Sha256",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/StructuredWorkflowRequest"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-submit.v2",
+            "default": "mineagent.workflow-public-submit.v2",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "request",
+          "preflight_sha256"
+        ],
+        "title": "StructuredWorkflowSubmit",
+        "type": "object"
+      },
+      "StructuredWorkflowView": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Blocked Reason"
+          },
+          "controls": {
+            "$ref": "#/components/schemas/WorkflowControls"
+          },
+          "current_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowStageView"
+              },
+              {
+                "$ref": "#/components/schemas/WorkflowOEStageView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage"
+          },
+          "latest_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Checkpoint Id"
+          },
+          "mode": {
+            "enum": [
+              "continuous",
+              "pause_after_stage"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "stage_metadata_not_result_release_or_process_authority",
+            "default": "stage_metadata_not_result_release_or_process_authority",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-view.v2",
+            "default": "mineagent.workflow-view.v2",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selected_input_revision_id": {
+            "format": "uuid",
+            "title": "Selected Input Revision Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "running",
+              "pause_requested",
+              "paused",
+              "cancel_requested",
+              "cancelled",
+              "blocked",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "revision",
+          "mode",
+          "status",
+          "selected_input_revision_id",
+          "current_stage",
+          "latest_checkpoint_id",
+          "controls"
+        ],
+        "title": "StructuredWorkflowView",
+        "type": "object"
+      },
+      "WorkflowAvailability": {
+        "properties": {
+          "can_read": {
+            "title": "Can Read",
+            "type": "boolean"
+          },
+          "preflight_available": {
+            "title": "Preflight Available",
+            "type": "boolean"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "structured_preflight_available": {
+            "default": false,
+            "title": "Structured Preflight Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_read",
+          "preflight_available",
+          "reason_code"
+        ],
+        "title": "WorkflowAvailability",
+        "type": "object"
+      },
+      "WorkflowCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "pause_after_stage",
+              "cancel",
+              "resume"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-command.v1",
+            "default": "mineagent.workflow-command.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "expected_revision",
+          "idempotency_key",
+          "action"
+        ],
+        "title": "WorkflowCommand",
+        "type": "object"
+      },
+      "WorkflowCommandReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "command_id": {
+            "format": "uuid",
+            "title": "Command Id",
+            "type": "string"
+          },
+          "command_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Command Sha256",
+            "type": "string"
+          },
+          "current_stage_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Id"
+          },
+          "revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-command-receipt.v1",
+            "default": "mineagent.workflow-command-receipt.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "running",
+              "pause_requested",
+              "paused",
+              "cancel_requested",
+              "cancelled",
+              "blocked",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "command_id",
+          "command_sha256",
+          "revision",
+          "status",
+          "checkpoint_id",
+          "current_stage_id"
+        ],
+        "title": "WorkflowCommandReceipt",
+        "type": "object"
+      },
+      "WorkflowControls": {
+        "additionalProperties": false,
+        "properties": {
+          "cancel": {
+            "default": false,
+            "title": "Cancel",
+            "type": "boolean"
+          },
+          "pause_after_stage": {
+            "default": false,
+            "title": "Pause After Stage",
+            "type": "boolean"
+          },
+          "reason_code": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "resume": {
+            "default": false,
+            "title": "Resume",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason_code"
+        ],
+        "title": "WorkflowControls",
+        "type": "object"
+      },
+      "WorkflowCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "current_stage_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Stage Id"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "request_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "revision": {
+            "const": 1,
+            "default": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-created.v1",
+            "default": "mineagent.workflow-created.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "input_revision_id",
+          "request_sha256",
+          "status",
+          "current_stage_id"
+        ],
+        "title": "WorkflowCreated",
+        "type": "object"
+      },
+      "WorkflowInputSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Refs",
+            "type": "array"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-input-snapshot.v1",
+            "default": "mineagent.workflow-input-snapshot.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner_id",
+          "workflow_id",
+          "revision_id"
+        ],
+        "title": "WorkflowInputSnapshot",
+        "type": "object"
+      },
+      "WorkflowManualOption": {
+        "properties": {
+          "disabled": {
+            "title": "Disabled",
+            "type": "boolean"
+          },
+          "ref": {
+            "$ref": "#/components/schemas/InputVersionRef"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "version": {
+            "$ref": "#/components/schemas/SteerVersion"
+          }
+        },
+        "required": [
+          "ref",
+          "version",
+          "disabled",
+          "revision"
+        ],
+        "title": "WorkflowManualOption",
+        "type": "object"
+      },
+      "WorkflowManualOptions": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowManualOption"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "offset",
+          "has_more"
+        ],
+        "title": "WorkflowManualOptions",
+        "type": "object"
+      },
+      "WorkflowOEStageHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "automatic_feedback_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 1,
+            "title": "Automatic Feedback Refs",
+            "type": "array"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "child_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Attempt Id"
+          },
+          "child_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Run Id"
+          },
+          "consumption": {
+            "enum": [
+              "not_observed",
+              "selected_not_submitted",
+              "included_in_submitted_prompt",
+              "submission_uncertain",
+              "not_consumed_numeric",
+              "not_submitted_to_model"
+            ],
+            "title": "Consumption",
+            "type": "string"
+          },
+          "containment": {
+            "enum": [
+              "not_applicable",
+              "not_observed",
+              "positive_stop",
+              "uncertain"
+            ],
+            "title": "Containment",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "derived_input_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Derived Input Refs",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "input_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "input_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "const": "structured_factor_execution",
+            "default": "structured_factor_execution",
+            "title": "Kind",
+            "type": "string"
+          },
+          "model_requests": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StageConsumption"
+            },
+            "maxItems": 1024,
+            "title": "Model Requests",
+            "type": "array"
+          },
+          "ordinal": {
+            "maximum": 256,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "output_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceOutputRef"
+            },
+            "maxItems": 32,
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "predecessor_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Predecessor Checkpoint Id"
+          },
+          "qualification": {
+            "const": "retained_stage_metadata_not_live_status_or_result_release",
+            "default": "retained_stage_metadata_not_live_status_or_result_release",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "safe_error_code": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]{0,79}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Safe Error Code"
+          },
+          "settlement": {
+            "enum": [
+              "not_observed",
+              "settled",
+              "unsettled",
+              "uncertain"
+            ],
+            "title": "Settlement",
+            "type": "string"
+          },
+          "source_status": {
+            "enum": [
+              "not_recorded",
+              "prepared",
+              "started_no_terminal_receipt",
+              "queued",
+              "preparing",
+              "running",
+              "finalizing",
+              "pause_requested",
+              "paused",
+              "cancel_requested",
+              "succeeded",
+              "rejected",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "blocked"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          }
+        },
+        "required": [
+          "stage_id",
+          "ordinal",
+          "input_revision_id",
+          "input_sha256",
+          "definition_sha256",
+          "child_run_id",
+          "consumption",
+          "checkpoint_id",
+          "source_status",
+          "child_attempt_id",
+          "started_at",
+          "finished_at",
+          "containment",
+          "settlement"
+        ],
+        "title": "WorkflowOEStageHistory",
+        "type": "object"
+      },
+      "WorkflowOEStageView": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "child_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Run Id"
+          },
+          "consumption": {
+            "enum": [
+              "not_observed",
+              "selected_not_submitted",
+              "included_in_submitted_prompt",
+              "submission_uncertain",
+              "not_consumed_numeric",
+              "not_submitted_to_model"
+            ],
+            "title": "Consumption",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "input_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "const": "structured_factor_execution",
+            "default": "structured_factor_execution",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 256,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage_id",
+          "ordinal",
+          "input_revision_id",
+          "input_sha256",
+          "definition_sha256",
+          "child_run_id",
+          "consumption",
+          "checkpoint_id"
+        ],
+        "title": "WorkflowOEStageView",
+        "type": "object"
+      },
+      "WorkflowPreflight": {
+        "additionalProperties": false,
+        "properties": {
+          "can_create": {
+            "const": true,
+            "default": true,
+            "title": "Can Create",
+            "type": "boolean"
+          },
+          "plan_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Plan Sha256",
+            "type": "string"
+          },
+          "preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Preflight Sha256",
+            "type": "string"
+          },
+          "provider_preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Provider Preflight Sha256",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "fresh_declaration_not_stage_execution_or_release",
+            "default": "fresh_declaration_not_stage_execution_or_release",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "request_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "resolved_inputs_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Resolved Inputs Sha256",
+            "type": "string"
+          },
+          "runtime_profile_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Runtime Profile Sha256",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-preflight.v1",
+            "default": "mineagent.workflow-public-preflight.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_sha256",
+          "preflight_sha256",
+          "plan_sha256",
+          "provider_preflight_sha256",
+          "resolved_inputs_sha256",
+          "runtime_profile_sha256"
+        ],
+        "title": "WorkflowPreflight",
+        "type": "object"
+      },
+      "WorkflowRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_workflow_development_feedback_release": {
+            "default": false,
+            "title": "Allow Workflow Development Feedback Release",
+            "type": "boolean"
+          },
+          "budget_ceiling": {
+            "$ref": "#/components/schemas/BudgetVector"
+          },
+          "external_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExternalNormalizationDefinition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "maximum_iterations": {
+            "maximum": 8,
+            "minimum": 1,
+            "title": "Maximum Iterations",
+            "type": "integer"
+          },
+          "mode": {
+            "default": "continuous",
+            "enum": [
+              "continuous",
+              "pause_after_stage"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Refs",
+            "type": "array"
+          },
+          "research": {
+            "discriminator": {
+              "mapping": {
+                "mineagent.rdagent-provider-seeded-submission.v1": "#/components/schemas/RDProviderSeedRequest",
+                "mineagent.rdagent-provider-submission.v1": "#/components/schemas/RDProviderSubmissionRequest"
+              },
+              "propertyName": "schema_version"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RDProviderSubmissionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/RDProviderSeedRequest"
+              }
+            ],
+            "title": "Research"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-request.v1",
+            "default": "mineagent.workflow-public-request.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "research",
+          "maximum_iterations",
+          "budget_ceiling"
+        ],
+        "title": "WorkflowRequest",
+        "type": "object"
+      },
+      "WorkflowStageHistory": {
+        "additionalProperties": false,
+        "description": "Actual source-record projection; unknown is not inferred running/success.",
+        "properties": {
+          "automatic_feedback_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 1,
+            "title": "Automatic Feedback Refs",
+            "type": "array"
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "child_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Attempt Id"
+          },
+          "child_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Run Id"
+          },
+          "consumption": {
+            "enum": [
+              "not_observed",
+              "selected_not_submitted",
+              "included_in_submitted_prompt",
+              "submission_uncertain",
+              "not_consumed_numeric",
+              "not_submitted_to_model"
+            ],
+            "title": "Consumption",
+            "type": "string"
+          },
+          "containment": {
+            "enum": [
+              "not_applicable",
+              "not_observed",
+              "positive_stop",
+              "uncertain"
+            ],
+            "title": "Containment",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "derived_input_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Derived Input Refs",
+            "type": "array"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "input_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InputVersionRef"
+            },
+            "maxItems": 32,
+            "title": "Input Refs",
+            "type": "array"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "input_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "external_normalization",
+              "experiment_feedback_projection",
+              "rd_factor_generation",
+              "structured_factor_execution"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "model_requests": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/StageConsumption"
+            },
+            "maxItems": 1024,
+            "title": "Model Requests",
+            "type": "array"
+          },
+          "ordinal": {
+            "maximum": 256,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "output_refs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceOutputRef"
+            },
+            "maxItems": 32,
+            "title": "Output Refs",
+            "type": "array"
+          },
+          "predecessor_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Predecessor Checkpoint Id"
+          },
+          "qualification": {
+            "const": "retained_stage_metadata_not_live_status_or_result_release",
+            "default": "retained_stage_metadata_not_live_status_or_result_release",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "safe_error_code": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9_]{0,79}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Safe Error Code"
+          },
+          "settlement": {
+            "enum": [
+              "not_observed",
+              "settled",
+              "unsettled",
+              "uncertain"
+            ],
+            "title": "Settlement",
+            "type": "string"
+          },
+          "source_status": {
+            "enum": [
+              "not_recorded",
+              "prepared",
+              "started_no_terminal_receipt",
+              "queued",
+              "preparing",
+              "running",
+              "finalizing",
+              "pause_requested",
+              "paused",
+              "cancel_requested",
+              "succeeded",
+              "rejected",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "blocked"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          }
+        },
+        "required": [
+          "stage_id",
+          "ordinal",
+          "kind",
+          "input_revision_id",
+          "input_sha256",
+          "definition_sha256",
+          "child_run_id",
+          "consumption",
+          "checkpoint_id",
+          "source_status",
+          "child_attempt_id",
+          "started_at",
+          "finished_at",
+          "containment",
+          "settlement"
+        ],
+        "title": "WorkflowStageHistory",
+        "type": "object"
+      },
+      "WorkflowStageLink": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "external_normalization",
+              "experiment_feedback_projection",
+              "rd_factor_generation",
+              "structured_factor_execution"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 256,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage_id",
+          "ordinal",
+          "kind",
+          "input_revision_id",
+          "definition_sha256",
+          "created_at"
+        ],
+        "title": "WorkflowStageLink",
+        "type": "object"
+      },
+      "WorkflowStageList": {
+        "additionalProperties": false,
+        "properties": {
+          "after_ordinal": {
+            "maximum": 256,
+            "minimum": 0,
+            "title": "After Ordinal",
+            "type": "integer"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowStageLink"
+            },
+            "maxItems": 64,
+            "title": "Items",
+            "type": "array"
+          },
+          "qualification": {
+            "const": "navigation_metadata_not_stage_completion_or_authority",
+            "default": "navigation_metadata_not_stage_completion_or_authority",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "items",
+          "after_ordinal",
+          "has_more"
+        ],
+        "title": "WorkflowStageList",
+        "type": "object"
+      },
+      "WorkflowStageView": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "child_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Child Run Id"
+          },
+          "consumption": {
+            "enum": [
+              "not_observed",
+              "selected_not_submitted",
+              "included_in_submitted_prompt",
+              "submission_uncertain",
+              "not_consumed_numeric",
+              "not_submitted_to_model"
+            ],
+            "title": "Consumption",
+            "type": "string"
+          },
+          "definition_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Definition Sha256",
+            "type": "string"
+          },
+          "input_revision_id": {
+            "format": "uuid",
+            "title": "Input Revision Id",
+            "type": "string"
+          },
+          "input_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Input Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "external_normalization",
+              "experiment_feedback_projection",
+              "rd_factor_generation",
+              "structured_factor_execution"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "ordinal": {
+            "maximum": 256,
+            "minimum": 1,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "stage_id": {
+            "format": "uuid",
+            "title": "Stage Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage_id",
+          "ordinal",
+          "kind",
+          "input_revision_id",
+          "input_sha256",
+          "definition_sha256",
+          "child_run_id",
+          "consumption",
+          "checkpoint_id"
+        ],
+        "title": "WorkflowStageView",
+        "type": "object"
+      },
+      "WorkflowStructuredChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/BudgetVector"
+          },
+          "maximum_mutation_slots": {
+            "maximum": 2,
+            "minimum": 1,
+            "title": "Maximum Mutation Slots",
+            "type": "integer"
+          },
+          "model_binding_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Model Binding Sha256",
+            "type": "string"
+          },
+          "model_profile_id": {
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$",
+            "title": "Model Profile Id",
+            "type": "string"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/StructuredObjective"
+          },
+          "seed_parameters": {
+            "$ref": "#/components/schemas/StructuredSeedParameters"
+          }
+        },
+        "required": [
+          "seed_parameters",
+          "objective",
+          "budget",
+          "maximum_mutation_slots",
+          "model_profile_id",
+          "model_binding_sha256"
+        ],
+        "title": "WorkflowStructuredChoice",
+        "type": "object"
+      },
+      "WorkflowSubmit": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "preflight_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Preflight Sha256",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/WorkflowRequest"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-public-submit.v1",
+            "default": "mineagent.workflow-public-submit.v1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "request",
+          "preflight_sha256"
+        ],
+        "title": "WorkflowSubmit",
+        "type": "object"
+      },
+      "WorkflowView": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Blocked Reason"
+          },
+          "controls": {
+            "$ref": "#/components/schemas/WorkflowControls"
+          },
+          "current_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowStageView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Checkpoint Id"
+          },
+          "mode": {
+            "enum": [
+              "continuous",
+              "pause_after_stage"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "qualification": {
+            "const": "stage_metadata_not_result_release_or_process_authority",
+            "default": "stage_metadata_not_result_release_or_process_authority",
+            "title": "Qualification",
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 1000000,
+            "minimum": 1,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": "mineagent.workflow-view.v1",
+            "default": "mineagent.workflow-view.v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "selected_input_revision_id": {
+            "format": "uuid",
+            "title": "Selected Input Revision Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "running",
+              "pause_requested",
+              "paused",
+              "cancel_requested",
+              "cancelled",
+              "blocked",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "workflow_id": {
+            "format": "uuid",
+            "title": "Workflow Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow_id",
+          "revision",
+          "mode",
+          "status",
+          "selected_input_revision_id",
+          "current_stage",
+          "latest_checkpoint_id",
+          "controls"
+        ],
+        "title": "WorkflowView",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Unregistered workflow public contract",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {}
+}

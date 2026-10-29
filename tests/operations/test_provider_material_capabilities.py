@@ -42,9 +42,9 @@ def test_complete_backup_retention_dispatch_preserves_prior_bytes(tmp_path, revi
     "field,bad",
     [
         ("research_closure", "mineagent.research-restore-closure.v10"),
-        ("research_closure", "mineagent.research-restore-closure.v12"),
+        ("research_closure", "mineagent.research-restore-closure.v13"),
         ("rd_source_closure", "mineagent.rd-source-restore-closure.v5"),
-        ("rd_source_closure", "mineagent.rd-source-restore-closure.v7"),
+        ("rd_source_closure", "mineagent.rd-source-restore-closure.v8"),
     ],
 )
 def test_new_revision_rejects_crossed_historical_and_future_closures(

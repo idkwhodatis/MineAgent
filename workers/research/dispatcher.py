@@ -58,6 +58,37 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
                     continue
                 raise
             tasks[event.id] = RD_TASK_NAME
+        elif (
+            run is not None
+            and (run.purpose, run.engine) == ("strategy_search", "openevolve")
+            and isinstance(run.config, dict)
+            and run.config.get("schema_version")
+            in {
+                "mineagent.oe-structured-provider-run.v1",
+                "mineagent.oe-structured-provider-run.v2",
+            }
+        ):
+            from workers.research.oe_structured_queue import (
+                TASK_NAME as OE_TASK_NAME,
+            )
+            from workers.research.oe_structured_queue import (
+                require_dispatch_binding as require_oe_dispatch_binding,
+            )
+
+            try:
+                require_oe_dispatch_binding(session, run, event, settings)
+            except DomainError as exc:
+                if exc.code in {
+                    "oe_submission_disabled",
+                    "oe_runtime_unconfigured",
+                    "oe_model_unavailable",
+                    "oe_provider_disabled",
+                    "oe_model_pricing_unavailable",
+                }:
+                    # Operator disablement does not consume the original outbox.
+                    continue
+                raise
+            tasks[event.id] = OE_TASK_NAME
         else:
             require_legacy_run(run)
             tasks[event.id] = TASK_NAME

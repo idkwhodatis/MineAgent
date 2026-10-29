@@ -1,0 +1,27 @@
+**
+!packages/
+!packages/openevolve_structured/
+!packages/openevolve_structured/*.py
+# This sealed fixture image does not include the normal host/provider successor.
+packages/openevolve_structured/provider_*.py
+# Host-only admission/sampling validators are not part of the sealed fixture image.
+packages/openevolve_structured/host_events.py
+packages/openevolve_structured/sampling_validation.py
+packages/openevolve_structured/upload_contracts.py
+packages/openevolve_structured/checkpoint_object_identity.py
+!packages/factors/
+!packages/factors/__init__.py
+!packages/factors/contracts.py
+!packages/factors/execution_snapshot.py
+!packages/structured_factor_strategy/
+!packages/structured_factor_strategy/__init__.py
+!packages/structured_factor_strategy/contracts.py
+!packages/strategy_sdk/
+!packages/strategy_sdk/*.py
+!runtimes/
+!runtimes/openevolve_structured/
+!runtimes/openevolve_structured/*.py
+!runtimes/openevolve_structured/hook-manifest.json
+
+# Host-only versioned publication identity.
+packages/openevolve_structured/object_identity.py

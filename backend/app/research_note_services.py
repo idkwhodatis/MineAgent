@@ -255,6 +255,9 @@ def revision_public(session, row, resolver):
     retained = _inventory(_stored_pins(session, row))
     if digest(retained) != row.pins_sha256:
         raise integrity()
+    from backend.app.normal_oe_note_evidence import verify_revision_pins
+
+    verify_revision_pins(session, row)
     resolver.admit_snapshot(row.admission_snapshot)
     states, _ = _resolve(content, row.evidence_snapshot, resolver)
     restored = (
@@ -443,17 +446,24 @@ def _write(session, owner_id, body, key, settings, *, note_id=None):
     )
     session.add(row)
     session.flush()
+    added_pins = []
     for pin in inventory:
-        session.add(
-            ResearchNoteEvidencePin(
-                revision_id=row.id,
-                owner_id=owner_id,
-                resource_kind=pin["resource_kind"],
-                resource_id=UUID(pin["resource_id"]),
-                sha256=pin["sha256"],
-                details=pin["details"],
-            )
+        added_pin = ResearchNoteEvidencePin(
+            revision_id=row.id,
+            owner_id=owner_id,
+            resource_kind=pin["resource_kind"],
+            resource_id=UUID(pin["resource_id"]),
+            sha256=pin["sha256"],
+            details=pin["details"],
         )
+        session.add(added_pin)
+        added_pins.append(added_pin)
+    session.flush()
+    for pin in added_pins:
+        if pin.resource_kind == "normal_oe_execution":
+            from backend.app.normal_oe_note_evidence import attach_pin
+
+            attach_pin(session, pin)
     session.flush()
     return revision_public(session, row, resolver)
 

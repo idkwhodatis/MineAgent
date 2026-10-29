@@ -117,7 +117,7 @@ def assert_successor_fk_prelocks():
             self.statements.append("DROP TABLE " + name)
 
     for path in sorted(PATH.parent.glob("0*.py")):
-        if not "018" <= path.name[:3] <= "026":
+        if not "018" <= path.name[:3] <= "028":
             continue
         spec = importlib.util.spec_from_file_location("prelock_" + path.stem, path)
         module = importlib.util.module_from_spec(spec)

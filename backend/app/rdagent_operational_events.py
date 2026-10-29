@@ -79,8 +79,35 @@ def start_generation(session, fence, peer, *, logical_step):
         parse_bootstrap,
     )
 
-    bootstrap = parse_bootstrap(canonical_bytes(launch.bootstrap))
+    if config.schema_version == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_capability import require_workflow_revision
+        from packages.rdagent_adapter.workflow_bootstrap import parse_workflow_bootstrap
+
+        require_workflow_revision(session)
+        bootstrap = parse_workflow_bootstrap(canonical_bytes(launch.bootstrap))
+    else:
+        bootstrap = parse_bootstrap(canonical_bytes(launch.bootstrap))
     seed_args = {}
+    if config.schema_version == "mineagent.factor-research.v3":
+        from backend.app.rdagent_workflow_models import FactorWorkflowSubmission
+
+        row = session.scalar(
+            select(FactorWorkflowSubmission).filter_by(
+                owner_id=fence.owner_id, run_id=fence.run_id
+            )
+        )
+        if row is None:
+            raise DomainError(
+                "workflow_initial_generation",
+                "Workflow submission receipt required",
+                409,
+            )
+        seed_args = {
+            "workflow_submission_id": row.id,
+            "parent_factor_version_id": None
+            if bootstrap.seed is None
+            else bootstrap.seed.reference.factor_version_id,
+        }
     if isinstance(bootstrap, (RDSeededOperationalBootstrap, RDProviderSeededBootstrap)):
         seed_args = {
             "seeded_submission_id": bootstrap.seeded_submission_id,
@@ -144,7 +171,10 @@ def publish_generated_source(
             for member in selected
         ]
         _, config = require_research_spec(session, fence)
-        provider = config.schema_version == "mineagent.factor-research.v2"
+        provider = config.schema_version in (
+            "mineagent.factor-research.v2",
+            "mineagent.factor-research.v3",
+        )
         expected_protocol = (
             "mineagent.rdagent-provider-chat.v1"
             if provider

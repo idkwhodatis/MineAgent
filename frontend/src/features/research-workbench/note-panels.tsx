@@ -189,7 +189,12 @@ export function NoteReadOnly({
         evidence={note.content.evidence ?? []}
         resolutions={note.evidence}
         note={note}
-        strategyId={strategyId ?? note.content.restore?.strategy_version_id}
+        strategyId={
+          strategyId ??
+          (note.content.restore && "strategy_version_id" in note.content.restore
+            ? note.content.restore.strategy_version_id
+            : undefined)
+        }
       />
       {note.content.restore && (
         <JsonDetails

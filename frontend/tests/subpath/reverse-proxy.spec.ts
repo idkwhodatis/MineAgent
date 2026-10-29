@@ -180,6 +180,43 @@ test("real login, deep-link reload, assets and logout stay under runtime mount",
       (url) => url.pathname === `${prefix}/engine-runs`,
     );
   }
+  // New timeline deep links carry opaque stage identity in the fragment only.
+  // A missing workflow must never manufacture a timeline or a steering grant.
+  const workflowCapabilityResponse = await request.get(
+    api("/research-workflows/capabilities"),
+    { headers: authorization(auth) },
+  );
+  expect([200, 404]).toContain(workflowCapabilityResponse.status());
+  const workflowReadable =
+    workflowCapabilityResponse.status() === 200 &&
+    (await workflowCapabilityResponse.json()).can_read === true;
+  const fragment = `#research_workflow=${unknown}&research_stage=${unknown}`;
+  await page.goto(href(`/research-workflows/${unknown}${fragment}`));
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt) await page.reload();
+    await expect(
+      page.getByRole("link", { name: "Back to workflow entry", exact: true }),
+    ).toHaveAttribute("href", `${prefix}/research-workflows`);
+    if (workflowReadable)
+      await expect(page.getByText(/not found/i).first()).toBeVisible();
+    else
+      await expect(
+        page.getByText(
+          "Workflow history is not enabled by the installed server capability.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+    expect(new URL(page.url()).hash).toBe(fragment);
+    await expect(
+      page.getByRole("list", { name: "Recorded stage timeline" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", {
+        name: "Save observation-bound steer version",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+  }
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),

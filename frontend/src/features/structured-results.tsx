@@ -1,3 +1,4 @@
+import { NormalOEFactorUsage } from "./normal-oe-factor-usage";
 import { useState, type ReactNode } from "react";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -46,6 +47,11 @@ export function FactorStructuredExecutions({
   return (
     <ReadCapability>
       <FactorStructuredRecords factorId={factorId} versionId={versionId} />
+      <NormalOEFactorUsage
+        key={`${factorId}:${versionId}`}
+        factorId={factorId}
+        versionId={versionId}
+      />
     </ReadCapability>
   );
 }

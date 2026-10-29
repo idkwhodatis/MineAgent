@@ -59,7 +59,9 @@ class EngineRunSummary(BaseModel):
     purpose: Literal["factor_research"] = "factor_research"
     engine: Literal["rdagent"] = "rdagent"
     config_schema: Literal[
-        "mineagent.factor-research.v1", "mineagent.factor-research.v2"
+        "mineagent.factor-research.v1",
+        "mineagent.factor-research.v2",
+        "mineagent.factor-research.v3",
     ] = "mineagent.factor-research.v1"
     status: RunStatus
     generation: int

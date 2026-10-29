@@ -26,3 +26,7 @@
 !runtimes/factor_execution/runtime-draft-inventory.json
 !runtimes/factor_execution/Dockerfile.dockerignore
 !runtimes/factor_normalizer/Dockerfile.dockerignore
+
+# Exact protected structured-engine host verifier build inputs (not user data).
+!runtimes/structured_factor_engine/Dockerfile.dockerignore
+!runtimes/structured_factor_engine/trusted_parent.pth

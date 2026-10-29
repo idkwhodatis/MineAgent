@@ -17,6 +17,43 @@ from packages.rdagent_adapter.seed_parent import ResolvedSeedParent, SeedParentR
 
 def resolve_seed_parent(session, owner_id, parent_version_id, settings):
     """Reread owner+factor+version+object and exact bytes on every invocation."""
+
+    def read_parent(obj):
+        with source_storage_guard(settings.storage_root):
+            return read_verified(
+                settings.storage_root, obj.storage_key, obj.sha256, obj.size_bytes
+            )
+
+    return _resolve_seed_parent(session, owner_id, parent_version_id, read_parent)
+
+
+def resolve_seed_parent_under_native_guard(
+    session, owner_id, parent_version_id, settings
+):
+    """Historical exact reader under an already retained native namespace fence.
+
+    Not a caller skip-lock flag: the actual guard/root/fd is required before SQL,
+    before the bounded immutable byte read, and after the complete validation.
+    """
+    from backend.app.factor_native_io import read_exact, require_native_storage_guard
+
+    root = settings.storage_root
+    require_native_storage_guard(root)
+
+    def read_parent(obj):
+        require_native_storage_guard(root)
+        raw = read_exact(
+            root, obj.storage_key, obj.sha256, obj.size_bytes, maximum=131072
+        )
+        require_native_storage_guard(root)
+        return raw
+
+    value = _resolve_seed_parent(session, owner_id, parent_version_id, read_parent)
+    require_native_storage_guard(root)
+    return value
+
+
+def _resolve_seed_parent(session, owner_id, parent_version_id, read_parent):
     version = session.scalar(
         select(FactorVersion).filter_by(owner_id=owner_id, id=parent_version_id)
     )
@@ -55,10 +92,7 @@ def resolve_seed_parent(session, owner_id, parent_version_id, settings):
         definition = FactorDefinition.model_validate(version.definition)
         if definition.model_dump(mode="json") != version.definition:
             raise ValueError("Noncanonical parent definition")
-        with source_storage_guard(settings.storage_root):
-            raw = read_verified(
-                settings.storage_root, obj.storage_key, obj.sha256, obj.size_bytes
-            )
+        raw = read_parent(obj)
         source = raw.decode("utf-8")
         if source != version.code or len(raw) != obj.size_bytes:
             raise ValueError("Parent retained source differs from version")
@@ -200,6 +234,11 @@ def require_initial_seed(session, fence, *, submission_id, parent_factor_version
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ):
         raise DomainError(
             "factor_initial_parent", "Seeded generation schema unavailable", 409

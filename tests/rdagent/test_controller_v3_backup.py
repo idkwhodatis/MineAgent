@@ -173,7 +173,9 @@ def test_real_manifest_dispatch_new_controller_paths_only_new_version(tmp_path):
 
     assert research.manifest_keys(closure) == manifest_keys(row)
     closure["schema_version"] = research.SCHEMA_V10
-    with pytest.raises(ValueError, match="Controller v3 admission"):
+    with pytest.raises(
+        ValueError, match="Controller profile requires its exact versioned closure"
+    ):
         research.manifest_keys(closure)
 
 

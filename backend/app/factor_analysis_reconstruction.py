@@ -30,7 +30,9 @@ def reconstruct_direct_input(
     dataset,
     read_bytes,
     provider_config=False,
+    workflow_config=False,
     composed_controller=False,
+    declared_upload=False,
     seeded_controller=False,
 ):
     """Return data-only complete input after actual retained dataset/row rereads."""
@@ -40,7 +42,9 @@ def reconstruct_direct_input(
         spec["config"],
         owner_id=spec["owner_id"],
         provider_config=provider_config,
+        workflow_config=workflow_config,
         composed_controller=composed_controller,
+        run_id=spec["run_id"],
         seeded_controller=seeded_controller,
     )
     manifest = ExecutionSnapshotManifest.model_validate(publication["manifest"])
@@ -78,10 +82,21 @@ def reconstruct_direct_input(
     raw_manifest = read_bytes(expected_key + "/manifest.json", 2 * 1024**2)
     if marketdata_bytes(dataset["manifest"]) != raw_manifest:
         raise ValueError("Analysis dataset manifest row differs")
-    artifacts = {
-        name: read_bytes(expected_key + "/" + name, 32 * 1024**2)
-        for name in ("preview.json", "sessions.json")
-    }
+    names = ("preview.json", "sessions.json")
+    if dataset["manifest"].get("schema_version") == 3:
+        if declared_upload is not True:
+            raise ValueError("Declared upload is unavailable in historical closure")
+        from backend.app.declared_upload_io import artifact_inventory
+
+        names = artifact_inventory(dataset["manifest"])
+    artifacts = {}
+    total = len(raw_manifest)
+    for name in names:
+        value = read_bytes(expected_key + "/" + name, 32 * 1024**2)
+        total += len(value)
+        if total > 64 * 1024**2:
+            raise ValueError("Retained source exceeds total bound")
+        artifacts[name] = value
     source = parse_retained_source(
         dataset_id=UUID(did),
         manifest_sha256=dataset["content_sha256"],
@@ -89,6 +104,8 @@ def reconstruct_direct_input(
         artifacts=artifacts,
         policy=policy,
         input_names=("close",),
+        declared_upload=declared_upload,
+        owner_id=UUID(owner),
     )
     labels = derive_configured_labels(source, objective)
     if (

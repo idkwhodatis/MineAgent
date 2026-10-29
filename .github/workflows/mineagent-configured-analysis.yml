@@ -9,6 +9,12 @@ on:
       - "runtimes/factor_normalizer/**"
       - "runtimes/hostile_deadline/**"
       - "packages/rdagent_adapter/**"
+      - "packages/research_workflow/**"
+      - "packages/research_inputs/**"
+      - "tests/research_workflow/**"
+      - "tests/research_inputs/**"
+      - "tests/integration/*workflow*"
+      - "workers/research/workflow_tick.py"
       - "infra/application.Dockerfile*"
       - "infra/compose.full.yml"
       - "infra/compose.providers.yml"
@@ -76,6 +82,8 @@ jobs:
       MINEAGENT_CONFIGURED_ANALYSIS_REQUIRED: "1"
       MINEAGENT_RD_USER_FLOW_REQUIRED: "1"
       MINEAGENT_RD_PROVIDER_FLOW_REQUIRED: "1"
+      MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED: "1"
+      MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"
       MINEAGENT_RD_CREATE_BROWSER_REQUIRED: "1"
       MINEAGENT_CONFIGURED_BROWSER_REQUIRED: "1"
       RUN_BACKUP_RESTORE_DRILL: "1"
@@ -121,11 +129,30 @@ jobs:
           source=Path('var/numeric-private/provider.xml')
           summarize(source,Path('var/numeric-proof/provider-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==137
+          assert len(cases)==253
           names={case.get('name') for case in cases}
           assert {'test_actual_sdk_route_and_usage[chat]', 'test_actual_sdk_route_and_usage[embedding]', 'test_actual_identity_callback_precedes_request_and_matches_result', 'test_unconfirmed_group_never_records_stop_or_returns_result'} <= names
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYPROVIDER
+          test "$status" = 0
+      - name: Require complete workflow and input-source contracts
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          python -m pytest tests/research_workflow tests/research_inputs tests/workflow_oe -q -p no:cacheprovider \
+            --junitxml=var/numeric-private/workflow-contracts.xml || status=$?
+          python - <<'PYWORKFLOW'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/workflow-contracts.xml')
+          summarize(source,Path('var/numeric-proof/workflow-contract-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==825
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYWORKFLOW
           test "$status" = 0
       - name: Build locked frontend for the genuine completed-result browser
         run: |
@@ -304,6 +331,44 @@ jobs:
           assert len([n for n in names if n.startswith('test_provider_request_and_conservative_amount_match_python[')])==8
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYRESULT
+          test "$status" = 0
+      # Three genuine children across both cases: twelve fixed numeric/controller/
+      # analysis units; deterministic normalization adds none. Restore adds no execution.
+      - name: Require installed workflow predicates and actual two-policy browser restore
+        timeout-minutes: 40
+        shell: bash
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          status=0
+          python -m pytest tests/integration/test_rd_workflow_config_predicate.py \
+            tests/integration/test_rd_workflow_provider_dispatch.py \
+            tests/integration/test_rd_workflow_declaration_graph.py \
+            tests/integration/test_rdagent_workflow_user_flow.py -q \
+            --junitxml=var/numeric-private/workflow-runtime.xml || status=$?
+          python - <<'PYWORKFLOW'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/workflow-runtime.xml')
+          summarize(source,Path('var/numeric-proof/workflow-runtime-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==132
+          names={case.get('name') for case in cases}
+          assert len(names)==132
+          assert len([n for n in names if n.startswith('test_installed_workflow_config_predicate_matches_strict_python[')])==112
+          assert len([n for n in names if n.startswith('test_installed_workflow_source_dispatch_preserves_exact_old_provider[')])==9
+          assert 'test_workflow_manual_declaration_and_deferred_forgery_guards_actual_pg' in names
+          assert len([n for n in names if n.startswith('test_actual_child_template_comparison_preserves_layout_only[')])==4
+          assert len([n for n in names if n.startswith('test_workflow_explicit_composed_floor_is_preserved[')])==4
+          for policy in ('default-off-waits','explicit-opt-in-two-children'):
+              assert f'test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results[{policy}]' in names
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYWORKFLOW
           test "$status" = 0
       - name: Confirm exact numeric units are absent without label-based removal
         if: always()

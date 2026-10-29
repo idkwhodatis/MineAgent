@@ -128,12 +128,16 @@ def validate_closure(
         not in {
             SCHEMA_V2: {"mineagent.research-restore-closure.v6"},
             SCHEMA_V3: {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
                 "mineagent.research-restore-closure.v7",
                 "mineagent.research-restore-closure.v8",
                 "mineagent.research-restore-closure.v9",
                 "mineagent.research-restore-closure.v10",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
                 "mineagent.research-restore-closure.v11",
-                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v15",
             },
         }[closure["schema_version"]]
     ):
@@ -141,19 +145,35 @@ def validate_closure(
     if (
         research_closure.get("schema_version")
         in {
+            "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v16",
             "mineagent.research-restore-closure.v10",
             "mineagent.research-restore-closure.v11",
-            "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v13",
+            "mineagent.research-restore-closure.v14",
+            "mineagent.research-restore-closure.v15",
         }
         or rd_source_closure.get("schema_version")
         in {
-            "mineagent.rd-source-restore-closure.v6",
             "mineagent.rd-source-restore-closure.v7",
+            "mineagent.rd-source-restore-closure.v11",
+            "mineagent.rd-source-restore-closure.v6",
+            "mineagent.rd-source-restore-closure.v8",
+            "mineagent.rd-source-restore-closure.v9",
+            "mineagent.rd-source-restore-closure.v10",
         }
     ) and (
         research_closure.get("schema_version"),
         rd_source_closure.get("schema_version"),
     ) not in {
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
         (
             "mineagent.research-restore-closure.v10",
             "mineagent.rd-source-restore-closure.v5",
@@ -163,11 +183,19 @@ def validate_closure(
             "mineagent.rd-source-restore-closure.v6",
         ),
         (
-            "mineagent.research-restore-closure.v12",
-            "mineagent.rd-source-restore-closure.v7",
+            "mineagent.research-restore-closure.v13",
+            "mineagent.rd-source-restore-closure.v8",
+        ),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
+        ),
+        (
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
         ),
     }:
-        raise ValueError("Seeded native closure requires exact RD v5")
+        raise ValueError("Seeded native closure requires exact versioned RD source")
     physical = {row["path"]: row for row in inventory}
     if len(physical) != len(inventory):
         raise ValueError("Duplicate physical paths")
@@ -321,6 +349,28 @@ def validate_closure(
         config = parse_snapshot_config(
             specs[0]["config"],
             owner_id=specs[0]["owner_id"],
+            run_id=specs[0]["run_id"],
+            workflow_config=(
+                closure["schema_version"] == SCHEMA_V3
+                and (
+                    research_closure.get("schema_version"),
+                    rd_source_closure.get("schema_version"),
+                )
+                in {
+                    (
+                        "mineagent.research-restore-closure.v16",
+                        "mineagent.rd-source-restore-closure.v11",
+                    ),
+                    (
+                        "mineagent.research-restore-closure.v14",
+                        "mineagent.rd-source-restore-closure.v9",
+                    ),
+                    (
+                        "mineagent.research-restore-closure.v15",
+                        "mineagent.rd-source-restore-closure.v10",
+                    ),
+                }
+            ),
             provider_config=(
                 closure["schema_version"] == SCHEMA_V3
                 and (
@@ -331,6 +381,10 @@ def validate_closure(
                     (
                         "mineagent.research-restore-closure.v10",
                         "mineagent.rd-source-restore-closure.v5",
+                    ),
+                    (
+                        "mineagent.research-restore-closure.v13",
+                        "mineagent.rd-source-restore-closure.v8",
                     ),
                     (
                         "mineagent.research-restore-closure.v11",
@@ -344,11 +398,21 @@ def validate_closure(
             ),
             composed_controller=research_closure.get("schema_version")
             in {
-                "mineagent.research-restore-closure.v11",
                 "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v16",
+                "mineagent.research-restore-closure.v11",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
             },
             seeded_controller=research_closure.get("schema_version")
-            == "mineagent.research-restore-closure.v12",
+            in {
+                "mineagent.research-restore-closure.v12",
+                "mineagent.research-restore-closure.v13",
+                "mineagent.research-restore-closure.v14",
+                "mineagent.research-restore-closure.v15",
+                "mineagent.research-restore-closure.v16",
+            },
         )
         expected = research_snapshot_input(
             config,

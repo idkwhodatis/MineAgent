@@ -60,6 +60,7 @@ def validate_structured_strategy_snapshot(
     closure = _closure(snapshot, capabilities)
     if closure is None:
         return None
+    from backend.app.oe_structured_operations import _schema as normal_oe_schema
     from backend.app.structured_factor_backup import validate_closure
 
     return validate_closure(
@@ -69,4 +70,9 @@ def validate_structured_strategy_snapshot(
         direct_analysis_closure=snapshot["direct_analysis_closure"],
         read_bytes=read_bytes,
         maximum_rows=maximum_rows,
+        **(
+            {"oe_structured_links_pending": True}
+            if normal_oe_schema(capabilities) is not None
+            else {}
+        ),
     )

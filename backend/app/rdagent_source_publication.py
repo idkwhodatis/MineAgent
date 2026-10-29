@@ -58,6 +58,7 @@ def _native_aware_inventory(session, fd, fence, settings):
         allow_staging=True,
         native=native,
         native_entries=entries,
+        storage_root=settings.storage_root,
     )
     if native:
         verify_native_journals(session, entries, settings)

@@ -1,0 +1,181 @@
+"""Flush-only workflow-origin child persistence; caller owns graph/CAS/quota guards."""
+
+from uuid import uuid4
+
+from sqlalchemy import null
+
+from backend.app.experiment_services import _identities
+from backend.app.models import (
+    DatasetVersion,
+    DataUsageExposure,
+    OutboxEvent,
+    ResearchRun,
+)
+from backend.app.oe_structured_models import OEStructuredSpec, OEStructuredSubmission
+from backend.app.oe_workflow_submission_schemas import (
+    WorkflowStructuredSubmissionReceipt,
+)
+from backend.app.research_broker_models import ResearchBudgetControl
+from backend.app.services import DomainError
+from backend.app.structured_factor_models import StructuredStrategyVersion
+from packages.factors.contracts import canonical_bytes, digest
+from packages.openevolve_structured.candidate import (
+    CandidateDocument,
+    TypedFrozenCandidateDomain,
+)
+from packages.openevolve_structured.contracts import StructuredSearchSpec
+from packages.openevolve_structured.workflow_run import WorkflowStructuredRunConfig
+from packages.research_runtime.budget_contracts import BudgetVector
+
+
+def persist_workflow_child(
+    session,
+    owner_id,
+    key,
+    request,
+    checked,
+    fixed,
+    runtime,
+    binding,
+    data,
+    *,
+    settings,
+    admission,
+):
+    from backend.app.research_input_storage import require_publication_admission
+
+    require_publication_admission(session, settings, admission)
+    run_id = request.workflow_context.child_run_id
+    version_id, submission_id = uuid4(), uuid4()
+    program = request.seed_parameters.program(data.manifest.input.window)
+    search = StructuredSearchSpec(
+        owner_id=owner_id,
+        run_id=run_id,
+        execution_binding_id=run_id,
+        execution_binding_sha256=digest(fixed),
+        domain=TypedFrozenCandidateDomain(seed_program=program),
+        seed_candidate_sha256=digest(CandidateDocument(program=program)),
+        objective=request.objective,
+        maximum_mutation_slots=request.maximum_mutation_slots,
+    )
+    config = WorkflowStructuredRunConfig(
+        search=search,
+        fixed_inputs=fixed,
+        model_binding=binding,
+        runtime=runtime.runtime,
+        budget=request.budget,
+        workflow_request_sha256=request.sha256,
+        workflow_context=request.workflow_context,
+    )
+    version = StructuredStrategyVersion(
+        id=version_id,
+        owner_id=owner_id,
+        parent_version_id=None,
+        program=program.model_dump(mode="json"),
+        program_canonical=canonical_bytes(program).decode("ascii"),
+        program_sha256=digest(program),
+    )
+    run = ResearchRun(
+        id=run_id,
+        owner_id=owner_id,
+        idempotency_key=key,
+        request_sha256=digest(config),
+        config=config.model_dump(mode="json"),
+        purpose="strategy_search",
+        engine="openevolve",
+        dataset_version_id=fixed.dataset_version_id,
+        strategy_version_id=None,
+        submission_binding=null(),
+        status="queued",
+        generation=1,
+        active_attempt_id=None,
+        research_image_digest=runtime.runtime.controller_image_id,
+    )
+    session.add_all((version, run))
+    session.flush()
+    submission = OEStructuredSubmission(
+        id=submission_id,
+        owner_id=owner_id,
+        run_id=run_id,
+        idempotency_key=key,
+        request_canonical=canonical_bytes(request).decode("ascii"),
+        request_sha256=request.sha256,
+        preflight_sha256=checked.preflight_sha256,
+        config_sha256=digest(config),
+        origin="workflow_stage",
+    )
+    session.add(submission)
+    session.flush()
+    session.add(
+        OEStructuredSpec(
+            run_id=run_id,
+            owner_id=owner_id,
+            submission_id=submission_id,
+            request=request.model_dump(mode="json"),
+            request_canonical=submission.request_canonical,
+            request_sha256=request.sha256,
+            preflight_sha256=checked.preflight_sha256,
+            config=config.model_dump(mode="json"),
+            config_canonical=canonical_bytes(config).decode("ascii"),
+            config_sha256=digest(config),
+            snapshot_id=fixed.snapshot_id,
+            dataset_id=fixed.dataset_version_id,
+            seed_program_version_id=version_id,
+        )
+    )
+    dataset = session.get(DatasetVersion, fixed.dataset_version_id)
+    if (
+        dataset is None
+        or dataset.owner_id != owner_id
+        or dataset.content_sha256 != fixed.dataset_sha256
+    ):
+        raise DomainError("preflight_changed", "Owned retained dataset differs", 409)
+    session.add(
+        DataUsageExposure(
+            id=uuid4(),
+            owner_id=owner_id,
+            dataset_version_id=dataset.id,
+            run_id=run_id,
+            experiment_id=None,
+            split_version_id=None,
+            source_key="oe-structured-source:" + str(run_id),
+            identities=_identities(session, dataset),
+            start_date=dataset.start_date,
+            end_date=dataset.end_date,
+            purpose="oe_structured_execution_source",
+            provenance={
+                "schema_version": "mineagent.oe-structured-source-exposure.v1",
+                "config_sha256": digest(config),
+                "fixed_input_sha256": digest(fixed),
+                "snapshot_id": str(fixed.snapshot_id),
+                "dataset_manifest_sha256": fixed.dataset_sha256,
+                "extent": "whole_retained_dataset",
+                "qualification": (
+                    "user_declared_fixed_snapshot_not_verified_pit_or_causal_gain"
+                    if fixed.market_qualification == "user_declaration_unverified"
+                    else "synthetic_fixed_snapshot_not_verified_pit_or_causal_gain"
+                ),
+            },
+        )
+    )
+    session.add(
+        ResearchBudgetControl(
+            id=uuid4(),
+            owner_id=owner_id,
+            run_id=run_id,
+            limits=config.budget.model_dump(),
+            used=BudgetVector().model_dump(),
+            reserved=BudgetVector().model_dump(),
+        )
+    )
+    session.add(OutboxEvent(id=uuid4(), run_id=run_id, generation=1))
+    session.flush()
+    return WorkflowStructuredSubmissionReceipt(
+        id=submission_id,
+        run_id=run_id,
+        workflow_id=request.workflow_context.inputs.binding.workflow_id,
+        stage_id=request.workflow_context.inputs.binding.stage_id,
+        request_sha256=request.sha256,
+        preflight_sha256=checked.preflight_sha256,
+        workflow_context_sha256=digest(request.workflow_context),
+    )

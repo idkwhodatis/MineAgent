@@ -91,9 +91,26 @@ def validate_controller_closure_unit(
     *,
     research_schema,
     seed_context=None,
+    workflow_context=None,
 ):
     if (research_schema, rd_source_closure.get("schema_version")) not in {
+        (
+            "mineagent.research-restore-closure.v12",
+            "mineagent.rd-source-restore-closure.v7",
+        ),
+        (
+            "mineagent.research-restore-closure.v16",
+            "mineagent.rd-source-restore-closure.v11",
+        ),
         (SCHEMA, RD_SCHEMA),
+        (
+            "mineagent.research-restore-closure.v14",
+            "mineagent.rd-source-restore-closure.v9",
+        ),
+        (
+            "mineagent.research-restore-closure.v13",
+            "mineagent.rd-source-restore-closure.v8",
+        ),
         (
             "mineagent.research-restore-closure.v10",
             "mineagent.rd-source-restore-closure.v5",
@@ -119,17 +136,21 @@ def validate_controller_closure_unit(
             "mineagent.rd-source-restore-closure.v6",
         ),
         (
-            "mineagent.research-restore-closure.v12",
-            "mineagent.rd-source-restore-closure.v7",
+            "mineagent.research-restore-closure.v15",
+            "mineagent.rd-source-restore-closure.v10",
         ),
     }:
         raise ValueError("Explicit research-v5 and RD source closure required")
     from collections.abc import Mapping
 
     if research_schema in {
-        "mineagent.research-restore-closure.v10",
-        "mineagent.research-restore-closure.v11",
         "mineagent.research-restore-closure.v12",
+        "mineagent.research-restore-closure.v16",
+        "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v13",
+        "mineagent.research-restore-closure.v14",
+        "mineagent.research-restore-closure.v11",
+        "mineagent.research-restore-closure.v15",
     }:
         if not isinstance(seed_context, Mapping):
             raise ValueError(
@@ -137,6 +158,15 @@ def validate_controller_closure_unit(
             )
     elif seed_context is not None:
         raise ValueError("Historical controller cannot acquire seed authority")
+    workflow = research_schema in {
+        "mineagent.research-restore-closure.v16",
+        "mineagent.research-restore-closure.v14",
+        "mineagent.research-restore-closure.v15",
+    }
+    if workflow and not isinstance(workflow_context, Mapping):
+        raise ValueError("Actual workflow context required before controller bytes")
+    if not workflow and workflow_context is not None:
+        raise ValueError("Historical controller cannot acquire workflow context")
     from backend.app.rdagent_profile_backup import require_admission_revision
 
     require_admission_revision(row.get("profile"), research_schema)
@@ -246,9 +276,13 @@ def validate_controller_closure_unit(
     if (
         research_schema
         not in {
-            "mineagent.research-restore-closure.v10",
-            "mineagent.research-restore-closure.v11",
             "mineagent.research-restore-closure.v12",
+            "mineagent.research-restore-closure.v16",
+            "mineagent.research-restore-closure.v10",
+            "mineagent.research-restore-closure.v13",
+            "mineagent.research-restore-closure.v14",
+            "mineagent.research-restore-closure.v11",
+            "mineagent.research-restore-closure.v15",
         }
         and run["config"].get("schema_version") != "mineagent.factor-research.v1"
     ):
@@ -256,7 +290,22 @@ def validate_controller_closure_unit(
     from backend.app.rdagent_profile_backup import require_config_revision
 
     require_config_revision(run["config"], research_schema=research_schema)
-    config = require_source_identity(run_obj)
+    if (
+        workflow
+        and run["config"].get("schema_version") == "mineagent.factor-research.v3"
+    ):
+        from packages.rdagent_adapter.workflow_identity import (
+            require_workflow_source_identity,
+        )
+
+        run_obj.id = UUID(run["id"])
+        config = require_workflow_source_identity(run_obj)
+        prepared = workflow_context.get(run["id"])
+        if prepared is None or prepared.config != config:
+            raise ValueError("Actual workflow controller declaration differs")
+    else:
+        prepared = None
+        config = require_source_identity(run_obj)
     if admission.profile != getattr(config, "controller_profile", None) and (
         admission.profile
         in {"mineagent.rdagent-orchestrator.v3", "mineagent.rdagent-orchestrator.v4"}
@@ -295,10 +344,22 @@ def validate_controller_closure_unit(
         "config_sha256": config.sha256,
         "input_sha256": config.input.sha256,
     }
-    if research_schema in {
-        "mineagent.research-restore-closure.v10",
-        "mineagent.research-restore-closure.v11",
+    if prepared is not None:
+        from packages.rdagent_adapter.workflow_bootstrap import (
+            RDWorkflowOperationalBootstrap,
+        )
+
+        bootstrap = RDWorkflowOperationalBootstrap(
+            **bootstrap_values, seed=prepared.parent
+        )
+    elif research_schema in {
         "mineagent.research-restore-closure.v12",
+        "mineagent.research-restore-closure.v16",
+        "mineagent.research-restore-closure.v10",
+        "mineagent.research-restore-closure.v13",
+        "mineagent.research-restore-closure.v14",
+        "mineagent.research-restore-closure.v11",
+        "mineagent.research-restore-closure.v15",
     }:
         from backend.app.rdagent_seed_backup import build_expected_bootstrap
 

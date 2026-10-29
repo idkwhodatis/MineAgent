@@ -120,6 +120,33 @@ def resolve_dataset_preflight(
         )
         if manifest != row.manifest:
             _fail()
+        declared = manifest.get("schema_version") == 3
+        if declared:
+            from backend.app.declared_upload_io import read_dataset_bytes
+            from backend.app.declared_upload_services import (
+                require_revision,
+                verify_basket_relations,
+            )
+
+            require_revision(session)
+            verify_basket_relations(session, owner_id, row)
+            raw, artifacts = read_dataset_bytes(settings.storage_root, row)
+            source = parse_retained_source(
+                dataset_id=row.id,
+                manifest_sha256=row.content_sha256,
+                manifest_bytes=raw,
+                artifacts=artifacts,
+                policy=policy,
+                input_names=input_names,
+                declared_upload=True,
+                owner_id=owner_id,
+            )
+            if (row.start_date, row.end_date) != (
+                source.source_start,
+                source.source_end,
+            ):
+                _fail()
+            return source
         artifacts = {}
         total = len(raw)
         for name in ARTIFACTS:

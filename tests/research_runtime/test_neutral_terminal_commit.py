@@ -82,10 +82,12 @@ def arranged(monkeypatch, family="structured_succeeded"):
     factory = sessionmaker(bind=db, class_=Rows)
     event.listen(Rows, "after_commit", lambda _: commits.append(True))
     monkeypatch.setattr(lifecycle, "_try_neutral_lock", lambda *a: None)
+    import backend.app.oe_structured_identity as structured_oe
     import backend.app.structured_factor_services as structured
     import packages.openevolve_adapter.persisted_identity as oe
     import packages.rdagent_adapter.persisted_identity as rd
 
+    monkeypatch.setattr(structured_oe, "require_run_identity", lambda *_: None)
     monkeypatch.setattr(structured, "require_structured_identity", lambda *_: None)
     monkeypatch.setattr(rd, "require_source_identity", lambda *_: None)
     monkeypatch.setattr(oe, "require_search_identity", lambda *_: None)

@@ -18,8 +18,15 @@ from backend.app.services import DomainError
 from packages.rdagent_adapter.steer import SteerSnapshot
 
 
-@pytest.fixture
-def preflight_inputs(request_body, monkeypatch):
+@pytest.fixture(
+    params=[
+        "026_rd_seeded_submissions",
+        "028_oe_structured_search",
+        "029_research_workflow",
+    ]
+)
+def preflight_inputs(request_body, monkeypatch, request):
+    revision = request.param
     owner = uuid4()
     request = RDProviderSubmissionRequest.model_validate(
         {
@@ -51,7 +58,7 @@ def preflight_inputs(request_body, monkeypatch):
 
     monkeypatch.setattr(module, "resolve_provider_declaration", unavailable)
     session = SimpleNamespace(
-        scalars=lambda *a: SimpleNamespace(all=lambda: ["026_rd_seeded_submissions"])
+        scalars=lambda *a: SimpleNamespace(all=lambda: [revision])
     )
     return owner, request, snapshot, base, session
 
@@ -106,3 +113,58 @@ def test_queued_guidance_reads_immutable_versions_not_active_resolver(
     )
     assert calls == [(owner, snapshot)]
     assert result.steer_snapshot == snapshot
+
+
+def test_seeded_native_preflight_reuses_real_guard_without_source_flock(
+    preflight_inputs, tmp_path, monkeypatch
+):
+    import fcntl
+
+    from backend.app import rdagent_seed_services as seeds
+    from backend.app.factor_native_io import (
+        NativeStorageError,
+        native_storage_guard,
+        require_native_storage_guard,
+    )
+    from backend.app.rdagent_provider_submission_contracts import RDProviderSeedRequest
+    from packages.rdagent_adapter.seed_parent import SeedParentReference
+
+    owner, request, _, _, session = preflight_inputs
+    request = RDProviderSeedRequest.model_validate(
+        {
+            **request.model_dump(mode="python"),
+            "schema_version": "mineagent.rdagent-provider-seeded-submission.v1",
+            "parent_factor_version_id": uuid4(),
+        }
+    )
+    reference = SeedParentReference(
+        owner_id=owner,
+        factor_id=uuid4(),
+        factor_version_id=request.parent_factor_version_id,
+        ordinal=1,
+        code_object_id=uuid4(),
+        code_sha256="1" * 64,
+        code_size_bytes=1,
+        definition_sha256="2" * 64,
+        source_provenance_sha256="3" * 64,
+    )
+    settings = SimpleNamespace(storage_root=tmp_path)
+    (tmp_path / "factors").mkdir()
+
+    def reread(s, own, identity, settings):
+        require_native_storage_guard(settings.storage_root)
+        assert (s, own, identity) == (session, owner, reference.factor_version_id)
+        return SimpleNamespace(reference=reference)
+
+    monkeypatch.setattr(seeds, "resolve_seed_parent_under_native_guard", reread)
+    monkeypatch.setattr(
+        module, "resolve_seed_parent", lambda *a: pytest.fail("No nested source flock")
+    )
+    with pytest.raises(NativeStorageError):
+        module.provider_preflight_under_native_guard(session, owner, request, settings)
+    with native_storage_guard(tmp_path), monkeypatch.context() as patch:
+        patch.setattr(fcntl, "flock", lambda *a: pytest.fail("No reacquire"))
+        result = module.provider_preflight_under_native_guard(
+            session, owner, request, settings
+        )
+        assert result.parent == reference

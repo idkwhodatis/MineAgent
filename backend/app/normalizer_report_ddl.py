@@ -42,46 +42,37 @@ def require_report_capability(session):
     revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
     if len(revisions) != 1:
         raise ProcessError("numeric_report_schema_unsupported")
+    # The installed revision owns its exact triple. A valid successor triple
+    # must not grant report access to an older database's inventory.
+    versions_by_revision = {
+        "021_execution_snapshots": (1, 2, 6),
+        "022_factor_analysis": (2, 3, 7),
+        "023_rd_submissions": (2, 3, 7),
+        "024_openevolve_initial": (2, 3, 8),
+        "025_structured_factor_strategy": (2, 3, 9),
+        "026_rd_seeded_submissions": (2, 3, 10),
+        "027_rd_controller_v3": (2, 3, 11),
+        "027a_contract_repairs": (2, 3, 11),
+        "027b_provider_material": (2, 3, 11),
+        "027c_seeded_controller_v4": (2, 3, 12),
+        "028_oe_structured_search": (2, 3, 13),
+        "029_research_workflow": (2, 3, 14),
+        "030_declared_upload_basket": (2, 3, 15),
+        "031_workflow_structured_stage": (2, 3, 16),
+        "032_normal_oe_note_pins": (2, 3, 16),
+    }
+    versions = versions_by_revision.get(revisions[0])
+    if versions is None:
+        raise ProcessError("numeric_report_schema_unsupported")
     capability = capabilities_for(revisions[0])
+    expected = (
+        f"mineagent.execution-snapshot-restore-closure.v{versions[0]}",
+        f"mineagent.native-hdf-restore-closure.v{versions[1]}",
+        f"mineagent.research-restore-closure.v{versions[2]}",
+    )
     if (
         getattr(capability, "execution_snapshot_schema", None),
         capability.native_closure_schema,
         capability.research_closure_schema,
-    ) not in {
-        (
-            "mineagent.execution-snapshot-restore-closure.v1",
-            "mineagent.native-hdf-restore-closure.v2",
-            "mineagent.research-restore-closure.v6",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v7",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v8",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v9",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v10",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v11",
-        ),
-        (
-            "mineagent.execution-snapshot-restore-closure.v2",
-            "mineagent.native-hdf-restore-closure.v3",
-            "mineagent.research-restore-closure.v12",
-        ),
-    }:
+    ) != expected:
         raise ProcessError("numeric_report_schema_unsupported")

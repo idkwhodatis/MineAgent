@@ -59,6 +59,37 @@ def provider_budget_floor(binding, *, profile=LEGACY_CONTROLLER_PROFILE):
 def provider_preflight(
     session, owner_id, request, settings, *, accepted_steer_snapshot=None
 ):
+    return _provider_preflight(
+        session,
+        owner_id,
+        request,
+        settings,
+        accepted_steer_snapshot=accepted_steer_snapshot,
+        seed_reader=resolve_seed_parent,
+    )
+
+
+def provider_preflight_under_native_guard(session, owner_id, request, settings):
+    """Internal workflow declaration using an actually held native guard."""
+    from backend.app.factor_native_io import require_native_storage_guard
+    from backend.app.rdagent_seed_services import resolve_seed_parent_under_native_guard
+
+    require_native_storage_guard(settings.storage_root)
+    result = _provider_preflight(
+        session,
+        owner_id,
+        request,
+        settings,
+        accepted_steer_snapshot=None,
+        seed_reader=resolve_seed_parent_under_native_guard,
+    )
+    require_native_storage_guard(settings.storage_root)
+    return result
+
+
+def _provider_preflight(
+    session, owner_id, request, settings, *, accepted_steer_snapshot, seed_reader
+):
     request = parse_provider_request(request.model_dump(mode="json"))
     base = preflight(session, owner_id, request.research_declaration(), settings)
     ignored = {
@@ -90,9 +121,7 @@ def provider_preflight(
         ):
             raise DomainError("steer_snapshot_drift", "Accepted selection differs", 409)
     parent = (
-        resolve_seed_parent(
-            session, owner_id, request.parent_factor_version_id, settings
-        )
+        seed_reader(session, owner_id, request.parent_factor_version_id, settings)
         if isinstance(request, RDProviderSeedRequest)
         else None
     )
@@ -168,6 +197,11 @@ def provider_preflight(
         ["027a_contract_repairs"],
         ["027b_provider_material"],
         ["027c_seeded_controller_v4"],
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -177,6 +211,11 @@ def provider_preflight(
             ["027a_contract_repairs"],
             ["027b_provider_material"],
             ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
         )
     ):
         reasons.append(
@@ -190,7 +229,14 @@ def provider_preflight(
         and isinstance(request, RDProviderSeedRequest)
         and runtime.seeded_controller_profile is not None
         and session.scalars(text("SELECT version_num FROM alembic_version")).all()
-        != ["027c_seeded_controller_v4"]
+        not in (
+            ["027c_seeded_controller_v4"],
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
+        )
     ):
         reasons.append(
             ProviderPreflightReason(

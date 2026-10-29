@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { InputOriginGroups } from "../../src/features/engine-inputs";
-import { groupInputs } from "../../src/lib/engine-inputs";
+import { groupInputs, groupWorkflowInputs } from "../../src/lib/engine-inputs";
 import type {
   ResearchInputItem,
   ResearchInputs,
@@ -167,4 +167,117 @@ it("does not present a stray snapshot as authenticated user guidance", () => {
     }),
   );
   expect(html).not.toContain("Frozen submission steer inputs");
+});
+
+it("workflow selections are distinct, unpinned receipts after user submissions", () => {
+  const workflow = {
+    ...item("workflow_stage", "stage"),
+    provenance: "workflow_stage_submission_receipt" as const,
+  };
+  const groups = groupInputs([...values, workflow]);
+  expect(groups.map((g) => g.origin)).toEqual([
+    "user_provided",
+    "workflow_stage",
+    "agent_generated",
+    "unknown",
+  ]);
+  expect(groups[1].items[0].default_pinned).toBe(false);
+  const html = renderToStaticMarkup(
+    createElement(InputOriginGroups, { data: { ...data, items: [workflow] } }),
+  );
+  expect(html).toContain("Workflow-selected frozen inputs");
+  expect(html).not.toContain('aria-label="Pinned user input"');
+});
+it("manual guidance is pinned first without rewriting actual frozen input order", () => {
+  const ref = {
+    record_id: "record",
+    version_id: "version",
+    content_sha256: "a".repeat(64),
+  };
+  const inputs = [
+    {
+      ref: { ...ref, origin: "experiment_feedback_proposal" as const },
+      kind: "direction" as const,
+      title: "feedback",
+      text: "derived",
+      text_sha256: "b".repeat(64),
+    },
+    {
+      ref: {
+        ...ref,
+        origin: "manual_user_submission" as const,
+        version_id: "manual",
+      },
+      kind: "hypothesis" as const,
+      title: "user",
+      text: "manual",
+      text_sha256: "c".repeat(64),
+    },
+  ];
+  const before = JSON.stringify(inputs);
+  const groups = groupWorkflowInputs(inputs);
+  expect(groups[0].items[0].position).toBe(2);
+  expect(groups[2].items[0].position).toBe(1);
+  expect(JSON.stringify(inputs)).toBe(before);
+});
+
+it("renders frozen manual-first workflow provenance across refresh without approving external text", () => {
+  const refs = [
+    "normalized_external_proposal",
+    "manual_user_submission",
+    "experiment_feedback_proposal",
+  ] as const;
+  const row: ResearchInputItem = {
+    ...item("workflow_stage", "stage"),
+    provenance: "workflow_stage_submission_receipt",
+    workflow_inputs_sha256: "a".repeat(64),
+    workflow_inputs: {
+      binding: {
+        owner_id: "owner",
+        workflow_id: "workflow",
+        stage_id: "stage",
+        input_revision_id: "revision",
+        input_sha256: "a".repeat(64),
+        definition_sha256: "b".repeat(64),
+      },
+      selection: {
+        owner_id: "owner",
+        workflow_id: "workflow",
+        revision_id: "revision",
+      },
+      inputs: refs.map((origin, index) => ({
+        ref: {
+          origin,
+          record_id: `record-${index}`,
+          version_id: `version-${index}`,
+          content_sha256: "c".repeat(64),
+        },
+        kind: "direction",
+        title: origin,
+        text:
+          origin === "normalized_external_proposal"
+            ? "<script>untrusted</script>"
+            : origin,
+        text_sha256: "d".repeat(64),
+      })),
+    },
+  };
+  const value = { ...data, items: [row] };
+  const before = JSON.stringify(value);
+  const render = (input: ResearchInputs) =>
+    renderToStaticMarkup(createElement(InputOriginGroups, { data: input }));
+  const html = render(value);
+  expect(render(JSON.parse(before))).toBe(html);
+  expect(JSON.stringify(value)).toBe(before);
+  expect(html.indexOf("User manual guidance (pinned)")).toBeLessThan(
+    html.indexOf("Normalized external evidence"),
+  );
+  expect(html).toContain("Frozen position 2");
+  expect(html).toContain("Frozen position 1");
+  expect(html).toContain("&lt;script&gt;untrusted&lt;/script&gt;");
+  expect(html).not.toContain("<script>");
+  expect(html).not.toContain('aria-label="Pinned user input"');
+  expect(html.match(/aria-label="Pinned manual guidance"/g)).toHaveLength(1);
+  expect(html).toContain("Selection does not prove model consumption");
+  expect(html).not.toContain("<button");
 });

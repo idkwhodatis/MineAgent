@@ -257,6 +257,16 @@ def reconcile_attempt_units(session, run_id, attempt_id, generation):
     for row in rows:
         if (
             row.schema_version == "mineagent.process-admission.v2"
+            and row.profile == "mineagent.oe-structured-orchestrator.v1"
+        ):
+            from backend.app.oe_structured_controller_stop import (
+                controller_stop_committed,
+            )
+
+            stopped += int(controller_stop_committed(session, row))
+            continue
+        if (
+            row.schema_version == "mineagent.process-admission.v2"
             and row.profile == "mineagent.factor-strategy-engine.v1"
         ):
             from backend.app.structured_process_services import (

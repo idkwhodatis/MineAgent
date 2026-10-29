@@ -33,6 +33,7 @@ from backend.app.rdagent_snapshot_config import (
     composed_controller_in_session,
     provider_config_in_session,
     seeded_controller_in_session,
+    workflow_config_in_session,
 )
 from packages.factors.contracts import canonical_bytes, digest
 from packages.qlib_adapter.direct_wire import read_result
@@ -132,75 +133,80 @@ class HistoricalDirectAnalysis:
 
 def read_historical_direct_analysis(factory, owner_id, analysis_id, settings):
     with historical_session(factory, owner_id, settings) as session:
-        intent = session.scalar(
-            select(FactorDirectAnalysisIntent).filter_by(
-                id=analysis_id, owner_id=owner_id
-            )
-        )
-        if intent is None:
-            fail()
-        outcome = session.get(FactorDirectAnalysisOutcome, analysis_id)
-        if outcome is None:
-            fail()
-        same(intent, outcome)
-        snapshot = read_snapshot_in_session(
-            session, owner_id, intent.snapshot_id, settings
-        )
-        session.execute(
-            text("SELECT mineagent_direct_result_check(:id)"), {"id": analysis_id}
-        )
-        plan = session.get(FactorAnalysisPlan, intent.plan_id)
-        publication = session.get(ExecutionSnapshotPublication, snapshot.snapshot_id)
-        if plan is None or plan.owner_id != owner_id or plan.run_id != intent.run_id:
-            fail()
-        spec = session.get(FactorResearchSpec, plan.spec_id)
-        dataset = session.get(DatasetVersion, plan.label_source_dataset_id)
-        if spec is None or dataset is None:
-            fail()
-        value, projection, objective = reconstruct_direct_input(
-            plan=row_document(plan),
-            intent=row_document(intent),
-            publication=row_document(publication),
-            spec=row_document(spec),
-            dataset=row_document(dataset),
-            read_bytes=retained_reader(settings.storage_root),
-            provider_config=provider_config_in_session(session),
-            composed_controller=composed_controller_in_session(session),
-            seeded_controller=seeded_controller_in_session(session),
-        )
-        _, receipts = process_history(session, outcome, outcome.admission_id)
-        physical = read_historical_analysis_bytes(
-            settings.storage_root,
-            intent=receipts["launch_intent"].payload,
-            identity=receipts["launch_identity"].payload,
-            stop=receipts["stop"].payload,
-            extraction=receipts["extraction"].payload,
-        )
-        if (
-            physical.analysis_id != analysis_id
-            or physical.snapshot_id != intent.snapshot_id
-            or physical.protocol_sha256 != value.protocol.sha256
-        ):
-            fail()
-        result = read_result(physical.result_bytes, value)
-        measurement = measure_direct_objective(objective, projection, result)
-        if (
-            physical.sha256 != outcome.result_sha256
-            or len(physical.result_bytes) != outcome.result_size_bytes
-            or outcome.result_canonical.encode("ascii") != physical.result_bytes
-            or outcome.result != result.model_dump(mode="json")
-            or outcome.measurement != measurement.model_dump(mode="json")
-            or outcome.measurement_sha256 != digest(measurement)
-            or outcome.measurement_canonical.encode("ascii")
-            != canonical_bytes(measurement)
-        ):
-            fail()
-        return HistoricalDirectAnalysis(
-            analysis_id,
-            intent.snapshot_id,
-            outcome.admission_id,
-            outcome.result_sha256,
-            outcome.measurement_sha256,
-            result,
-            measurement,
-        )
+        return read_analysis_in_session(session, owner_id, analysis_id, settings)
+
+
+def read_analysis_in_session(session, owner_id, analysis_id, settings):
+    """Same physical integrity read under an already held historical storage guard."""
+    require_native_storage_guard(settings.storage_root)
+    intent = session.scalar(
+        select(FactorDirectAnalysisIntent).filter_by(id=analysis_id, owner_id=owner_id)
+    )
+    if intent is None:
+        fail()
+    outcome = session.get(FactorDirectAnalysisOutcome, analysis_id)
+    if outcome is None:
+        fail()
+    same(intent, outcome)
+    snapshot = read_snapshot_in_session(session, owner_id, intent.snapshot_id, settings)
+    session.execute(
+        text("SELECT mineagent_direct_result_check(:id)"), {"id": analysis_id}
+    )
+    plan = session.get(FactorAnalysisPlan, intent.plan_id)
+    publication = session.get(ExecutionSnapshotPublication, snapshot.snapshot_id)
+    if plan is None or plan.owner_id != owner_id or plan.run_id != intent.run_id:
+        fail()
+    spec = session.get(FactorResearchSpec, plan.spec_id)
+    dataset = session.get(DatasetVersion, plan.label_source_dataset_id)
+    if spec is None or dataset is None:
+        fail()
+    from backend.app.rdagent_snapshot_config import declared_upload_in_session
+
+    value, projection, objective = reconstruct_direct_input(
+        plan=row_document(plan),
+        intent=row_document(intent),
+        publication=row_document(publication),
+        spec=row_document(spec),
+        dataset=row_document(dataset),
+        read_bytes=retained_reader(settings.storage_root),
+        provider_config=provider_config_in_session(session),
+        composed_controller=composed_controller_in_session(session),
+        seeded_controller=seeded_controller_in_session(session),
+        workflow_config=workflow_config_in_session(session),
+        declared_upload=declared_upload_in_session(session),
+    )
+    _, receipts = process_history(session, outcome, outcome.admission_id)
+    physical = read_historical_analysis_bytes(
+        settings.storage_root,
+        intent=receipts["launch_intent"].payload,
+        identity=receipts["launch_identity"].payload,
+        stop=receipts["stop"].payload,
+        extraction=receipts["extraction"].payload,
+    )
+    if (
+        physical.analysis_id != analysis_id
+        or physical.snapshot_id != intent.snapshot_id
+        or physical.protocol_sha256 != value.protocol.sha256
+    ):
+        fail()
+    result = read_result(physical.result_bytes, value)
+    measurement = measure_direct_objective(objective, projection, result)
+    if (
+        physical.sha256 != outcome.result_sha256
+        or len(physical.result_bytes) != outcome.result_size_bytes
+        or outcome.result_canonical.encode("ascii") != physical.result_bytes
+        or outcome.result != result.model_dump(mode="json")
+        or outcome.measurement != measurement.model_dump(mode="json")
+        or outcome.measurement_sha256 != digest(measurement)
+        or outcome.measurement_canonical.encode("ascii") != canonical_bytes(measurement)
+    ):
+        fail()
+    return HistoricalDirectAnalysis(
+        analysis_id,
+        intent.snapshot_id,
+        outcome.admission_id,
+        outcome.result_sha256,
+        outcome.measurement_sha256,
+        result,
+        measurement,
+    )

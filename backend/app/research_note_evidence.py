@@ -77,6 +77,8 @@ class EvidenceResolver:
         self.deadline = monotonic() + 30
         self.loader_work = 0
         self.revision_read_bytes = 0
+        self.normal_oe_scopes = {}
+        self.normal_oe_view_bytes = 0
         advisory_lock(session, f"submit:{owner_id}")
 
     def check_budget(self, cost=0):
@@ -134,6 +136,18 @@ class EvidenceResolver:
                 self.admit_snapshot(item)
             return
         if not isinstance(snapshot, dict):
+            return
+        if snapshot.get("schema_version") == "mineagent.normal-oe-note-admission.v1":
+            import json
+
+            from backend.app.normal_oe_note_evidence import adapter
+
+            try:
+                ref = adapter.validate_json(json.dumps(snapshot["reference"]))
+            except (ValueError, TypeError, KeyError):
+                raise mismatch("Normal note admission snapshot is malformed") from None
+            # No cached prose/search/export can bypass current original disclosure.
+            self.resolve(ref)
             return
         binding = snapshot.get("binding")
         failed = snapshot.get("failed_attempt")
@@ -684,16 +698,26 @@ class EvidenceResolver:
     def resolve(self, ref):
         self.check_budget()
         key = digest(ref)
-        if key in self.resolved:
+        normal = ref.kind in {
+            "normal_oe_execution",
+            "normal_oe_decision",
+            "normal_oe_fill",
+        }
+        if key in self.resolved and not normal:
             return self.resolved[key]
-        self.resolve_calls += 1
+        if key not in self.resolved:
+            self.resolve_calls += 1
         if self.resolve_calls > 128:
             raise DomainError(
                 "note_evidence_capacity",
                 "Note page exceeds 128 distinct evidence references; reduce its page size",
                 422,
             )
-        if ref.kind == "source":
+        if normal:
+            from backend.app.normal_oe_note_evidence import resolve
+
+            value = resolve(self, ref)
+        elif ref.kind == "source":
             snapshot, pins = self.source(ref)
             value = ResolvedEvidence(snapshot, pins=pins)
         elif ref.kind in {"evaluation", "decision"}:
@@ -832,14 +856,15 @@ class EvidenceResolver:
                 "Evidence inventory exceeds its explicit bounded capacity",
                 422,
             )
-        root, selection = reference_selection(ref, value.snapshot)
-        value.href = (
-            href(root, selection)
-            if selection.get("spec_revision")
-            and selection.get("spec_sha256")
-            and selection.get("code_sha256")
-            else None
-        )
+        if not normal:
+            root, selection = reference_selection(ref, value.snapshot)
+            value.href = (
+                href(root, selection)
+                if selection.get("spec_revision")
+                and selection.get("spec_sha256")
+                and selection.get("code_sha256")
+                else None
+            )
         if ref.kind == "controlled" and any(
             arm.status != "succeeded" for arm in ref.arms
         ):

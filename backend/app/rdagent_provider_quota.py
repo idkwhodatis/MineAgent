@@ -18,7 +18,18 @@ MAX_CONCURRENT_SDK = 4
 
 
 def provider_process_holds(session):
-    if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
+    revisions = session.scalars(text("SELECT version_num FROM alembic_version")).all()
+    if revisions in (
+        ["028_oe_structured_search"],
+        ["029_research_workflow"],
+        ["030_declared_upload_basket"],
+        ["031_workflow_structured_stage"],
+        ["032_normal_oe_note_pins"],
+    ):
+        from backend.app.oe_structured_quota import sdk_process_holds
+
+        return sdk_process_holds(session)
+    if revisions not in (
         ["026_rd_seeded_submissions"],
         ["027_rd_controller_v3"],
         ["027a_contract_repairs"],

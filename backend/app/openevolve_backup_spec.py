@@ -27,10 +27,10 @@ RUN_UUIDS = frozenset(
 def validate_specs(closure, research_closure):
     tables, external = closure["tables"], closure["external_bindings"]
     runs = {r["id"]: r for r in external["runs"]}
+    from backend.app.openevolve_backup_partition import V11, V12, validate_partition
+
     shared = {
-        r["id"]: r
-        for r in research_closure["external_bindings"]["runs"]
-        if r["engine"] == "openevolve"
+        r["id"]: r for r in validate_partition(external["runs"], research_closure)
     }
     specs = {r["run_id"]: r for r in tables["strategy_search_specs"]}
     if (
@@ -47,7 +47,14 @@ def validate_specs(closure, research_closure):
     }
     used_strategies, used_datasets, result = set(), set(), {}
     for identity, row in runs.items():
-        if any(row[k] != v for k, v in shared[identity].items()):
+        projected = shared[identity]
+        if research_closure.get("schema_version") in {V11, V12}:
+            # This new shared projection is checked against the actual full
+            # config above; the frozen024 full-run inventory stays unchanged.
+            projected = {
+                k: v for k, v in projected.items() if k != "config_schema_version"
+            }
+        if any(row[k] != v for k, v in projected.items()):
             raise ValueError("OE shared/full run binding differs")
         run = SimpleNamespace(
             **{

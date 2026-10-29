@@ -69,7 +69,15 @@ class ConfiguredSource:
 
 
 def parse_retained_source(
-    *, dataset_id, manifest_sha256, manifest_bytes, artifacts, policy, input_names
+    *,
+    dataset_id,
+    manifest_sha256,
+    manifest_bytes,
+    artifacts,
+    policy,
+    input_names,
+    declared_upload=False,
+    owner_id=None,
 ):
     """All byte identities checked again here; no arbitrary file names/labels."""
     import hashlib
@@ -86,6 +94,28 @@ def parse_retained_source(
         raise ValueError("Exact distinct OHLCV input fields required")
     if hashlib.sha256(manifest_bytes).hexdigest() != manifest_sha256:
         raise ValueError("Dataset manifest bytes changed")
+    if type(declared_upload) is not bool:
+        raise ValueError("Explicit declared-upload dispatch required")
+    if declared_upload:
+        from packages.rdagent_adapter.declared_projection import project_basket
+
+        parsed_manifest = parse_json(manifest_bytes, limits=LIMITS)
+        if type(parsed_manifest) is dict and parsed_manifest.get("schema_version") == 3:
+            manifest = project_basket(
+                manifest_bytes,
+                artifacts,
+                dataset_id=dataset_id,
+                owner_id=owner_id,
+                manifest_sha256=manifest_sha256,
+            )
+            return _project_source(
+                manifest,
+                {name: artifacts[name] for name in ARTIFACTS},
+                dataset_id=dataset_id,
+                manifest_sha256=manifest_sha256,
+                policy=policy,
+                input_names=input_names,
+            )
     manifest = parse_json(manifest_bytes, limits=LIMITS)
     if (
         type(manifest) is not dict
@@ -99,6 +129,22 @@ def parse_retained_source(
     content_hash = inner.pop("content_hash", None)
     if hashlib.sha256(marketdata_bytes(inner)).hexdigest() != content_hash:
         raise ValueError("Dataset inner content identity changed")
+    return _project_source(
+        manifest,
+        artifacts,
+        dataset_id=dataset_id,
+        manifest_sha256=manifest_sha256,
+        policy=policy,
+        input_names=input_names,
+    )
+
+
+def _project_source(
+    manifest, artifacts, *, dataset_id, manifest_sha256, policy, input_names
+):
+    """Common numerical projection after the separate exact source admission."""
+    import hashlib
+
     request = BarsRequest.model_validate(manifest["request"])
     if request.interval != "1d" or manifest.get("listings") != [
         x.model_dump(mode="json") for x in request.listings

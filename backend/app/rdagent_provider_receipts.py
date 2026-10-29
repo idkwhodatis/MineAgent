@@ -27,7 +27,8 @@ def _transport(session, fence, transport_id):
         session, ResearchModelOperation, transport.operation_id, fence
     )
     if (
-        config.schema_version != "mineagent.factor-research.v2"
+        config.schema_version
+        not in ("mineagent.factor-research.v2", "mineagent.factor-research.v3")
         or operation.protocol not in PROTOCOLS
     ):
         raise ValueError("Exact configured provider transport required")
