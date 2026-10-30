@@ -13,8 +13,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from normal_rd_fixture_diagnostic import report_normal_rd_state
+from rd_composed_profile_fixture import PROFILE
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_provider_fixture import provider_server
+from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_fixture import body, login, profile
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -79,8 +82,9 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
         )
         with factory.begin() as session:
             session.add(user)
-        base = profile(actual_images=True)
+        base = profile(actual_images=True, controller_profile=PROFILE)
         runtime = RDProviderServerRuntimeProfile(
+            controller_profile=PROFILE,
             runtime=base.runtime,
             qlib_installed_parent_image_id=base.qlib_installed_parent_image_id,
         )
@@ -134,7 +138,7 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
                 model_profile_id=operator.connection.id,
                 selected_steer_version_ids=[],
                 budget=provider_budget_floor(
-                    operator.public_binding(user.id)
+                    operator.public_binding(user.id), profile=PROFILE
                 ).model_dump(mode="json"),
             )
             declaration["task"].update(
@@ -166,7 +170,7 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 queue = create_queue_app(settings)
-                with queue.open():
+                with diagnose_rd_queue(factory, rid), queue.open():
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,
@@ -182,6 +186,7 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
                         ).all()
 
                     run = session.get(ResearchRun, rid)
+                    report_normal_rd_state(session, run)
                     assert run.status == "failed"
                     attempt = session.get(ExecutionAttempt, run.active_attempt_id)
                     assert attempt.sandbox_stopped is True
@@ -198,11 +203,18 @@ def test_normal_provider_actual_rejection_preserves_failed_feedback_without_snap
                     assert not rows(FactorGenerationOutcome) and not rows(
                         FactorGenerationBoundary
                     )
+                    assert run.config["controller_profile"] == PROFILE
                     units = rows(ResearchProcessAdmission)
                     assert sorted(u.role for u in units) == [
                         "factor_cutoff_candidate",
                         "rd_orchestrator",
                     ]
+                    (controller,) = [u for u in units if u.role == "rd_orchestrator"]
+                    assert controller.profile == PROFILE
+                    controller_hold = session.get(
+                        ResearchBudgetReservation, controller.reservation_id
+                    )
+                    assert controller_hold.amounts["wall_milliseconds"] == 120000
                     assert all(
                         session.get(ResearchProcessState, u.id).status == "stopped"
                         for u in units

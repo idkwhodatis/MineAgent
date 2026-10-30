@@ -23,6 +23,7 @@ from backend.app.factor_native_models import (
     NativeHDFOutcome,
     NativeHDFPublication,
 )
+from backend.app.research_input_capacity import input_inventory_enabled
 from backend.app.research_lifecycle import (
     neutral_transaction,
     require_neutral_transaction,
@@ -234,6 +235,7 @@ def _capacity(session, fence, settings, factor_fd, *, extra=(0, 0)):
         native_entries=entries,
         storage_root=settings.storage_root,
         include_dataset_inventory=dataset_inventory_enabled(session),
+        include_input_inventory=input_inventory_enabled(session),
     )
     verify_native_journals(session, entries, settings)
     pending_total, pending_owned, pending_count = pending_native_usage(

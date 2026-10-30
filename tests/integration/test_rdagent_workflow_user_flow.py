@@ -16,9 +16,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from normal_rd_fixture_diagnostic import report_normal_rd_state
 from rd_composed_profile_fixture import PROFILE, assert_composed_controller
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
+from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_fixture import body, login, profile
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
@@ -583,7 +585,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 queue = create_queue_app(settings)
-                with queue.open():
+                with diagnose_rd_queue(factory, rid), queue.open():
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,
@@ -593,6 +595,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                 with factory() as session:
                     run = session.get(ResearchRun, rid)
+                    report_normal_rd_state(session, run)
                     assert_composed_controller(session, rid)
                     assert (
                         run.status == "succeeded"
@@ -903,7 +906,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
-                with queue.open():
+                with diagnose_rd_queue(factory, second_id), queue.open():
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,
@@ -913,6 +916,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                 with factory() as session:
                     second_run = session.get(ResearchRun, second_id)
+                    report_normal_rd_state(session, second_run)
                     assert second_run.status == "succeeded"
                     assert_composed_controller(session, second_id)
                     second_source = session.scalars(

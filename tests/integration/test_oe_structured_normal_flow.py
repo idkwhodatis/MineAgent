@@ -115,7 +115,9 @@ def _run_flow(migrated_engine, settings, monkeypatch):
     with factory.begin() as session:
         session.add_all((user, other_user))
     monkeypatch.setenv("MINEAGENT_NORMAL_FLOW_SECRET", "synthetic-local-only")
-    rd_pins = profile(actual_images=True)
+    from rd_composed_profile_fixture import PROFILE
+
+    rd_pins = profile(actual_images=True, controller_profile=PROFILE)
     oe_runtime = OEStructuredServerProfile.model_validate_json(
         os.environ["MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE"]
     )
@@ -163,6 +165,7 @@ def _run_flow(migrated_engine, settings, monkeypatch):
                 "factor_library_enabled": True,
                 "rdagent_research_enabled": True,
                 "rdagent_provider_runtime_profile": RDProviderServerRuntimeProfile(
+                    controller_profile=PROFILE,
                     runtime=rd_pins.runtime,
                     qlib_installed_parent_image_id=rd_pins.qlib_installed_parent_image_id,
                 ),

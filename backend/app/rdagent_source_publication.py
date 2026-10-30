@@ -35,6 +35,7 @@ from backend.app.rdagent_services import (
     require_research_spec,
 )
 from backend.app.research_broker_services import require_reservation, reserve_budget
+from backend.app.research_input_capacity import input_inventory_enabled
 from backend.app.research_lifecycle import require_neutral_transaction
 from backend.app.research_object_services import read_research_object
 from backend.app.services import DomainError
@@ -61,6 +62,7 @@ def _native_aware_inventory(session, fd, fence, settings):
         native_entries=entries,
         storage_root=settings.storage_root,
         include_dataset_inventory=dataset_inventory_enabled(session),
+        include_input_inventory=input_inventory_enabled(session),
     )
     if native:
         verify_native_journals(session, entries, settings)

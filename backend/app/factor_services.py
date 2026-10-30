@@ -87,6 +87,7 @@ def physical_inventory(
     native_entries=None,
     storage_root=None,
     include_dataset_inventory=False,
+    include_input_inventory=False,
 ):
     """Descriptor-pinned, bounded no-follow traversal; unknown staging fails closed."""
     total = owned = count = 0
@@ -120,6 +121,7 @@ def physical_inventory(
             elif len(parts) == 1 and name not in (
                 {"objects", "staging", "datasets"}
                 | ({"native-journals"} if native else set())
+                | ({"input-objects"} if include_input_inventory else set())
             ):
                 raise DomainError(
                     "factor_storage_uncertain", "Unknown factor storage layout", 409
@@ -144,7 +146,34 @@ def physical_inventory(
                             "Unexpected nested object directory",
                             409,
                         )
-                    scan(child, child_parts)
+                    if len(parts) == 1 and name == "input-objects":
+                        from backend.app.research_input_storage import (
+                            input_object_inventory,
+                        )
+
+                        if str(UUID(parts[0])) != parts[0]:
+                            raise ValueError("Canonical input owner required")
+                        size, files = input_object_inventory(
+                            child, deadline=deadline, maximum_files=max_files - count
+                        )
+                        after_input = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                        if (
+                            info.st_dev,
+                            info.st_ino,
+                            info.st_mtime_ns,
+                            info.st_ctime_ns,
+                        ) != (
+                            after_input.st_dev,
+                            after_input.st_ino,
+                            after_input.st_mtime_ns,
+                            after_input.st_ctime_ns,
+                        ):
+                            raise ValueError("Input object namespace changed")
+                        total += size
+                        owned += size if parts[0] == str(owner_id) else 0
+                        count += files
+                    else:
+                        scan(child, child_parts)
                 elif (
                     stat.S_ISREG(info.st_mode)
                     and info.st_nlink == 1
@@ -231,7 +260,7 @@ def physical_inventory(
 
     try:
         scan(root_fd, ())
-    except OSError:
+    except (OSError, ValueError):
         raise DomainError(
             "factor_storage_uncertain", "Factor inventory could not be verified", 409
         ) from None
@@ -363,7 +392,9 @@ def publication(
                 from backend.app.declared_upload_capacity import (
                     dataset_inventory_enabled,
                 )
+                from backend.app.research_input_capacity import input_inventory_enabled
 
+                input_capability = input_inventory_enabled(session)
                 dataset_capability = dataset_inventory_enabled(session)
                 if include_dataset_inventory and not dataset_capability:
                     raise DomainError(
@@ -383,6 +414,7 @@ def publication(
                     native_entries=native_entries,
                     storage_root=settings.storage_root,
                     include_dataset_inventory=include_dataset_inventory,
+                    include_input_inventory=input_capability,
                 )
                 if native:
                     verify_native_journals(session, native_entries, settings)
@@ -436,6 +468,7 @@ def publication(
                     native_entries=native_entries,
                     storage_root=settings.storage_root,
                     include_dataset_inventory=include_dataset_inventory,
+                    include_input_inventory=input_capability,
                 )
                 if native:
                     verify_native_journals(session, native_entries, settings)

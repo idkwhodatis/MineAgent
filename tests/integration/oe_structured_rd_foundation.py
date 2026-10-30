@@ -9,7 +9,10 @@ import json
 from dataclasses import dataclass
 from uuid import UUID
 
+from normal_rd_fixture_diagnostic import report_normal_rd_state
+from rd_composed_profile_fixture import PROFILE, assert_composed_controller
 from rd_provider_fixture import SOURCE
+from rd_rpc_diagnostic import diagnose_rd_queue
 from sqlalchemy import select
 
 from backend.app.rdagent_provider_preflight import provider_budget_floor
@@ -70,7 +73,7 @@ def request_from_demo(receipt, operator, owner_id):
                 "selected_steer_version_ids": [],
                 "source_policy": {"acknowledged_unverified": True},
                 "budget": provider_budget_floor(
-                    operator.public_binding(owner_id)
+                    operator.public_binding(owner_id), profile=PROFILE
                 ).model_dump(mode="json"),
             }
         )
@@ -150,7 +153,7 @@ def create_demo_rd_snapshot(
     with factory.begin() as session:
         assert dispatch_outbox(session, settings=settings) == 1
     queue = create_queue_app(settings)
-    with queue.open():
+    with diagnose_rd_queue(factory, run_id), queue.open():
         queue.run_worker(
             queues=["research"],
             concurrency=1,
@@ -160,7 +163,9 @@ def create_demo_rd_snapshot(
         )
     with factory() as session:
         run = session.get(ResearchRun, run_id)
+        report_normal_rd_state(session, run)
         assert run.owner_id == owner_id and run.status == "succeeded"
+        assert_composed_controller(session, run_id)
         source = session.scalars(
             select(FactorGenerationSource).filter_by(run_id=run_id, owner_id=owner_id)
         ).one()

@@ -47,9 +47,11 @@ def demo():
 def test_demo_preset_remains_one_session_and_explicitly_acknowledged(monkeypatch):
     from backend.app.engine_run_preflight import RECOMMENDED_BUDGET
 
-    monkeypatch.setattr(
-        module, "provider_budget_floor", lambda binding: RECOMMENDED_BUDGET
-    )
+    def floor(binding, *, profile):
+        assert profile == "mineagent.rdagent-orchestrator.v3"
+        return RECOMMENDED_BUDGET
+
+    monkeypatch.setattr(module, "provider_budget_floor", floor)
     owner = uuid4()
     operator = SimpleNamespace(
         connection=SimpleNamespace(id="local-demo"), public_binding=lambda oid: oid
