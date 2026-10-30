@@ -89,8 +89,10 @@ def read_closure(connection, maximum_rows, *, maximum_bytes=32_000_000):
         listings="SELECT id,symbol FROM listings WHERE " + listing_where,
     )
     for name, query in queries.items():
-        cursor = connection.execution_options(stream_results=True, yield_per=1).execute(
-            text(f"SELECT to_jsonb(t) FROM ({query} ORDER BY id LIMIT :limit) t"),
+        cursor = connection.execute(
+            text(
+                f"SELECT to_jsonb(t) FROM ({query} ORDER BY id LIMIT :limit) t"
+            ).execution_options(stream_results=True, yield_per=1),
             {"limit": maximum_rows + 1},
         )
         rows = []

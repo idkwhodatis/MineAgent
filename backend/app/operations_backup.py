@@ -427,7 +427,11 @@ class PostgresDatabase:
                     "Foreign access, replication and event triggers require a separate recovery profile"
                 )
         return (
-            int(connection.execute(text("SHOW server_version_num")).scalar_one())
+            int(
+                connection.execute(
+                    text("SELECT current_setting('server_version_num')")
+                ).scalar_one()
+            )
             // 10000
         )
 

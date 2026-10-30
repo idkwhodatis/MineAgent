@@ -104,6 +104,7 @@ def test_exact_retained_input_intent(case, monkeypatch):  # noqa: F811
         binding=resolved.binding,
         settings=s.settings,
     )
+    assert intent.id == intent.admission.id
     assert intent.inputs == resolved.binding
     assert intent.admission.input_sha256 == digest(
         resolved.binding.model_dump(mode="json")
@@ -117,3 +118,49 @@ def test_exact_retained_input_intent(case, monkeypatch):  # noqa: F811
     assert reservations[0]["amounts"].process_slots == 1
     assert reservations[0]["amounts"].wall_milliseconds == 60_000
     assert persisted == [(s.session, s.fence, intent)]
+
+
+def test_normalizer_keeps_independent_intent_identity(monkeypatch):
+    from datetime import UTC, datetime
+
+    from packages.rdagent_adapter.numeric_profile import NORMALIZER_LIMITS
+    from packages.research_runtime.numeric_process_journal import (
+        NumericInput,
+        NumericInputFile,
+    )
+
+    fence = SimpleNamespace(
+        owner_id=uuid4(), run_id=uuid4(), attempt_id=uuid4(), generation=1
+    )
+    binding = NumericInput(
+        schema_version="mineagent.numeric-process-input.v2",
+        source_object_id=uuid4(),
+        source_sha256="a" * 64,
+        prefix_sha256="b" * 64,
+        cutoff=datetime.now(UTC),
+        files=tuple(
+            NumericInputFile(destination=path, sha256="a" * 64, size_bytes=1)
+            for path in sorted(NORMALIZER_LIMITS)
+        ),
+    )
+    reservation = SimpleNamespace(id=uuid4())
+    persisted = []
+    monkeypatch.setattr(worker, "reserve_budget", lambda *a, **kw: reservation)
+    monkeypatch.setattr(
+        worker, "persist_numeric_intent", lambda *args: persisted.append(args)
+    )
+    session, settings = object(), object()
+    intent = worker._intent(
+        session,
+        fence,
+        role="factor_normalizer",
+        profile="mineagent.factor-numeric-hdf.v1",
+        image="sha256:" + "a" * 64,
+        logical_id=uuid4(),
+        binding=binding,
+        settings=settings,
+    )
+    assert intent.id != intent.admission.id
+    assert intent.inputs == binding
+    assert intent.not_after - intent.issued_at == timedelta(seconds=8)
+    assert persisted == [(session, fence, intent)]

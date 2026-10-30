@@ -30,6 +30,11 @@ FUNCTIONS = (
     "mineagent_rd_canonical_json",
     "mineagent_rd_schema",
     "mineagent_rd_ascii_metadata",
+    "mineagent_rd_workflow_consistent",
+    "mineagent_rd_workflow_submission_check",
+    "mineagent_rd_workflow_config",
+    "mineagent_workflow_check",
+    "mineagent_workflow_consistent",
 )
 QUERY = text(
     "SELECT funcname, calls, total_time, self_time "
@@ -106,7 +111,7 @@ def _difference(before, after):
 
 @contextmanager
 def diagnose_provider_functions(engine, *, stage):
-    if stage not in ("parent", "seeded_child"):
+    if stage not in ("parent", "seeded_child", "workflow_first", "workflow_seeded"):
         raise ValueError("invalid diagnostic stage")
     before = _snapshot(engine)
     try:

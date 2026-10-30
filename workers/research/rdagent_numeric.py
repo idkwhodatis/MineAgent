@@ -95,7 +95,9 @@ def _intent(session, fence, *, role, profile, image, logical_id, binding, settin
     now = datetime.now(UTC)
     intent = NumericIntent(
         schema_version="mineagent.numeric-process-intent.v2",
-        id=uuid4(),
+        # Rejection SQL binds the new candidate intent to its exact admission.
+        # Historical records and normalizer issuance retain their original IDs.
+        id=admission.id if role == "factor_cutoff_candidate" else uuid4(),
         admission=admission,
         inputs=binding,
         issued_at=now,

@@ -63,3 +63,26 @@ it("preserves SUBPATH for real source and factor links", async () => {
   expect(html).toContain("/research/engine-runs/source-run/snapshots/snapshot");
   expect(html).toContain("/research/factors/factor/versions/version");
 });
+it("keeps exact control labels independent of catalog and saved option text", () => {
+  // Wrapped selects make Playwright's label text include every option. Keep
+  // explicit label associations so exact labels also survive catalog changes.
+  for (const selection of [
+    { snapshotId: "", modelProfileId: "" },
+    { snapshotId: "snapshot", modelProfileId: "" },
+    { snapshotId: "missing-snapshot", modelProfileId: "missing-model" },
+  ]) {
+    const html = renderToStaticMarkup(
+      createElement(OEProviderSelection, { ...props, ...selection }),
+    );
+    const labels = [...html.matchAll(/<label for="([^"]+)">([^<]+)<\/label>/g)];
+    expect(labels.map((match) => match[2])).toEqual([
+      "Released execution snapshot",
+      "Operator model profile",
+    ]);
+    expect(new Set(labels.map((match) => match[1])).size).toBe(2);
+    for (const match of labels) {
+      expect(html).toContain(`<select id="${match[1]}"`);
+    }
+    if (!selection.snapshotId) expect(html).toContain('value="" selected=""');
+  }
+});

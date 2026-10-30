@@ -48,11 +48,14 @@ class Engine:
         return self.rows
 
 
-def test_exact_before_after_and_no_extra_calls(capsys):
+@pytest.mark.parametrize(
+    "stage", ["parent", "seeded_child", "workflow_first", "workflow_seeded"]
+)
+def test_exact_before_after_and_no_extra_calls(capsys, stage):
     m = module()
     name = m.FUNCTIONS[0]
     engine = Engine([(name, 4, 8.0, 3.0)])
-    with m.diagnose_provider_functions(engine, stage="parent"):
+    with m.diagnose_provider_functions(engine, stage=stage):
         assert engine.commands[-1] == "close"
         engine.rows = [(name, 7, 12.25, 4.5)]
     assert engine.commands.count("connect") == 2
@@ -164,3 +167,30 @@ def test_first_observed_row_never_fabricates_zero_baseline():
         "observed_self_ms": 2.5,
     }
     assert "calls" not in report["functions"][0]
+
+
+def test_workflow_function_allowlist_is_fixed_and_observable():
+    m = module()
+    names = (
+        "mineagent_rd_workflow_consistent",
+        "mineagent_rd_workflow_submission_check",
+        "mineagent_rd_workflow_config",
+        "mineagent_workflow_check",
+        "mineagent_workflow_consistent",
+    )
+    assert m.FUNCTIONS[-5:] == names
+    assert len(m.FUNCTIONS) == len(set(m.FUNCTIONS)) == 20
+    rows = [(name, 2, 3.0, 1.0) for name in names]
+    before = m._snapshot(Engine(rows))
+    after = m._snapshot(Engine([(name, 5, 8.0, 2.0) for name in names]))
+    result = m._difference(before, after)
+    assert result["functions"][-5:] == [
+        {
+            "function": name,
+            "status": "sampled",
+            "calls": 3,
+            "total_ms": 5.0,
+            "self_ms": 1.0,
+        }
+        for name in names
+    ]

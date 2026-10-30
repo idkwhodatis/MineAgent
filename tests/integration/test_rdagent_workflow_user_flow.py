@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from normal_rd_fixture_diagnostic import report_normal_rd_state
 from rd_composed_profile_fixture import PROFILE, assert_composed_controller
 from rd_configured_dataset_fixture import persist_configured_dataset
+from rd_pg_diagnostic import diagnose_provider_functions
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
 from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_fixture import body, login, profile
@@ -585,7 +586,11 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 queue = create_queue_app(settings)
-                with diagnose_rd_queue(factory, rid), queue.open():
+                with (
+                    diagnose_provider_functions(engine, stage="workflow_first"),
+                    diagnose_rd_queue(factory, rid),
+                    queue.open(),
+                ):
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,
@@ -906,7 +911,11 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
-                with diagnose_rd_queue(factory, second_id), queue.open():
+                with (
+                    diagnose_provider_functions(engine, stage="workflow_seeded"),
+                    diagnose_rd_queue(factory, second_id),
+                    queue.open(),
+                ):
                     queue.run_worker(
                         queues=["research"],
                         concurrency=1,

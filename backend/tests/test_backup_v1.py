@@ -611,7 +611,7 @@ class InspectionConnection:
     def execute(self, statement, parameters=None):
         query = str(statement)
         self.queries.append(query)
-        if query == "SHOW server_version_num":
+        if query == "SELECT current_setting('server_version_num')":
             return QueryResult("180006")
         if "SELECT version_num" in query:
             return QueryResult(self.revisions)

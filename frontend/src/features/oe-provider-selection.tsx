@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { deploymentUrl } from "@/lib/deployment";
 import type {
   StructuredModelOption,
@@ -24,6 +25,8 @@ export function OEProviderSelection({
   onSnapshot: (id: string) => void;
   onModel: (id: string) => void;
 }) {
+  const snapshotLabelId = useId();
+  const modelLabelId = useId();
   const snapshot = snapshots.find((value) => value.snapshot_id === snapshotId);
   const model = models.find(
     (value) => value.binding.profile_id === modelProfileId,
@@ -39,26 +42,25 @@ export function OEProviderSelection({
       </p>
       {!modelOnly && (
         <>
-          <label>
-            Released execution snapshot
-            <select
-              required
-              value={snapshotId}
-              onChange={(event) => onSnapshot(event.target.value)}
-            >
-              <option value="">Select an explicitly released snapshot</option>
-              {snapshotId && !snapshot && (
-                <option value={snapshotId}>
-                  Saved selection unavailable: {snapshotId}
-                </option>
-              )}
-              {snapshots.map((value) => (
-                <option key={value.snapshot_id} value={value.snapshot_id}>
-                  {value.factor_version_id} · {value.snapshot_id}
-                </option>
-              ))}
-            </select>
-          </label>
+          <label htmlFor={snapshotLabelId}>Released execution snapshot</label>
+          <select
+            id={snapshotLabelId}
+            required
+            value={snapshotId}
+            onChange={(event) => onSnapshot(event.target.value)}
+          >
+            <option value="">Select an explicitly released snapshot</option>
+            {snapshotId && !snapshot && (
+              <option value={snapshotId}>
+                Saved selection unavailable: {snapshotId}
+              </option>
+            )}
+            {snapshots.map((value) => (
+              <option key={value.snapshot_id} value={value.snapshot_id}>
+                {value.factor_version_id} · {value.snapshot_id}
+              </option>
+            ))}
+          </select>
           {snapshotId && !snapshot && (
             <p role="alert">
               The exact saved snapshot is not in this page. Load its page or
@@ -102,35 +104,30 @@ export function OEProviderSelection({
           )}
         </>
       )}
-      <label>
-        Operator model profile
-        <select
-          required
-          value={modelProfileId}
-          onChange={(event) => onModel(event.target.value)}
-        >
-          <option value="">
-            Select an explicitly configured operator model
+      <label htmlFor={modelLabelId}>Operator model profile</label>
+      <select
+        id={modelLabelId}
+        required
+        value={modelProfileId}
+        onChange={(event) => onModel(event.target.value)}
+      >
+        <option value="">Select an explicitly configured operator model</option>
+        {modelProfileId && !model && (
+          <option value={modelProfileId}>
+            Saved profile unavailable: {modelProfileId}
           </option>
-          {modelProfileId && !model && (
-            <option value={modelProfileId}>
-              Saved profile unavailable: {modelProfileId}
-            </option>
-          )}
-          {models.map((value) => (
-            <option
-              key={value.binding.profile_id}
-              value={value.binding.profile_id}
-              disabled={!value.operator_available}
-            >
-              {value.label} · {value.binding.model}
-              {!value.operator_available
-                ? ` — ${value.unavailable_reason}`
-                : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+        )}
+        {models.map((value) => (
+          <option
+            key={value.binding.profile_id}
+            value={value.binding.profile_id}
+            disabled={!value.operator_available}
+          >
+            {value.label} · {value.binding.model}
+            {!value.operator_available ? ` — ${value.unavailable_reason}` : ""}
+          </option>
+        ))}
+      </select>
       {modelProfileId && !model && (
         <p role="alert">
           The exact model profile is unavailable. Do not substitute a model for
