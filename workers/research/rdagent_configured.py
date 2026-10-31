@@ -110,6 +110,7 @@ def require_controller_revision(session, config):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         )
     ):
         raise ProcessError("rd_controller_revision")
@@ -128,6 +129,7 @@ def require_controller_revision(session, config):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ) or (
         config.controller_profile is not None
         and revisions
@@ -141,6 +143,7 @@ def require_controller_revision(session, config):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         )
     ):
         raise ProcessError("rd_controller_revision")

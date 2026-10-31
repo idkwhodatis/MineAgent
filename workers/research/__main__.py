@@ -34,6 +34,7 @@ def dispatch_workflow_tick(factory, settings):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         return ()
     from workers.research.workflow_tick import tick_workflows
