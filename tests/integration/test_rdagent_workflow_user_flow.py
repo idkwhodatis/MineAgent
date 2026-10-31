@@ -23,6 +23,7 @@ from rd_pg_diagnostic import diagnose_provider_functions
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
 from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_fixture import body, login, profile
+from rd_terminal_diagnostic import diagnose_rd_terminal
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 from test_backup_restore import drill_databases as drill_databases  # noqa: PLC0414
@@ -703,11 +704,12 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 ]
                 # The driver must reconstruct the physical child/SDK/analysis
                 # boundary, not infer a safe checkpoint from run.status alone.
-                assert drive_one(
-                    factory, settings, owner_id=user.id, workflow_id=wid
-                ).state == (
-                    "paused" if allow_feedback_release else "feedback_allocated"
-                )
+                with diagnose_rd_terminal():
+                    assert drive_one(
+                        factory, settings, owner_id=user.id, workflow_id=wid
+                    ).state == (
+                        "paused" if allow_feedback_release else "feedback_allocated"
+                    )
                 with factory() as session:
                     root = session.get(ResearchWorkflow, wid)
                     checkpoint = session.get(

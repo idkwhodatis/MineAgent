@@ -107,5 +107,48 @@ def numeric_statements():
                 statements.append(
                     f"DO $$ DECLARE rule jsonb; BEGIN SELECT r.rule INTO STRICT rule FROM upload030_rules r WHERE kind='{kind}'; IF mineagent_rd_schema({literal(value)},rule#>{path_sql},coalesce(rule->'$defs','{{}}'::jsonb),0) IS DISTINCT FROM {str(expected).lower()} THEN RAISE EXCEPTION 'Numeric field mismatch {kind} {field} {json.dumps(value)}'; END IF; END $$;"
                 )
+    statements.extend(normal_config_revision_statements())
     statements.append("SELECT 'DECLARED_UPLOAD_NUMERIC_MATRIX_COMPLETE';")
+    return statements
+
+
+def normal_config_revision_statements():
+    """Pin the028 rounded-bound defect without altering its historical contract.
+
+    This compares pure full-config contracts, not provider/graph execution. The
+    temporary alias preserves the installed current function and disappears on
+    transaction rollback with the rest of this fixture.
+    """
+    from copy import deepcopy
+
+    from backend.app.openevolve_revision_ddl import _function, historical
+    from tests.openevolve.test_structured_persisted_identity import graph
+
+    old = _function(historical("028", "UPGRADE_SQL"), "mineagent_oes_contract")
+    old = old.replace(
+        "@SCHEMA@.mineagent_oes_contract(",
+        "pg_temp.normal_oe028_contract(",
+        1,
+    )
+    escaped = old.replace("'", "''")
+    statements = [
+        "DO $install$ BEGIN EXECUTE replace('"
+        + escaped
+        + "','@SCHEMA@',quote_ident(current_schema())); END $install$;"
+    ]
+    config = graph()[1].config
+    assert config["search"]["domain"]["seed_program"]["maximum_weight"] == 0.5
+    for weight, historical_ok in ((0.5, False), (1.0, True)):
+        value = deepcopy(config)
+        value["search"]["domain"]["seed_program"]["maximum_weight"] = weight
+        raw = literal(value)
+        statements.append(
+            "DO $$ BEGIN IF pg_temp.normal_oe028_contract('config',"
+            + raw
+            + ") IS DISTINCT FROM "
+            + str(historical_ok).lower()
+            + " OR mineagent_oes_contract('config',"
+            + raw
+            + ") IS DISTINCT FROM true THEN RAISE EXCEPTION 'Normal OE exact revision numeric regression'; END IF; END $$;"
+        )
     return statements

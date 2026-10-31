@@ -29,7 +29,7 @@ def test_normal_demo_generated_factor_and_model_child_reach_actual_engine(
 
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "028_oe_structured_search")
+        legacy._upgrade(engine, "032a_rd_terminal_results")
         storage = tmp_path / "normal-oe-flow"
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(engine, storage)
@@ -47,6 +47,7 @@ def test_normal_demo_generated_factor_and_model_child_reach_actual_engine(
             execution_ids=completed.execution_ids,
             responses=completed.disclosed.responses,
             receipts=completed.disclosed.receipts,
+            expected_revision="032a_rd_terminal_results",
         )
     finally:
         engine.dispose()
