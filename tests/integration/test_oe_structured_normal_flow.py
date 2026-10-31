@@ -54,6 +54,7 @@ def test_normal_demo_generated_factor_and_model_child_reach_actual_engine(
 
 
 def _run_flow(migrated_engine, settings, monkeypatch):
+    from oe_queue_diagnostic import diagnose_oe_queue
     from oe_structured_browser import (
         assert_oe_results_in_browser,
         assert_oe_run_in_browser,
@@ -266,7 +267,7 @@ def _run_flow(migrated_engine, settings, monkeypatch):
             with factory.begin() as session:
                 assert dispatch_outbox(session, settings=configured) == 1
             queue = create_queue_app(configured)
-            with queue.open():
+            with diagnose_oe_queue(factory, rid), queue.open():
                 queue.run_worker(
                     queues=["research"],
                     concurrency=1,

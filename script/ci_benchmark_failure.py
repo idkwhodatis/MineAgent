@@ -23,8 +23,8 @@ SECTIONS = {
         "concurrent_runs",
     ),
 }
-# Only top-level shape is checked. These private containers are NEVER retained
-# or traversed by the projection; this is not validation of benchmark evidence.
+# Private containers are never retained. Only the explicit numeric workload
+# fields below may be projected; this is not validation of benchmark evidence.
 COMMON_TYPES = {
     "schema_version": (str,),
     "status": (str,),
@@ -101,12 +101,55 @@ def _bounded_depth(raw):
     return True
 
 
+# These bounds are diagnostic filters, NOT acceptance thresholds. Missing or
+# invalid values stay absent, never zero. The workload CLI caps wall time at 600s.
+NUMERIC_FIELDS = frozenset(
+    {
+        "attempt_overlap_ms",
+        "batch_wall_ms",
+        "attempt_1_duration_ms",
+        "attempt_2_duration_ms",
+        "submission_count",
+        "submission_p50_ms",
+        "submission_p95_ms",
+        "submission_max_ms",
+    }
+)
+
+
+def _number(key, value):
+    if key == "submission_count":
+        return type(value) is int and 0 <= value <= 3
+    return type(value) in (int, float) and 0 <= value <= 600000 and math.isfinite(value)
+
+
+def _workload_numbers(value):
+    result = {}
+    pair = value.get("concurrent_pair", {})
+    for key in ("attempt_overlap_ms", "batch_wall_ms"):
+        if _number(key, pair.get(key)):
+            result[key] = pair[key]
+    durations = pair.get("persisted_attempt_duration_ms")
+    if type(durations) is list and len(durations) == 2:
+        for i, number in enumerate(durations, 1):
+            key = f"attempt_{i}_duration_ms"
+            if _number(key, number):
+                result[key] = number
+    latency = value.get("control_http_latency", {}).get("run_submission")
+    if type(latency) is dict:
+        for suffix in ("count", "p50_ms", "p95_ms", "max_ms"):
+            key = "submission_" + suffix
+            if _number(key, latency.get(suffix)):
+                result[key] = latency[suffix]
+    return result
+
+
 def validate_diagnostic(value, program):
     """Recheck only the closed safe projection before a public log emission."""
     if (
         program not in PROGRAMS
         or type(value) is not dict
-        or set(value)
+        or set(value) - {"workload_numeric_evidence"}
         != {
             "program",
             "schema_version",
@@ -114,7 +157,11 @@ def validate_diagnostic(value, program):
             "error_code",
             "last_reported_section",
         }
-        or any(type(item) is not str for item in value.values())
+        or any(
+            type(item) is not str
+            for key, item in value.items()
+            if key != "workload_numeric_evidence"
+        )
         or value["program"] != program
         or value["schema_version"] != PROGRAMS[program]
         or value["status"] != "failed"
@@ -122,7 +169,21 @@ def validate_diagnostic(value, program):
         or value["last_reported_section"] not in (*SECTIONS[program], "none")
     ):
         return None
-    return dict(value)
+    result = dict(value)
+    if "workload_numeric_evidence" in value:
+        numbers = value["workload_numeric_evidence"]
+        if (
+            program != "script.benchmark_v1_workloads"
+            or value["error_code"] != "concurrency_not_observed"
+            or value["last_reported_section"] != "concurrent_pair"
+            or type(numbers) is not dict
+            or not numbers
+            or not set(numbers) <= NUMERIC_FIELDS
+            or any(not _number(key, item) for key, item in numbers.items())
+        ):
+            return None
+        result["workload_numeric_evidence"] = dict(numbers)
+    return result
 
 
 def decode_failure(arguments, output):
@@ -175,7 +236,7 @@ def decode_failure(arguments, output):
             or value["error_code"] not in ERROR_CODES
         ):
             return None
-        return {
+        result = {
             "program": program,
             "schema_version": PROGRAMS[program],
             "status": "failed",
@@ -184,5 +245,14 @@ def decode_failure(arguments, output):
                 (key for key in reversed(SECTIONS[program]) if key in value), "none"
             ),
         }
+        if (
+            program == "script.benchmark_v1_workloads"
+            and value["error_code"] == "concurrency_not_observed"
+            and result["last_reported_section"] == "concurrent_pair"
+        ):
+            numbers = _workload_numbers(value)
+            if numbers:
+                result["workload_numeric_evidence"] = numbers
+        return validate_diagnostic(result, program)
     except (ValueError, TypeError, UnicodeError, RecursionError):
         return None

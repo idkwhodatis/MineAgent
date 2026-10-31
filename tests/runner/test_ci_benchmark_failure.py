@@ -279,3 +279,111 @@ def test_gate_revalidates_closed_exception_metadata(change, capsys):
     with pytest.raises(ownership.OwnedCommandFailed):
         gate.run_benchmark_command(Owner(), arguments(), seconds=330)
     assert capsys.readouterr().out == ""
+
+
+def numeric_report():
+    value = report()
+    value["concurrent_pair"].update(
+        attempt_overlap_ms=0,
+        batch_wall_ms=1200.5,
+        persisted_attempt_duration_ms=[300, 400],
+        private=PRIVATE,
+    )
+    value["control_http_latency"] = {
+        "run_submission": {
+            "count": 3,
+            "p50_ms": 2,
+            "p95_ms": 4,
+            "max_ms": 5,
+            "private": PRIVATE,
+        },
+        "private": PRIVATE,
+    }
+    return value
+
+
+def test_closed_workload_numbers_survive_public_revalidation(capsys):
+    safe = projection.decode_failure(arguments(), json.dumps(numeric_report()).encode())
+    numbers = safe["workload_numeric_evidence"]
+    assert set(numbers) == projection.NUMERIC_FIELDS
+    assert numbers["attempt_overlap_ms"] == 0
+    assert numbers["attempt_1_duration_ms"] == 300
+    assert PRIVATE not in json.dumps(safe)
+    assert projection.validate_diagnostic(safe, arguments()[2]) == safe
+
+    class Owner:
+        def run(self, *args, **kwargs):
+            raise ownership.OwnedCommandFailed(safe)
+
+    with pytest.raises(ownership.OwnedCommandFailed):
+        gate.run_benchmark_command(Owner(), arguments(), seconds=330)
+    emitted = capsys.readouterr().out
+    assert '"submission_count": 3' in emitted
+    assert PRIVATE not in emitted
+
+
+@pytest.mark.parametrize("bad", [None, True, False, -1, 600001, "1", {}, [], PRIVATE])
+def test_missing_or_invalid_numeric_is_absent_not_zero(bad):
+    value = report()
+    value["concurrent_pair"] = {
+        "attempt_overlap_ms": bad,
+        "batch_wall_ms": bad,
+        "persisted_attempt_duration_ms": [bad, bad],
+    }
+    value["control_http_latency"] = {"run_submission": {"max_ms": bad}}
+    safe = projection.decode_failure(arguments(), json.dumps(value).encode())
+    assert "workload_numeric_evidence" not in safe
+
+
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), float("-inf"), True, -1, 600001, PRIVATE]
+)
+def test_public_numeric_revalidation_rejects_nonfinite_and_invalid(bad):
+    safe = projection.decode_failure(arguments(), json.dumps(numeric_report()).encode())
+    safe["workload_numeric_evidence"]["batch_wall_ms"] = bad
+    assert projection.validate_diagnostic(safe, arguments()[2]) is None
+
+
+def test_numeric_unknown_keys_wrong_program_counts_and_shape_fail_closed():
+    safe = projection.decode_failure(arguments(), json.dumps(numeric_report()).encode())
+    for numbers in (
+        {"private": PRIVATE},
+        {},
+        [],
+        {"submission_count": 4},
+        {"submission_count": 1.0},
+        {"submission_count": True},
+    ):
+        assert (
+            projection.validate_diagnostic(
+                {**safe, "workload_numeric_evidence": numbers}, arguments()[2]
+            )
+            is None
+        )
+    safe["error_code"] = "timeout"
+    assert projection.validate_diagnostic(safe, arguments()[2]) is None
+    value = numeric_report()
+    value["error_code"] = "timeout"
+    assert "workload_numeric_evidence" not in projection.decode_failure(
+        arguments(), json.dumps(value).encode()
+    )
+    daily = report("script.benchmark_v1_daily_reference")
+    daily["concurrent_runs"] = numeric_report()["concurrent_pair"]
+    projected = projection.decode_failure(
+        arguments("script.benchmark_v1_daily_reference"), json.dumps(daily).encode()
+    )
+    assert "workload_numeric_evidence" not in projected
+    projected["workload_numeric_evidence"] = {"attempt_overlap_ms": 0}
+    assert (
+        projection.validate_diagnostic(projected, "script.benchmark_v1_daily_reference")
+        is None
+    )
+
+
+def test_malformed_duration_array_and_submission_container_remain_unknown():
+    for duration in ([], [1], [1, 2, 3], "private", None):
+        value = report()
+        value["concurrent_pair"]["persisted_attempt_duration_ms"] = duration
+        value["control_http_latency"] = {"run_submission": PRIVATE}
+        safe = projection.decode_failure(arguments(), json.dumps(value).encode())
+        assert "workload_numeric_evidence" not in safe
