@@ -157,7 +157,11 @@ async def availability(request: Request, user: CurrentUser):
             preflight_available=True,
             structured_preflight_available=(
                 session.scalars(text("SELECT version_num FROM alembic_version")).all()
-                in (["031_workflow_structured_stage"], ["032_normal_oe_note_pins"])
+                in (
+                    ["031_workflow_structured_stage"],
+                    ["032_normal_oe_note_pins"],
+                    ["032a_rd_terminal_results"],
+                )
             ),
             reason_code="per_request_runtime_preflight_required",
         )

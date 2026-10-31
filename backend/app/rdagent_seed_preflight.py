@@ -132,6 +132,7 @@ def seeded_preflight(session, owner_id, request, settings):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ) and (
             profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -145,6 +146,7 @@ def seeded_preflight(session, owner_id, request, settings):
                 ["030_declared_upload_basket"],
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             )
         ):
             available = True

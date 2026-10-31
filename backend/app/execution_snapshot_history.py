@@ -105,6 +105,7 @@ def historical_session(factory, owner_id, settings):
                 ["030_declared_upload_basket"],
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             ):
                 fail()
             yield session
@@ -366,6 +367,7 @@ def check_configured_history(session, publication, settings):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document

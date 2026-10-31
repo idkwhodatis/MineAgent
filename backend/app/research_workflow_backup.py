@@ -893,7 +893,9 @@ def validate_rd_checkpoints(
             rd["factor_evaluation_starts"], **scope, start_id=start["id"]
         )
         evaluated = _only(
-            rd["factor_evaluation_outcomes"], **scope, evaluation_id=evaluation["id"]
+            execution_closure["tables"]["factor_execution_evaluation_outcomes"],
+            **scope,
+            evaluation_id=evaluation["id"],
         )
         publication = _only(
             execution_closure["tables"]["factor_execution_snapshot_publications"],
@@ -938,6 +940,9 @@ def validate_rd_checkpoints(
             or evaluation["evaluated_source_id"] != source["id"]
             or evaluation["factor_version_id"] != version["id"]
             or evaluated["status"] != "valid"
+            or evaluated["generation_start_id"] != start["id"]
+            or evaluated["snapshot_id"] != publication["id"]
+            or evaluated["snapshot_manifest_sha256"] != publication["manifest_sha256"]
             or (
                 publication["start_id"],
                 publication["source_id"],
@@ -1010,6 +1015,20 @@ def validate_rd_checkpoints(
         ):
             raise ValueError("Workflow checkpoint snapshot commitments differ")
         controller = _only(rd["factor_controller_launches"], **scope)
+        boundary = _only(
+            rd["factor_generation_boundaries"],
+            **scope,
+            id=evaluated["boundary_id"],
+            start_id=start["id"],
+            controller_launch_id=controller["id"],
+        )
+        if (
+            evaluated["controller_launch_id"] != controller["id"]
+            or boundary["logical_step"] != start["logical_step"]
+            or boundary["boundary"] != "returned"
+            or boundary["next_logical_step"] is not None
+        ):
+            raise ValueError("Workflow checkpoint execution result actor differs")
         bootstrap = RDWorkflowOperationalBootstrap.model_validate_json(
             canonical_bytes(controller["bootstrap"])
         )

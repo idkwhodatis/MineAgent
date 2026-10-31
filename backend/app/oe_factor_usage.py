@@ -74,6 +74,7 @@ def factor_usage(session, owner_id, factor_id, version_id, offset=0):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise DomainError(
             "oe_structured_history_schema_unavailable",

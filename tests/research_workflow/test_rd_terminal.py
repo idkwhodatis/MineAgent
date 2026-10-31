@@ -117,14 +117,17 @@ def completed_graph(monkeypatch):
     import json
 
     from backend.app import rdagent_workflow_source_history
-    from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
+    from backend.app.execution_snapshot_models import (
+        ExecutionSnapshotPublication,
+        FactorExecutionEvaluationOutcome,
+    )
     from backend.app.factor_analysis_models import (
         FactorDirectAnalysisIntent,
     )
     from backend.app.factor_models import FactorVersion
+    from backend.app.rdagent_boundary_models import FactorGenerationBoundary
     from backend.app.rdagent_models import (
         FactorControllerLaunch,
-        FactorEvaluationOutcome,
         FactorEvaluationStart,
         FactorGenerationSource,
         FactorGenerationStart,
@@ -212,10 +215,13 @@ def completed_graph(monkeypatch):
         evaluated_source_id=source.id,
         factor_version_id=version.id,
     )
-    evaluated = NS(
+    evaluated = FactorExecutionEvaluationOutcome(
         **scope,
         id=uuid4(),
         evaluation_id=evaluation.id,
+        generation_start_id=start.id,
+        snapshot_id=m.snapshot_id,
+        snapshot_manifest_sha256=digest(m),
         status="valid",
         snapshot_input_sha256=m.input_sha256,
         snapshot_output_sha256=m.output_rows_sha256,
@@ -256,6 +262,17 @@ def completed_graph(monkeypatch):
         bootstrap=bootstrap.model_dump(mode="json"),
         bootstrap_sha256=bootstrap.sha256,
     )
+    boundary = FactorGenerationBoundary(
+        **scope,
+        id=uuid4(),
+        start_id=start.id,
+        controller_launch_id=controller.id,
+        logical_step=0,
+        boundary="returned",
+        next_logical_step=None,
+    )
+    evaluated.boundary_id = boundary.id
+    evaluated.controller_launch_id = controller.id
     admissions = [
         NS(
             **scope,
@@ -301,7 +318,8 @@ def completed_graph(monkeypatch):
         FactorGenerationStart: start,
         FactorGenerationSource: source,
         FactorEvaluationStart: evaluation,
-        FactorEvaluationOutcome: evaluated,
+        FactorExecutionEvaluationOutcome: evaluated,
+        FactorGenerationBoundary: boundary,
         ExecutionSnapshotPublication: publication,
         FactorDirectAnalysisIntent: analysis,
         FactorVersion: version,
@@ -325,6 +343,7 @@ def completed_graph(monkeypatch):
         }[model]
 
     session = NS(scalar=lambda stmt: run, scalars=many, get=lambda model, key: outcome)
+    original_one = service._one
     checked = []
     monkeypatch.setattr(service, "_one", one)
     monkeypatch.setattr(service, "require_schema", lambda s: None)
@@ -368,6 +387,10 @@ def completed_graph(monkeypatch):
         checked=checked,
         source=source,
         evaluation=evaluation,
+        evaluated=evaluated,
+        boundary=boundary,
+        by_model=by_model,
+        original_one=original_one,
         reservation=reservation,
         settings=NS(storage_root="/unused"),
     )
@@ -404,3 +427,142 @@ def test_complete_child_graph_not_same_owner_status_shortcut(completed_graph, ch
             actual.qualification
             == "completed_owned_child_not_result_release_or_next_launch"
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "generation_start_id",
+        "snapshot_id",
+        "snapshot_manifest_sha256",
+        "snapshot_input_sha256",
+        "snapshot_output_sha256",
+        "controller_launch_id",
+        "boundary_id",
+        "status",
+    ],
+)
+def test_current_execution_outcome_binding_drift_is_rejected(completed_graph, field):
+    t = completed_graph
+    setattr(
+        t.evaluated,
+        field,
+        "0" * 64 if "sha256" in field else "rejected" if field == "status" else uuid4(),
+    )
+    with pytest.raises(DomainError):
+        service.read_rd_terminal_in_session(
+            t.session, t.owner, t.workflow, t.stage, t.settings
+        )
+    assert "analysis_bytes" not in t.checked
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("logical_step", 1), ("boundary", "advanced"), ("next_logical_step", 1)],
+)
+def test_success_requires_actual_returned_generation_boundary(
+    completed_graph, field, value
+):
+    t = completed_graph
+    setattr(t.boundary, field, value)
+    with pytest.raises(DomainError):
+        service.read_rd_terminal_in_session(
+            t.session, t.owner, t.workflow, t.stage, t.settings
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        "missing",
+        "legacy_only",
+        "owner",
+        "run",
+        "attempt",
+        "generation",
+        "evaluation",
+    ],
+)
+def test_actual_execution_outcome_query_not_legacy_table(
+    completed_graph, monkeypatch, change
+):
+    """Real mapped SQLite query; no PostgreSQL FK/trigger or physical-read claim."""
+    from sqlalchemy import (
+        CheckConstraint,
+        ForeignKeyConstraint,
+        MetaData,
+        create_engine,
+    )
+    from sqlalchemy.orm import Session
+
+    from backend.app.execution_snapshot_models import FactorExecutionEvaluationOutcome
+    from backend.app.rdagent_models import FactorEvaluationOutcome
+
+    t = completed_graph
+    engine = create_engine("sqlite://")
+    table = FactorExecutionEvaluationOutcome.__table__.to_metadata(MetaData())
+    for constraint in tuple(table.constraints):
+        if isinstance(constraint, (CheckConstraint, ForeignKeyConstraint)):
+            table.constraints.remove(constraint)
+    table.create(engine)
+    # Only this current producer table exists. A legacy-table lookup is an SQL
+    # error, not a fixture-supplied result; absence never grants completion.
+    row = t.evaluated
+    row.feedback_object_id = uuid4()
+    row.feedback_object_kind = "factor_generation_feedback"
+    row.feedback_sha256 = "f" * 64
+    columns = {
+        "owner": "owner_id",
+        "run": "run_id",
+        "attempt": "attempt_id",
+        "evaluation": "evaluation_id",
+    }
+    if change in columns:
+        setattr(row, columns[change], uuid4())
+    if change == "generation":
+        row.generation += 1
+    one = service._one
+    try:
+        with Session(engine, expire_on_commit=False) as database:
+            if change == "legacy_only":
+                legacy = FactorEvaluationOutcome.__table__.to_metadata(MetaData())
+                for constraint in tuple(legacy.constraints):
+                    if isinstance(constraint, (CheckConstraint, ForeignKeyConstraint)):
+                        legacy.constraints.remove(constraint)
+                legacy.create(engine)
+                database.add(
+                    FactorEvaluationOutcome(
+                        **{
+                            column.name: getattr(row, column.name)
+                            for column in legacy.columns
+                            if column.name != "created_at" and hasattr(row, column.name)
+                        }
+                    )
+                )
+                database.commit()
+            elif change != "missing":
+                database.add(row)
+                database.commit()
+                database.expunge_all()
+
+            def query(session, model, **filters):
+                if model in (FactorExecutionEvaluationOutcome, FactorEvaluationOutcome):
+                    return t.original_one(database, model, **filters)
+                return one(session, model, **filters)
+
+            monkeypatch.setattr(service, "_one", query)
+            if change:
+                with pytest.raises(DomainError):
+                    service.read_rd_terminal_in_session(
+                        t.session, t.owner, t.workflow, t.stage, t.settings
+                    )
+            else:
+                assert (
+                    service.read_rd_terminal_in_session(
+                        t.session, t.owner, t.workflow, t.stage, t.settings
+                    ).child_run_id
+                    == t.run.id
+                )
+    finally:
+        engine.dispose()

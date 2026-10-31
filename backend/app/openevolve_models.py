@@ -921,6 +921,7 @@ class SearchControlTransition(AttemptEvidence, Base):
         ),
     )
 
+
 # Register dependent024 tables only after their shared scope/base definitions exist.
 from backend.app import openevolve_event_models as _openevolve_event_models  # noqa: F401
 from backend.app import openevolve_operational_models as _openevolve_operational_models  # noqa: F401

@@ -89,6 +89,7 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -162,6 +163,7 @@ def _persist_queued(
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

@@ -60,6 +60,7 @@ def capabilities(user: CurrentUser, session: SessionDep):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )
     return StructuredSearchCapabilities(
         routes_available=available,

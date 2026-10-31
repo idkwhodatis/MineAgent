@@ -60,6 +60,7 @@ def require_report_capability(session):
         "030_declared_upload_basket": (2, 3, 15),
         "031_workflow_structured_stage": (2, 3, 16),
         "032_normal_oe_note_pins": (2, 3, 16),
+        "032a_rd_terminal_results": (2, 3, 16),
     }
     versions = versions_by_revision.get(revisions[0])
     if versions is None:

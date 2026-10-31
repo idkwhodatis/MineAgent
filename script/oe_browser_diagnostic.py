@@ -82,7 +82,20 @@ def browser_failure(path: Path, root: Path) -> dict:
                             "column": int(match[2]),
                         }
                     )
-            result["failures"].append({"kind": kind, "source_frames": frames[:4]})
+            item = {"kind": kind, "source_frames": frames[:4]}
+            http = re.search(
+                r"(?:^|\n)(?:Error: )?OE_SUBMIT_HTTP_V1:"
+                r"(200|201|400|401|403|404|409|413|422|429|500|503|other):"
+                r"(preflight_changed|run_quota|database_unavailable|internal_error|"
+                r"validation_error|invalid_oe_structured_request|invalid_request|"
+                r"invalid_idempotency_key|idempotency_conflict|neutral_busy|"
+                r"runtime_schema_unavailable|structured_snapshot_release_required|other)"
+                r"(?=\r?\n|$)",
+                text,
+            )
+            if http and any(frame["file"] == "normal.spec.ts" for frame in frames):
+                item["submit_http"] = {"status": http[1], "code": http[2]}
+            result["failures"].append(item)
             if len(result["failures"]) == 4:
                 return result
     return result

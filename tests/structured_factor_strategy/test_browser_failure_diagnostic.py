@@ -138,3 +138,26 @@ def test_failure_and_frame_counts_and_numeric_fields_are_bounded(tmp_path):
         for row in value["failures"]
         for frame in row["source_frames"]
     )
+
+
+def test_submit_http_diagnostic_requires_closed_tokens_and_known_source(tmp_path):
+    path = tmp_path / "private.xml"
+    source = tmp_path / "frontend/tests/oe-normal-acceptance/normal.spec.ts"
+    frame = f"\n    at {source}:265:5"
+    report(path, "Error: OE_SUBMIT_HTTP_V1:503:database_unavailable\nprivate" + frame)
+    value = browser_failure(path, tmp_path)["failures"][0]
+    assert value["submit_http"] == {"status": "503", "code": "database_unavailable"}
+    assert "private" not in json.dumps(value)
+    for marker in (
+        "OE_SUBMIT_HTTP_V1:599:database_unavailable",
+        "OE_SUBMIT_HTTP_V1:503:private",
+        "OE_SUBMIT_HTTP_V1:503:database_unavailable-private",
+        "OE_SUBMIT_HTTP_V1:503:database_unavailable private",
+    ):
+        report(path, "Error: " + marker + frame)
+        assert "submit_http" not in browser_failure(path, tmp_path)["failures"][0]
+    report(
+        path,
+        "Error: OE_SUBMIT_HTTP_V1:503:database_unavailable\n    at /foreign/normal.spec.ts:265:5",
+    )
+    assert "submit_http" not in browser_failure(path, tmp_path)["failures"][0]

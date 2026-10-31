@@ -239,6 +239,7 @@ def preflight(session, owner_id, request, settings):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ) and (
             selected_profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -252,6 +253,7 @@ def preflight(session, owner_id, request, settings):
                 ["030_declared_upload_basket"],
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             )
         ):
             runtime_available = True

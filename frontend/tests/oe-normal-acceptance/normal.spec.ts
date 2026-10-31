@@ -14,6 +14,7 @@ import type {
   NormalPairComparison,
   ResearchNoteRevision,
 } from "../../src/client/types.gen";
+import { submitHttpDiagnostic } from "./http-diagnostic";
 import { oeBudgetFields } from "../../src/features/oe-provider-parameters";
 
 const manifest = z.discriminatedUnion("mode", [
@@ -251,7 +252,18 @@ test("normal search explicitly checks applies budget and submits one immutable r
   );
   await submit.click();
   const accepted = await observed;
-  expect(accepted.status()).toBe(201);
+  let failureCode: unknown;
+  if (accepted.status() !== 201) {
+    try {
+      failureCode = await accepted.json();
+    } catch {
+      // Non-JSON errors reveal only the closed status classification.
+    }
+  }
+  expect(
+    accepted.status(),
+    submitHttpDiagnostic(accepted.status(), failureCode),
+  ).toBe(201);
   const receipt =
     (await accepted.json()) as ProviderStructuredSubmissionReceipt;
   const body = accepted.request().postDataJSON();

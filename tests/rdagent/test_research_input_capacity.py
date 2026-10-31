@@ -24,6 +24,7 @@ def session(revisions):
         ("030_declared_upload_basket", True),
         ("031_workflow_structured_stage", True),
         ("032_normal_oe_note_pins", True),
+        ("032a_rd_terminal_results", True),
     ],
 )
 def test_exact_capability(revision, expected):
@@ -50,6 +51,8 @@ def test_unknown_or_multiple_revision_rejected(revisions):
         ("028_oe_structured_search", "mineagent.research-inputs.v1"),
         ("032_normal_oe_note_pins", None),
         ("032_normal_oe_note_pins", "future"),
+        ("032a_rd_terminal_results", None),
+        ("032a_rd_terminal_results", "future"),
     ],
 )
 def test_capability_disagreement_rejected(monkeypatch, revision, value):

@@ -202,3 +202,94 @@ def test_queue_state_is_bounded_and_only_emits_allowlisted_fields():
     assert state["attempts"][0]["exit_code"] is None
     assert state["attempts"][0]["error"] == "other"
     assert "secret" not in json.dumps(state)
+
+
+@pytest.mark.parametrize(
+    "error_type, expected",
+    [(AttributeError, "attribute"), (TypeError, "type"), (KeyError, "key")],
+)
+def test_closed_failure_builtin_families_do_not_render_payload(error_type, expected):
+    report = _diagnostic()._queue_failure(error_type("private-secret-source"))
+    assert report == {
+        "family": expected,
+        "code": "unknown",
+        "stage": "unknown",
+        "sqlstate": "none",
+    }
+    assert "private" not in json.dumps(report)
+
+
+def test_validation_and_non_dbapi_orm_families_are_closed():
+    from pydantic import BaseModel, ValidationError
+    from sqlalchemy.orm.exc import DetachedInstanceError
+
+    class ClosedValue(BaseModel):
+        value: int
+
+    with pytest.raises(ValidationError) as caught:
+        ClosedValue(value="private-secret-value")
+    diagnostic = _diagnostic()
+    assert diagnostic._queue_failure(caught.value)["family"] == "validation"
+    report = diagnostic._queue_failure(DetachedInstanceError("private-owner-path"))
+    assert report == {
+        "family": "orm",
+        "code": "unknown",
+        "stage": "unknown",
+        "sqlstate": "none",
+    }
+    assert "private" not in json.dumps(diagnostic._queue_failure(caught.value))
+
+
+@pytest.mark.parametrize(
+    "module_name, function, stage",
+    [
+        (
+            "backend.app.rdagent_numeric_failure_finalization",
+            "_closed_phase",
+            "failure_phase",
+        ),
+        (
+            "backend.app.rdagent_numeric_failure_finalization",
+            "retain_numeric_failure_feedback",
+            "failure_finalize",
+        ),
+        (
+            "backend.app.rdagent_services",
+            "_completed_member_response",
+            "member_response",
+        ),
+        ("backend.app.rdagent_operational_broker", "_publish", "object_publish"),
+        ("backend.app.research_object_services", "reserve_object", "object_reserve"),
+        (
+            "backend.app.research_object_services",
+            "publish_reserved_object",
+            "object_persist",
+        ),
+        (
+            "packages.rdagent_adapter.numeric_failure",
+            "upstream_observation",
+            "failure_document",
+        ),
+    ],
+)
+def test_only_fixed_failure_function_stages_are_rendered(module_name, function, stage):
+    from types import FunctionType
+
+    def fail():
+        raise TypeError("private-payload")
+
+    target = FunctionType(
+        fail.__code__.replace(co_name=function, co_filename="/private/path"),
+        {"__name__": module_name},
+        function,
+    )
+    with pytest.raises(TypeError) as caught:
+        target()
+    report = _diagnostic()._queue_failure(caught.value)
+    assert report == {
+        "family": "type",
+        "code": "unknown",
+        "stage": stage,
+        "sqlstate": "none",
+    }
+    assert "private" not in json.dumps(report)

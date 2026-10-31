@@ -549,6 +549,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ) or capabilities_for(
             versions[0]
         ).oe_structured_closure_schema != _closure_schema_for_research(
@@ -582,6 +583,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             if versions not in (
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             ):
                 fail()
             from backend.app.oe_workflow_models import OEWorkflowSubmission
@@ -601,6 +603,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
         elif versions in (
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             workflow_context = {}
         attempts = list(
@@ -730,6 +733,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
                     ["030_declared_upload_basket"],
                     ["031_workflow_structured_stage"],
                     ["032_normal_oe_note_pins"],
+                    ["032a_rd_terminal_results"],
                 )
                 else {}
             ),

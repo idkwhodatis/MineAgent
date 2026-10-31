@@ -30,14 +30,14 @@ def test_new_compose_phase_follows_all_existing_actual_proofs_and_old_pg_cleanup
     )
     assert prior < cleanup < packaged
     assert "if" not in steps[packaged] and steps[packaged]["timeout-minutes"] == 40
-    assert "assert len(cases)==253" in next(
+    assert "assert len(cases)==277" in next(
         step["run"]
         for step in steps
         if step.get("name")
         == "Require provider protocol and actual local SDK containment regressions"
     )
     actual = steps[prior]["run"]
-    assert "assert len(cases)==23" in actual
+    assert "assert len(cases)==24" in actual
     for path in (
         "test_seed_parent_contract_migration.py",
         "test_rdagent_provider_user_flow.py",

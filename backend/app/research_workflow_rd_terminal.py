@@ -7,7 +7,10 @@ result disclosure and feedback selection still require the existing ledger.
 from sqlalchemy import select
 
 from backend.app.execution_snapshot_history import historical_session
-from backend.app.execution_snapshot_models import ExecutionSnapshotPublication
+from backend.app.execution_snapshot_models import (
+    ExecutionSnapshotPublication,
+    FactorExecutionEvaluationOutcome,
+)
 from backend.app.factor_analysis_history import read_analysis_in_session
 from backend.app.factor_analysis_models import (
     FactorDirectAnalysisIntent,
@@ -16,11 +19,11 @@ from backend.app.factor_analysis_models import (
 from backend.app.factor_models import FactorVersion
 from backend.app.factor_native_io import require_native_storage_guard
 from backend.app.models import ExecutionAttempt, ResearchRun
+from backend.app.rdagent_boundary_models import FactorGenerationBoundary
 from backend.app.rdagent_controller_history import read_historical_controller_records
 from backend.app.rdagent_controller_stop import controller_stop_committed
 from backend.app.rdagent_models import (
     FactorControllerLaunch,
-    FactorEvaluationOutcome,
     FactorEvaluationStart,
     FactorGenerationSource,
     FactorGenerationStart,
@@ -170,7 +173,7 @@ def read_rd_terminal_in_session(session, owner_id, workflow_id, stage_id, settin
     source = _one(session, FactorGenerationSource, **scope, start_id=start.id)
     evaluation = _one(session, FactorEvaluationStart, **scope, start_id=start.id)
     evaluated = _one(
-        session, FactorEvaluationOutcome, **scope, evaluation_id=evaluation.id
+        session, FactorExecutionEvaluationOutcome, **scope, evaluation_id=evaluation.id
     )
     publication = _one(
         session, ExecutionSnapshotPublication, **scope, evaluation_id=evaluation.id
@@ -211,6 +214,8 @@ def read_rd_terminal_in_session(session, owner_id, workflow_id, stage_id, settin
         or evaluation.evaluated_source_id != source.id
         or evaluation.factor_version_id != version.id
         or evaluated.status != "valid"
+        or evaluated.generation_start_id != start.id
+        or evaluated.snapshot_id != publication.id
         or (publication.start_id, publication.source_id, publication.factor_version_id)
         != (start.id, source.id, version.id)
     ):
@@ -230,11 +235,27 @@ def read_rd_terminal_in_session(session, owner_id, workflow_id, stage_id, settin
         or digest(manifest) != publication.manifest_sha256
         or manifest.input.version.factor_version_id != version.id
         or manifest.input.version.code_sha256 != source.source_sha256
+        or evaluated.snapshot_manifest_sha256 != publication.manifest_sha256
         or evaluated.snapshot_input_sha256 != manifest.input_sha256
         or evaluated.snapshot_output_sha256 != manifest.output_rows_sha256
     ):
         unavailable()
     controller = _one(session, FactorControllerLaunch, **scope)
+    boundary = _one(
+        session,
+        FactorGenerationBoundary,
+        **scope,
+        id=evaluated.boundary_id,
+        start_id=start.id,
+        controller_launch_id=controller.id,
+    )
+    if (
+        evaluated.controller_launch_id != controller.id
+        or boundary.logical_step != start.logical_step
+        or boundary.boundary != "returned"
+        or boundary.next_logical_step is not None
+    ):
+        unavailable()
     bootstrap = RDWorkflowOperationalBootstrap.model_validate_json(
         canonical_bytes(controller.bootstrap)
     )

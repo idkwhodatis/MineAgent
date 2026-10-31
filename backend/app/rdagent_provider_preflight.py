@@ -202,6 +202,7 @@ def _provider_preflight(
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -216,6 +217,7 @@ def _provider_preflight(
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         )
     ):
         reasons.append(
@@ -236,6 +238,7 @@ def _provider_preflight(
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         )
     ):
         reasons.append(

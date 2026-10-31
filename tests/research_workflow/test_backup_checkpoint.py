@@ -22,7 +22,12 @@ from tests.research_workflow.test_rd_terminal import completed_graph  # noqa:F40
 
 
 def data(row):
-    return json.loads(json.dumps(vars(row), default=str))
+    values = (
+        {column.name: getattr(row, column.name) for column in row.__table__.columns}
+        if hasattr(row, "__table__")
+        else vars(row)
+    )
+    return json.loads(json.dumps(values, default=str))
 
 
 @pytest.mark.parametrize(
@@ -39,6 +44,24 @@ def data(row):
         "refund",
         "missing_hold",
         "running_unit",
+        "missing_execution",
+        "legacy_only",
+        "execution_owner",
+        "execution_run",
+        "execution_attempt",
+        "execution_generation",
+        "execution_evaluation",
+        "execution_start",
+        "execution_snapshot",
+        "execution_manifest",
+        "execution_input",
+        "execution_output",
+        "execution_controller",
+        "execution_boundary",
+        "execution_status",
+        "boundary_kind",
+        "boundary_next",
+        "boundary_step",
     ],
 )
 def test_checkpoint_requires_exact_retained_actual_chain(completed_graph, change):
@@ -56,14 +79,14 @@ def test_checkpoint_requires_exact_retained_actual_chain(completed_graph, change
         live.FactorGenerationStart,
         live.FactorGenerationSource,
         live.FactorEvaluationStart,
-        live.FactorEvaluationOutcome,
+        live.FactorGenerationBoundary,
         live.FactorControllerLaunch,
     ]
     names = [
         "factor_generation_starts",
         "factor_generation_sources",
         "factor_evaluation_starts",
-        "factor_evaluation_outcomes",
+        "factor_generation_boundaries",
         "factor_controller_launches",
     ]
     rd = {
@@ -102,7 +125,8 @@ def test_checkpoint_requires_exact_retained_actual_chain(completed_graph, change
         "tables": {
             "factor_execution_snapshot_publications": [
                 data(live._one(value.session, live.ExecutionSnapshotPublication))
-            ]
+            ],
+            "factor_execution_evaluation_outcomes": [data(value.evaluated)],
         }
     }
     direct = {
@@ -148,6 +172,36 @@ def test_checkpoint_requires_exact_retained_actual_chain(completed_graph, change
         shared["tables"]["research_budget_settlements"].clear()
     elif change == "running_unit":
         shared["tables"]["research_process_states"][0]["status"] = "running"
+    execution_rows = execution["tables"]["factor_execution_evaluation_outcomes"]
+    if change in ("missing_execution", "legacy_only"):
+        if change == "legacy_only":
+            rd["tables"]["factor_evaluation_outcomes"] = list(execution_rows)
+        execution_rows.clear()
+    fields = {
+        "execution_owner": "owner_id",
+        "execution_run": "run_id",
+        "execution_attempt": "attempt_id",
+        "execution_generation": "generation",
+        "execution_evaluation": "evaluation_id",
+        "execution_start": "generation_start_id",
+        "execution_snapshot": "snapshot_id",
+        "execution_manifest": "snapshot_manifest_sha256",
+        "execution_input": "snapshot_input_sha256",
+        "execution_output": "snapshot_output_sha256",
+        "execution_controller": "controller_launch_id",
+        "execution_boundary": "boundary_id",
+        "execution_status": "status",
+    }
+    if change in fields:
+        execution_rows[0][fields[change]] = (
+            2 if change == "execution_generation" else "wrong"
+        )
+    if change == "boundary_kind":
+        rd["tables"]["factor_generation_boundaries"][0]["boundary"] = "advanced"
+    elif change == "boundary_next":
+        rd["tables"]["factor_generation_boundaries"][0]["next_logical_step"] = 1
+    elif change == "boundary_step":
+        rd["tables"]["factor_generation_boundaries"][0]["logical_step"] = 1
     args = {
         "configs": {
             str(value.run.id): WorkflowFactorResearchConfig.model_validate_json(

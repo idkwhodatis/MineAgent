@@ -59,6 +59,7 @@ def _versioned_identity(session, owner, kind, content):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             raise _error("oe_structured_object_revision")
         return identity_for_content(owner, kind, content)
@@ -78,6 +79,7 @@ def _versioned_identity(session, owner, kind, content):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
@@ -104,6 +106,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["030_declared_upload_basket"],
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             ):
                 raise _error("rd_numeric_failure_feedback_revision")
             return failure_identity(owner, kind, content)
@@ -131,6 +134,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["030_declared_upload_basket"],
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
+                ["032a_rd_terminal_results"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -428,6 +432,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -446,9 +451,37 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
-        document = parse_document(kind, content)
+        # Identity dispatch alone is insufficient: reservation validates the
+        # exact typed document and full attempt scope before admitting bytes.
+        if kind == "factor_generation_feedback" and revisions in (
+            ["028_oe_structured_search"],
+            ["029_research_workflow"],
+            ["030_declared_upload_basket"],
+            ["031_workflow_structured_stage"],
+            ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
+        ):
+            import json
+
+            from packages.rdagent_adapter.numeric_failure_codec import (
+                parse_failure_feedback,
+            )
+
+            if type(content) is not bytes or not 1 <= len(content) <= 65536:
+                raise _error("rd_feedback_body_bound")
+            body = json.loads(content)
+            document = (
+                parse_failure_feedback(content)
+                if type(body) is dict
+                and body.get("schema_version")
+                == "mineagent.rd-numeric-failure-feedback.v1"
+                else parse_document(kind, content)
+            )
+        else:
+            document = parse_document(kind, content)
         if any(
             getattr(document, key) != getattr(fence, key)
             for key in ("owner_id", "run_id", "attempt_id", "generation")
@@ -482,6 +515,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

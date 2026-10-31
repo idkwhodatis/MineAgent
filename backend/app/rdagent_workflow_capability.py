@@ -13,6 +13,7 @@ def require_workflow_revision(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise DomainError(
             "workflow_child_unavailable", "Workflow child schema unavailable", 409

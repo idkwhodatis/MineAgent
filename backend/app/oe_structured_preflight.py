@@ -88,6 +88,7 @@ def evaluate(session, owner_id, request, settings, data):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         reasons.append(
             ProviderPreflightReason(

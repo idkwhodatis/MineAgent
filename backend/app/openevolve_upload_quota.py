@@ -101,6 +101,7 @@ def upload_holds(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload
@@ -137,6 +138,7 @@ def upload_holds(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         from backend.app.oe_structured_quota import checkpoint_upload_holds
 

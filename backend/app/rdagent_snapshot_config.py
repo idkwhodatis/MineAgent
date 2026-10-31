@@ -101,6 +101,7 @@ def provider_config_in_session(session):
         "030_declared_upload_basket",
         "031_workflow_structured_stage",
         "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
     }:
         raise ValueError("Unsupported historical snapshot revision")
     return revisions[0] in {
@@ -114,6 +115,7 @@ def provider_config_in_session(session):
         "030_declared_upload_basket",
         "031_workflow_structured_stage",
         "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
     }
 
 
@@ -136,6 +138,7 @@ def workflow_config_in_session(session):
         "030_declared_upload_basket",
         "031_workflow_structured_stage",
         "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
     }:
         raise ValueError("Unsupported workflow snapshot revision")
     return revisions in (
@@ -143,6 +146,7 @@ def workflow_config_in_session(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )
 
 
@@ -158,6 +162,7 @@ def composed_controller_in_session(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )
 
 
@@ -166,6 +171,7 @@ def declared_upload_in_session(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )
 
 
@@ -178,4 +184,5 @@ def seeded_controller_in_session(session):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )

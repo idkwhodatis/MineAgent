@@ -40,6 +40,7 @@ def read_completed_response(session, fence, exchange, config, settings):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         fail()
     scoped(exchange, fence)
@@ -172,6 +173,7 @@ def read_physical_chain(
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         fail()
     scoped(membership, fence)

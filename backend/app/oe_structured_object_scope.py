@@ -17,6 +17,7 @@ def require_object_scope(session, fence, kind, content):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         fail()
     _, config = decode_spec(session, run)

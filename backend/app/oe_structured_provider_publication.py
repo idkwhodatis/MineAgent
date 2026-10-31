@@ -61,6 +61,7 @@ def publish_evidence(factory, fence, settings, kind, content, key):
             ["030_declared_upload_basket"],
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
+            ["032a_rd_terminal_results"],
         ):
             fail()
         held = reserve_budget(
@@ -105,6 +106,7 @@ def bind_physical_receipt(session, fence, membership_id, object_id, sha256, sett
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         fail()
     _, config = decode_spec(session, run)

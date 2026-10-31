@@ -237,6 +237,7 @@ def finish_oe_structured_transaction(session, fence, epoch_id, settings):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise _neutral_error("unsupported_run_identity")
     from backend.app.models import utcnow

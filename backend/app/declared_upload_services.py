@@ -40,6 +40,7 @@ def require_revision(session):
         REVISION,
         "031_workflow_structured_stage",
         "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
     }:
         raise DomainError(
             "declared_upload_schema_unavailable",

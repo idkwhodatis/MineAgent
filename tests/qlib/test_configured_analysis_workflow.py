@@ -7,11 +7,11 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     text = Path(".github/workflows/mineagent-configured-analysis.yml").read_text()
     assert "contents: read" in text and "persist-credentials: false" in text
     assert "timeout-minutes: 120" in text
-    assert "assert len(cases)==23" in text
+    assert "assert len(cases)==24" in text
     assert 'MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED: "1"' in text
     assert 'MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"' in text
     assert "python -m pytest tests/research_workflow tests/research_inputs" in text
-    assert "assert len(cases)==833" in text
+    assert "assert len(cases)==874" in text
     assert "assert len(cases)==132" in text
     assert "assert len(names)==132" in text
     assert "test_actual_child_template_comparison_preserves_layout_only[" in text
@@ -116,7 +116,7 @@ def test_genuine_browser_reuses_pinned_node_and_keeps_required_runtime_cases():
     ):
         assert required in text and required in original
     assert 'MINEAGENT_CONFIGURED_BROWSER_REQUIRED: "1"' in text
-    assert "assert len(cases)==23" in text
+    assert "assert len(cases)==24" in text
     assert "path: var/numeric-proof/" in text
     assert "frontend/test-results" not in text
     assert (
@@ -148,7 +148,7 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert "MINEAGENT_PROVIDER_SDK_PYTHON" in workflow
     assert '"tests/rdagent_provider/**"' in workflow
     assert "python -m pytest tests/rdagent_provider -q -p no:cacheprovider" in workflow
-    assert "assert len(cases)==253" in workflow
+    assert "assert len(cases)==277" in workflow
     assert "var/numeric-proof/provider-outcomes.xml" in workflow
     assert (
         workflow.index("Install isolated host SDK")

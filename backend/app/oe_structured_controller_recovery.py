@@ -37,6 +37,7 @@ def record_controller_containment(session, admission_id, *, storage_root):
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         raise ProcessError("oe_structured_controller_recovery_revision")
     row = session.get(ResearchProcessAdmission, admission_id)

@@ -146,7 +146,8 @@ def diagnose_rd_rpc():
 
 def _queue_failure(error):
     """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
-    from sqlalchemy.exc import DBAPIError
+    from pydantic import ValidationError
+    from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
     from backend.app.services import DomainError
     from packages.rdagent_provider.transport import ProviderFailure
@@ -159,6 +160,10 @@ def _queue_failure(error):
         ProviderFailure: "provider",
         DomainError: "domain",
         ValueError: "value",
+        ValidationError: "validation",
+        AttributeError: "attribute",
+        TypeError: "type",
+        KeyError: "key",
         TimeoutError: "timeout",
     }.get(type(error), "other")
     code = getattr(error, "code", None)
@@ -195,6 +200,8 @@ def _queue_failure(error):
     }
     code = code if type(code) is str and code in allowed else "unknown"
     sqlstate = "none"
+    if isinstance(error, SQLAlchemyError):
+        family = "orm"
     if isinstance(error, DBAPIError):
         family = "database"
         value = getattr(error.orig, "sqlstate", None)
@@ -222,6 +229,28 @@ def _queue_failure(error):
             "backend.app.rdagent_configured_evaluation",
             "execute_configured_evaluation",
         ): "evaluation",
+        (
+            "backend.app.rdagent_numeric_failure_finalization",
+            "_closed_phase",
+        ): "failure_phase",
+        (
+            "backend.app.rdagent_numeric_failure_finalization",
+            "retain_numeric_failure_feedback",
+        ): "failure_finalize",
+        (
+            "backend.app.rdagent_services",
+            "_completed_member_response",
+        ): "member_response",
+        ("backend.app.rdagent_operational_broker", "_publish"): "object_publish",
+        ("backend.app.research_object_services", "reserve_object"): "object_reserve",
+        (
+            "backend.app.research_object_services",
+            "publish_reserved_object",
+        ): "object_persist",
+        (
+            "packages.rdagent_adapter.numeric_failure",
+            "upstream_observation",
+        ): "failure_document",
         ("backend.app.research_lifecycle", "neutral_transaction"): "transaction",
     }
     stage, trace = "unknown", error.__traceback__

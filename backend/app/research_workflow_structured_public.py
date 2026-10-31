@@ -33,6 +33,7 @@ def require_structured_workflow_schema(session):
     if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
         [REVISION],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     ):
         fail("workflow_structured_schema_unavailable")
 
