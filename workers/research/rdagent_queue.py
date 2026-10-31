@@ -78,6 +78,7 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409
@@ -256,6 +257,7 @@ def require_dispatch_binding(session, run, event, settings):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409

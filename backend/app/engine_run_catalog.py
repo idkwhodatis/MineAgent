@@ -44,6 +44,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                 "031_workflow_structured_stage",
                 "032_normal_oe_note_pins",
                 "032a_rd_terminal_results",
+                "032b_oe_append_run_state",
             } and (
                 selected.controller_profile is None
                 or schema_revision
@@ -58,6 +59,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                     "031_workflow_structured_stage",
                     "032_normal_oe_note_pins",
                     "032a_rd_terminal_results",
+                    "032b_oe_append_run_state",
                 )
             ):
                 enabled, code = True, "configured_fixture_profile_available"

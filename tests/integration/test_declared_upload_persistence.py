@@ -94,3 +94,24 @@ def test_workflow_optional_controller_matches_retained_canonical(migrated_engine
             assert result.scalar() == "WORKFLOW_CONTROLLER_SELECTOR_COMPLETE"
         finally:
             transaction.rollback()
+
+
+def test_oe_append_fence_repair_preserves_current_attempt_guards(migrated_engine):
+    from oe_append_fence_fixture import isolation_statements, statements
+
+    for isolation, fixture, marker in (
+        ("READ COMMITTED", statements, "OE032B_APPEND_MATRIX_COMPLETE"),
+        ("REPEATABLE READ", isolation_statements, "OE032B_ISOLATION_REJECTED"),
+    ):
+        with migrated_engine.connect().execution_options(
+            isolation_level=isolation
+        ) as connection:
+            transaction = connection.begin()
+            try:
+                for statement in fixture():
+                    result = connection.exec_driver_sql(
+                        statement, execution_options={"no_parameters": True}
+                    )
+                assert result.scalar() == marker
+            finally:
+                transaction.rollback()

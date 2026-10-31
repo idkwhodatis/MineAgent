@@ -30,6 +30,7 @@ def controls_for(session, run):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         return DisabledActions()
     receipt = session.scalar(
@@ -77,6 +78,7 @@ def request_cancel(session, owner_id, run_id):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "engine_control_not_enabled", "RD control schema is unavailable", 409

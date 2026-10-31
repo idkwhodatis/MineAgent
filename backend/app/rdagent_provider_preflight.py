@@ -203,6 +203,7 @@ def _provider_preflight(
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -218,6 +219,7 @@ def _provider_preflight(
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
+            ["032b_oe_append_run_state"],
         )
     ):
         reasons.append(
@@ -239,6 +241,7 @@ def _provider_preflight(
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
+            ["032b_oe_append_run_state"],
         )
     ):
         reasons.append(

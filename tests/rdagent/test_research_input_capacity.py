@@ -25,6 +25,7 @@ def session(revisions):
         ("031_workflow_structured_stage", True),
         ("032_normal_oe_note_pins", True),
         ("032a_rd_terminal_results", True),
+        ("032b_oe_append_run_state", True),
     ],
 )
 def test_exact_capability(revision, expected):
@@ -52,7 +53,9 @@ def test_unknown_or_multiple_revision_rejected(revisions):
         ("032_normal_oe_note_pins", None),
         ("032_normal_oe_note_pins", "future"),
         ("032a_rd_terminal_results", None),
+        ("032b_oe_append_run_state", None),
         ("032a_rd_terminal_results", "future"),
+        ("032b_oe_append_run_state", "future"),
     ],
 )
 def test_capability_disagreement_rejected(monkeypatch, revision, value):

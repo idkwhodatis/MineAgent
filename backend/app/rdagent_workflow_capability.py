@@ -14,6 +14,7 @@ def require_workflow_revision(session):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "workflow_child_unavailable", "Workflow child schema unavailable", 409

@@ -338,8 +338,8 @@ jobs:
           source=Path('var/numeric-private/declared-upload-persistence.xml')
           summarize(source,Path('var/numeric-proof/declared-upload-persistence-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==7
-          assert {case.get('name') for case in cases}=={'test_workflow_optional_controller_matches_retained_canonical','test_declared_upload_owner_lineage_and_qualification_constraints','test_actual_declared_source_builder_matches_production_sql','test_declared_upload_retained_input_versions_are_distinct','test_installed_numeric_bounds_match_strict_python_fields','test_installed_signed_child_exit_preserves_unsigned_identity_fields','test_actual_upload_basket_publication_idempotency_rollback_and_owner'}
+          assert len(cases)==8
+          assert {case.get('name') for case in cases}=={'test_workflow_optional_controller_matches_retained_canonical','test_declared_upload_owner_lineage_and_qualification_constraints','test_actual_declared_source_builder_matches_production_sql','test_declared_upload_retained_input_versions_are_distinct','test_installed_numeric_bounds_match_strict_python_fields','test_installed_signed_child_exit_preserves_unsigned_identity_fields','test_actual_upload_basket_publication_idempotency_rollback_and_owner','test_oe_append_fence_repair_preserves_current_attempt_guards'}
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYDECLARED
           test "$status" = 0

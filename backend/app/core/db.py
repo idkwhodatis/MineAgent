@@ -6,7 +6,7 @@ from backend.app.core.config import Settings
 
 # This executable requires the complete increment schema, not merely a prior
 # supported backup revision. An offline contract test pins this to Alembic head.
-REQUIRED_SCHEMA_REVISION = "032a_rd_terminal_results"
+REQUIRED_SCHEMA_REVISION = "032b_oe_append_run_state"
 
 
 def create_db_engine(settings: Settings):

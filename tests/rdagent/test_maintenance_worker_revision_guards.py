@@ -11,12 +11,15 @@ from packages.research_runtime.process_contracts import ProcessError
 from workers.research.rdagent_configured import require_controller_revision
 from workers.research.rdagent_operational import require_maintained_revision
 
-OLD = "032_normal_oe_note_pins"
-CURRENT = "032a_rd_terminal_results"
+PREVIOUS = "032_normal_oe_note_pins"
+OLD = "032a_rd_terminal_results"
+CURRENT = "032b_oe_append_run_state"
 INVALID = (
     [],
     ["032b_future"],
     ["033_safe_workflow_branches"],
+    [PREVIOUS, OLD],
+    [OLD, OLD],
     [OLD, CURRENT],
     [CURRENT, CURRENT],
 )
@@ -33,7 +36,7 @@ def test_configured_profiles_inherit_exact_maintenance_and_reject_unknown_heads(
         "mineagent.rdagent-orchestrator.v4",
     ):
         config = SimpleNamespace(controller_profile=profile)
-        for revision in (OLD, CURRENT):
+        for revision in (PREVIOUS, OLD, CURRENT):
             require_controller_revision(session([revision]), config)
         for versions in INVALID:
             with pytest.raises(ProcessError, match="rd_controller_revision"):
@@ -41,7 +44,7 @@ def test_configured_profiles_inherit_exact_maintenance_and_reject_unknown_heads(
 
 
 def test_maintained_controller_inherits_exact_maintenance_only():
-    for revision in (OLD, CURRENT):
+    for revision in (PREVIOUS, OLD, CURRENT):
         require_maintained_revision(session([revision]))
     for versions in INVALID:
         with pytest.raises(ProcessError, match="rd_controller_revision"):
@@ -91,7 +94,7 @@ def test_every_worker_predecessor_gate_preserves_closed_maintenance_membership()
 def test_oe_dispatch_maintenance_reaches_existing_binding_check():
     from workers.research.oe_structured_queue import require_dispatch_binding
 
-    for revision in (OLD, CURRENT):
+    for revision in (PREVIOUS, OLD, CURRENT):
         with pytest.raises(DomainError) as caught:
             require_dispatch_binding(session([revision]), None, None, None)
         assert caught.value.code == "oe_structured_queue_binding"

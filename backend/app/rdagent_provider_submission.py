@@ -56,6 +56,7 @@ def submit_provider_run(session, owner_id, submitted, idempotency_key, settings)
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

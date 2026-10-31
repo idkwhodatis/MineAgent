@@ -12,6 +12,7 @@ def require_normal_oe_notes(session):
     if session.scalars(text("SELECT version_num FROM alembic_version")).all() not in (
         [REVISION],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise DomainError(
             "normal_oe_notes_not_installed",

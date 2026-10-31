@@ -104,6 +104,7 @@ def require_maintained_revision(session):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -237,6 +238,7 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
+                ["032b_oe_append_run_state"],
             ):
                 raise ProcessError("rd_controller_seeded_revision")
             if controller_profile(
@@ -254,6 +256,7 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
+                ["032b_oe_append_run_state"],
             ):
                 raise ProcessError("rd_controller_composed_revision")
         from backend.app.rdagent_workflow_controller import (

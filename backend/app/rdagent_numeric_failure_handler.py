@@ -127,6 +127,7 @@ def select_provider_result_handler(config, revisions):
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
+            ["032b_oe_append_run_state"],
         ):
             return ProviderRejectionHandler
     elif type(config) is WorkflowFactorResearchConfig and revisions in (
@@ -135,6 +136,7 @@ def select_provider_result_handler(config, revisions):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         return ProviderRejectionHandler
     raise RPCError("numeric_failure_configured_profile_required")

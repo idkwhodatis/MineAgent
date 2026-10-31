@@ -106,6 +106,7 @@ def historical_session(factory, owner_id, settings):
                 ["031_workflow_structured_stage"],
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
+                ["032b_oe_append_run_state"],
             ):
                 fail()
             yield session
@@ -368,6 +369,7 @@ def check_configured_history(session, publication, settings):
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document

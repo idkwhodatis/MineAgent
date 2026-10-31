@@ -45,7 +45,7 @@ def test_generated_literal_matrices_bypass_placeholder_parsing_without_sql_chang
     # Verify the actual integration callers select that dialect route, not merely
     # a successful detached demonstration. Bound SQLAlchemy text calls are untouched.
     for name, expected_calls in (
-        ("test_declared_upload_persistence.py", 6),
+        ("test_declared_upload_persistence.py", 7),
         ("test_rd_workflow_declaration_graph.py", 1),
         ("test_normal_oe_note_persistence.py", 3),
     ):

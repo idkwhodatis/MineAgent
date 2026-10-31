@@ -52,6 +52,7 @@ def provider_options(settings, owner_id, revision):
                 "031_workflow_structured_stage",
                 "032_normal_oe_note_pins",
                 "032a_rd_terminal_results",
+                "032b_oe_append_run_state",
             ) or (
                 runtime.controller_profile is not None
                 and revision
@@ -66,6 +67,7 @@ def provider_options(settings, owner_id, revision):
                     "031_workflow_structured_stage",
                     "032_normal_oe_note_pins",
                     "032a_rd_terminal_results",
+                    "032b_oe_append_run_state",
                 )
             ):
                 reason, enabled = "runtime_schema_unavailable", False
@@ -86,6 +88,7 @@ def provider_options(settings, owner_id, revision):
                     "031_workflow_structured_stage",
                     "032_normal_oe_note_pins",
                     "032a_rd_terminal_results",
+                    "032b_oe_append_run_state",
                 ):
                     seeded_enabled = False
                     seeded_reason = "runtime_schema_unavailable"

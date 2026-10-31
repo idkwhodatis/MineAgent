@@ -34,6 +34,7 @@ def require_structured_workflow_schema(session):
         [REVISION],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     ):
         fail("workflow_structured_schema_unavailable")
 

@@ -76,6 +76,7 @@ def create_structured_acceptance_run(factory, *, owner_id, program, config, sett
             ["031_workflow_structured_stage"],
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
+            ["032b_oe_append_run_state"],
         ):
             raise ProcessError("structured_schema_unsupported")
         dataset = session.get(DatasetVersion, config.dataset_version_id)

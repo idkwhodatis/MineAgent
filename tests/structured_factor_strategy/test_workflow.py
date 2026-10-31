@@ -120,8 +120,10 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
     revision_gate = next(
         n
         for n in ast.walk(gate)
-        if isinstance(n, ast.Compare) and isinstance(n.ops[0], ast.NotIn)
-        and isinstance(n.left, ast.Name) and n.left.id == "revisions"
+        if isinstance(n, ast.Compare)
+        and isinstance(n.ops[0], ast.NotIn)
+        and isinstance(n.left, ast.Name)
+        and n.left.id == "revisions"
         and isinstance(n.comparators[0], ast.Tuple)
         and ast.literal_eval(n.comparators[0])[0] == ["022_factor_analysis"]
     )
@@ -142,6 +144,7 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
+        ["032b_oe_append_run_state"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed
