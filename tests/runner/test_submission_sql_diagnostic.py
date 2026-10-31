@@ -32,7 +32,7 @@ def test_closed_sqlstate_whitelist_never_formats_private_exception():
         assert diagnostic.classify(SimpleNamespace(original_exception=error)) == {
             "sqlstate": state,
             "family": family,
-            **({"category": "other"} if state == "P0001" else {}),
+            **({"category": "other"} if state in {"P0001", "23514"} else {}),
         }
     for state in ("23505-private", "99999", "private", None, [], 23505):
         error = PrivateError()
@@ -170,3 +170,42 @@ def test_oe_submission_exact_engine_observer_cleans_up_browser_failure(capsys):
         assert "create_app(settings=settings, engine=engine)" in source
     finally:
         engine.dispose()
+
+
+def test_check_categories_match_frozen_catalog_and_reject_private_variants():
+    from hashlib import sha256
+
+    diagnostic = module()
+    root = Path(__file__).parents[2]
+    catalog = json.loads(
+        (Path(__file__).parent / "fixtures/submission_check_catalog.json").read_text()
+    )
+    for path, expected in catalog["migration_sha256"].items():
+        assert sha256((root / path).read_bytes()).hexdigest() == expected
+    assert set(diagnostic.CHECK_CATEGORIES) == {
+        (row["table_name"], row["constraint_name"]) for row in catalog["checks"]
+    }
+    for (table, constraint), category in diagnostic.CHECK_CATEGORIES.items():
+        for actual_table, actual_constraint, expected in (
+            (table, constraint, category),
+            (table + "_private", constraint, "other"),
+            (table, constraint + "_private", "other"),
+            ("private", constraint, "other"),
+            (table, [], "other"),
+        ):
+            error = SimpleNamespace(
+                sqlstate="23514",
+                diag=SimpleNamespace(
+                    table_name=actual_table,
+                    constraint_name=actual_constraint,
+                    message_primary="synthetic_private",
+                    message_detail="synthetic_private",
+                ),
+            )
+            result = diagnostic.classify(SimpleNamespace(original_exception=error))
+            assert result == {
+                "sqlstate": "23514",
+                "family": "check_violation",
+                "category": expected,
+            }
+            assert "private" not in json.dumps(result)

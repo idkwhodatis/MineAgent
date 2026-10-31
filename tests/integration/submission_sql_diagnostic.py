@@ -53,6 +53,27 @@ RAISED_CATEGORIES = {
 }
 
 
+# Exact table/constraint pairs captured from the migrated032a catalog.
+CHECK_CATEGORIES = {
+    (
+        "structured_strategy_versions",
+        "structured_strategy_versions_check",
+    ): "structured_version_shape",
+    ("research_runs", "ck_research_run_identity"): "run_identity",
+    ("research_runs", "ck_research_run_legacy_config"): "run_config",
+    ("research_runs", "ck_research_run_status"): "run_status",
+    ("research_runs", "research_runs_generation_check"): "run_generation",
+    (
+        "oe_structured_submissions",
+        "oe_structured_submissions_check",
+    ): "oe_submission_shape",
+    ("oe_structured_specs", "oe_structured_specs_check"): "oe_spec_hashes",
+    ("oe_structured_specs", "oe_structured_specs_check1"): "oe_spec_shape",
+    ("data_usage_exposures", "data_usage_exposures_check"): "exposure_window",
+    ("research_budget_controls", "ck_neutral_budget_vectors"): "budget_vectors",
+}
+
+
 def classify(context):
     try:
         error = context.original_exception
@@ -66,6 +87,15 @@ def classify(context):
                 result["category"] = (
                     RAISED_CATEGORIES.get(primary, "other")
                     if type(primary) is str
+                    else "other"
+                )
+            if state == "23514":
+                diag = getattr(error, "diag", None)
+                table = getattr(diag, "table_name", None)
+                constraint = getattr(diag, "constraint_name", None)
+                result["category"] = (
+                    CHECK_CATEGORIES.get((table, constraint), "other")
+                    if type(table) is str and type(constraint) is str
                     else "other"
                 )
             return result

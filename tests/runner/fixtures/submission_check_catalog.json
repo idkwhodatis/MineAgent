@@ -1,0 +1,87 @@
+{
+  "source": "Real PG18 pg_constraint after actual001-through032a migrations; no user data",
+  "migration_sha256": {
+    "backend/alembic/versions/001_m1.py": "5fea1ee1af8a3a77cf0be8dd5607ac86052b64cdb175c3e111be8bf069b4a228",
+    "backend/alembic/versions/002_m2.py": "aa8e7f75e8556400f52555fed4166ef99313b2d3123a9207e69ef3e7452bd6cf",
+    "backend/alembic/versions/003_m3.py": "bc6a5117dda53c24afdf1bd15c237dcbe16f0d7bd5014a5d4eb635149a651bbe",
+    "backend/alembic/versions/004_m5.py": "6b19a65c60eb973e881b7c796fef854556b705bdc9b2444220bd4afd7016aa39",
+    "backend/alembic/versions/005_settings.py": "14beddbc3512b880321bc5158ae3a0dbeb4bf59936257cf44b1b71200a96bc38",
+    "backend/alembic/versions/006_provider_connections.py": "2ea60e2e10580eab602069fa2c0295c283c302e225afb68e959c2139abab017b",
+    "backend/alembic/versions/007_research_specs.py": "511142e4236c9e2d10c44a4cc4246f97f417ae8028e3e9afa3e2fea89f46341a",
+    "backend/alembic/versions/008_comparisons.py": "93d1e68cd13be01e4218d954538e189e19e2be74b53af4a1702bc2b9f9ec7c19",
+    "backend/alembic/versions/009_independent_evaluations.py": "0e6cccf92f0bc5748dd42621158dbc2457ded6120fda7ef865a06bc910075439",
+    "backend/alembic/versions/010_research_notes.py": "618018daa41b1db9738759fc3541a92467f42e80885d54877c0bc8e9f1b3f008",
+    "backend/alembic/versions/011_note_pin_trigger.py": "1d18cd3770e5bad705feebc9dec630d879c8ed9392ef7269ccd3bd3a48b88ee7",
+    "backend/alembic/versions/012_factor_library.py": "cd553893f291f14ec3a04859049c4c6b8757556e38387e2641aad18c21f58c37",
+    "backend/alembic/versions/013_factor_import.py": "fe34d1cac4423955737e4cb58bfca0c60e882df677ffd46f3366dce1abf94ab2",
+    "backend/alembic/versions/014_run_identity.py": "2fb78196bc3b1dcb23b5eb5166e0e73d7645ccee0b1a0a11d0789344d98c9f09",
+    "backend/alembic/versions/015_neutral_primitives.py": "227e761eb3eda96a31193cb19be92cba3f39bbd0c3ada9de44a70a38629faa64",
+    "backend/alembic/versions/016_process_versioning.py": "279f0e20d53b544b283096e0befde3308eb23c7a1ac26dc56ef7a03060083d1f",
+    "backend/alembic/versions/017_numeric_process_boundary.py": "35ceccaf7f95b627ab8e72dc7e96cefd2a64f4f3d836bab026bccdc6ae8ed295",
+    "backend/alembic/versions/018_rd_source_persistence.py": "36fd53e0b8c191e7c3dd6cf6851e7f6f669a4464016ef08e76c234e83df040bb",
+    "backend/alembic/versions/019_native_hdf_storage.py": "f5510210631e6337464021f3204a01f280b2326603fec0d2ddbc34bc28e2faa7",
+    "backend/alembic/versions/020_rd_controller.py": "b394d07a5c0ebaf84e7312ac000ddd21c099faad4a28be2f24c1166cb672efde",
+    "backend/alembic/versions/021_execution_snapshots.py": "c6c1f27082022c588bbb88d4a378e21211c71812314d752ee4bcf153334b91e6",
+    "backend/alembic/versions/022_factor_analysis.py": "48a48174b93e0049169efbb5562d98f24c73dcf828462c8d1adfe4141e5afb72",
+    "backend/alembic/versions/023_rd_submissions.py": "d502d8c41dc496854c6ae9af9947a01faa3c40f0f7aa97f5e83996b0c8939834",
+    "backend/alembic/versions/024_openevolve_initial.py": "b8a8b7e2b7feb1df9b8558acadb865c5ef6bfa868532055a4f5fcf0783c661bd",
+    "backend/alembic/versions/025_structured_factor_strategy.py": "7f6baa14133c691fddb22dba993e461cfc7100c396590d653038bbbc77d6c530",
+    "backend/alembic/versions/026_rd_seeded_submissions.py": "9218ca2efaa11cf18a52effb386588a36687a7aa3b42d61f27bce023d425d2ef",
+    "backend/alembic/versions/027_rd_controller_v3.py": "32191ebbb36d2ad897b0aaea1f18d82690a69a45d08a347d4f1253af0491141b",
+    "backend/alembic/versions/027a_contract_repairs.py": "a8e5cbbca2eaa57f9eee060016c7b04c3495bc7dd3c8b26c18ecfc3b096ad733",
+    "backend/alembic/versions/027b_provider_material.py": "9b692b0d88dc0a512f6953b918d1a38031317d05da584a09f82c80b723daf71c",
+    "backend/alembic/versions/027c_seeded_controller_v4.py": "4ac84aef43a270fb60ad7d569a9f916d1e2fc5524fd900e17980a0279778410e",
+    "backend/alembic/versions/028_oe_structured_search.py": "58a21822c51f1e81da34db7c18abce5ac8a5c4e9970c380ff4aa71c6e831d740",
+    "backend/alembic/versions/029_research_workflow.py": "24e282a28a97de5dc1c49da492159f90ceb03f03a85f871c8b9bfe1237f45f0e",
+    "backend/alembic/versions/030_declared_upload_basket.py": "aa4fee688459f8ff41a78cd8925f16017adb8070fc0ae8de2ba3c718fbdaae7b",
+    "backend/alembic/versions/031_workflow_structured_stage.py": "6b8591de81ef822d5e5e7d1ba6fb698c96fb70f3d31ba34c5fb5d3c4dd72a6fc",
+    "backend/alembic/versions/032_normal_oe_note_pins.py": "201d9fc0e134f5b312373280a4dc7631d914700d2295a15ccd90b26e2bb1b1f3",
+    "backend/alembic/versions/032a_rd_terminal_results.py": "1b8c4f12c3d56218ada92a5dde13583463b3be4723acc1f276e3ba200efcfa5d",
+    "backend/alembic/versions/004_m5.sql": "e47f0d9a4f148e106b53b26285e0e16a89683663a684291c5f66656f66fedaa2",
+    "backend/alembic/versions/003_m3.sql": "3d27eb9f61d8d1ab5072fc84482701699e797beb4582b6120e41a4a90f939bd4",
+    "backend/alembic/versions/002_m2.sql": "d509f129069533d4ac006944fa6aabb5a00dfce1273d7e91a0833ce67fe93ed5",
+    "backend/alembic/versions/001_m1.sql": "49219a382f84788a31f3c6b928d42131ce11387ac8614e1b3c95c140324aead7"
+  },
+  "checks": [
+    {
+      "table_name": "structured_strategy_versions",
+      "constraint_name": "structured_strategy_versions_check"
+    },
+    {
+      "table_name": "research_runs",
+      "constraint_name": "ck_research_run_identity"
+    },
+    {
+      "table_name": "research_runs",
+      "constraint_name": "ck_research_run_legacy_config"
+    },
+    {
+      "table_name": "research_runs",
+      "constraint_name": "ck_research_run_status"
+    },
+    {
+      "table_name": "research_runs",
+      "constraint_name": "research_runs_generation_check"
+    },
+    {
+      "table_name": "oe_structured_submissions",
+      "constraint_name": "oe_structured_submissions_check"
+    },
+    {
+      "table_name": "oe_structured_specs",
+      "constraint_name": "oe_structured_specs_check"
+    },
+    {
+      "table_name": "oe_structured_specs",
+      "constraint_name": "oe_structured_specs_check1"
+    },
+    {
+      "table_name": "data_usage_exposures",
+      "constraint_name": "data_usage_exposures_check"
+    },
+    {
+      "table_name": "research_budget_controls",
+      "constraint_name": "ck_neutral_budget_vectors"
+    }
+  ]
+}
