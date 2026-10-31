@@ -141,6 +141,7 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["030_declared_upload_basket"],
         ["031_workflow_structured_stage"],
         ["032_normal_oe_note_pins"],
+        ["032a_rd_terminal_results"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed

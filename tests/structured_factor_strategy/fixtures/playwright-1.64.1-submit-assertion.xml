@@ -1,0 +1,32 @@
+<testsuites id="" name="" tests="1" failures="1" skipped="0" errors="0" time="0.6396569999999999">
+<testsuite name="normal.spec.ts" timestamp="2026-10-31T01:32:21.123Z" hostname="" tests="1" failures="1" skipped="0" time="0.008" errors="0">
+<testcase name="pure closed HTTP assertion; no browser fixture" classname="normal.spec.ts" time="0.008">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|results/normal-pure-closed-HTTP-assertion-no-browser-fixture/error-context.md]]
+]]>
+</system-out>
+<failure message="OE_SUBMIT_HTTP_V1:503:database_unavailable" type="expect.toBe">
+<![CDATA[  normal.spec.ts:3:5 › pure closed HTTP assertion; no browser fixture ──────────────────────────────
+
+    Error: OE_SUBMIT_HTTP_V1:503:database_unavailable
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 201
+    Received: 503
+
+      2 | import { submitHttpDiagnostic } from '__IMPLEMENTATION__/frontend/tests/oe-normal-acceptance/http-diagnostic';
+      3 | test('pure closed HTTP assertion; no browser fixture', () => {
+    > 4 |   expect(503, submitHttpDiagnostic(503, {code:'database_unavailable', message:'synthetic-private-do-not-emit'})).toBe(201);
+        |                                                                                                                  ^
+      5 | });
+      6 |
+        at __CHECKOUT__/frontend/tests/oe-normal-acceptance/normal.spec.ts:4:114
+
+    Error Context: ../../../results/normal-pure-closed-HTTP-assertion-no-browser-fixture/error-context.md
+]]>
+</failure>
+</testcase>
+</testsuite>
+</testsuites>

@@ -161,3 +161,42 @@ def test_submit_http_diagnostic_requires_closed_tokens_and_known_source(tmp_path
         "Error: OE_SUBMIT_HTTP_V1:503:database_unavailable\n    at /foreign/normal.spec.ts:265:5",
     )
     assert "submit_http" not in browser_failure(path, tmp_path)["failures"][0]
+
+
+def test_actual_playwright_junit_indented_submit_assertion_is_closed(tmp_path):
+    # Captured from installed Playwright1.64.1 JUnit, pure expect() test with no
+    # page/browser/server fixture. Only checkout roots are made portable.
+    from pathlib import Path
+
+    fixture = Path(__file__).parent / "fixtures/playwright-1.64.1-submit-assertion.xml"
+    path = tmp_path / "actual-reporter.xml"
+    raw = fixture.read_text().replace("__CHECKOUT__", str(tmp_path))
+    assert "\n    Error: OE_SUBMIT_HTTP_V1:503:database_unavailable\n" in raw
+    path.write_text(raw)
+    value = browser_failure(path, tmp_path)
+    assert value == {
+        "report": "parsed",
+        "failures": [
+            {
+                "kind": "assertion",
+                "source_frames": [{"file": "normal.spec.ts", "line": 4, "column": 114}],
+                "submit_http": {"status": "503", "code": "database_unavailable"},
+            }
+        ],
+    }
+    assert "synthetic-private-do-not-emit" not in json.dumps(value)
+    for changed in (
+        raw.replace(
+            "\n    Error: OE_SUBMIT_HTTP_V1:", "\n         Error: OE_SUBMIT_HTTP_V1:"
+        ),
+        raw.replace("Error: OE_SUBMIT_HTTP_V1:", "private Error: OE_SUBMIT_HTTP_V1:"),
+        raw.replace("503:database_unavailable\n", "503:database_unavailable-private\n"),
+        raw.replace("503:database_unavailable\n", "599:database_unavailable\n"),
+        raw.replace("503:database_unavailable\n", "503:private\n"),
+        raw.replace(
+            str(tmp_path) + "/frontend/tests/oe-normal-acceptance/normal.spec.ts",
+            "/foreign/normal.spec.ts",
+        ),
+    ):
+        path.write_text(changed)
+        assert "submit_http" not in browser_failure(path, tmp_path)["failures"][0]

@@ -84,7 +84,7 @@ def browser_failure(path: Path, root: Path) -> dict:
                     )
             item = {"kind": kind, "source_frames": frames[:4]}
             http = re.search(
-                r"(?:^|\n)(?:Error: )?OE_SUBMIT_HTTP_V1:"
+                r"(?:^|\n)[ \t]{0,8}(?:Error: )?OE_SUBMIT_HTTP_V1:"
                 r"(200|201|400|401|403|404|409|413|422|429|500|503|other):"
                 r"(preflight_changed|run_quota|database_unavailable|internal_error|"
                 r"validation_error|invalid_oe_structured_request|invalid_request|"
