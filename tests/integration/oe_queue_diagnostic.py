@@ -432,6 +432,8 @@ def emit(marker, value):
 
 @contextmanager
 def diagnose_oe_queue(factory, run_id):
+    from oe_serve_diagnostic import diagnose_serve
+
     from workers.research import oe_structured_queue
 
     original, failures = oe_structured_queue.execute, 0
@@ -451,7 +453,10 @@ def diagnose_oe_queue(factory, run_id):
             raise
 
     try:
-        with patch.object(oe_structured_queue, "execute", execute):
+        with (
+            patch.object(oe_structured_queue, "execute", execute),
+            diagnose_serve(factory, run_id, emit),
+        ):
             yield
     finally:
         try:
