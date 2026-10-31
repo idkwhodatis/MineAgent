@@ -12,6 +12,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from submission_sql_diagnostic import diagnose_submission_sql
 
 from backend.app.models import StrategyVersion
 
@@ -152,14 +153,19 @@ def test_parallel_identical_submissions_commit_exactly_one_version(
         )
 
 
-def test_parallel_conflicting_submissions_cannot_overwrite_winner(api, owner_headers):
+def test_parallel_conflicting_submissions_cannot_overwrite_winner(
+    api, owner_headers, migrated_engine
+):
     key, barrier = uuid4().hex, Barrier(2)
 
     def request(index):
         barrier.wait(timeout=10)
         return create(api, owner_headers, payload(name=f"Concurrent {index}"), key)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with (
+        diagnose_submission_sql(migrated_engine),
+        ThreadPoolExecutor(max_workers=2) as pool,
+    ):
         responses = list(pool.map(request, range(2)))
     assert sorted(response.status_code for response in responses) == [201, 409]
     winner = next(

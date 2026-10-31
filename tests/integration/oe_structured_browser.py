@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from submission_sql_diagnostic import diagnose_submission_sql
 
 from backend.app.main import create_app
 from backend.app.models import (
@@ -63,13 +64,14 @@ def create_demo_in_browser(engine, settings, account):
 
 
 def create_oe_submission_in_browser(engine, settings, account, request):
-    value = _browser(
-        engine,
-        settings,
-        account,
-        None,
-        {"mode": "submit", "request": request.model_dump(mode="json")},
-    )
+    with diagnose_submission_sql(engine):
+        value = _browser(
+            engine,
+            settings,
+            account,
+            None,
+            {"mode": "submit", "request": request.model_dump(mode="json")},
+        )
     assert set(value) == {"receipt", "idempotency_key", "body"}
     body = ProviderStructuredSearchSubmit.model_validate_json(
         canonical_bytes(value["body"])
