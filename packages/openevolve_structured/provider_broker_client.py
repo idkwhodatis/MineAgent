@@ -147,6 +147,9 @@ class ProviderLLM(LLMInterface):
         ):
             raise BrokerAbort("request_drift")
         self.binding = binding
+        # Pinned upstream LLMEnsemble reads this identity before generation.
+        # The validated binding remains the authority for every broker request.
+        self.model = binding.model
         self.last_usage = None
 
     async def generate(self, prompt, **kwargs):

@@ -704,7 +704,9 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 ]
                 # The driver must reconstruct the physical child/SDK/analysis
                 # boundary, not infer a safe checkpoint from run.status alone.
-                with diagnose_rd_terminal():
+                from workflow_checkpoint_diagnostic import diagnose_workflow_checkpoint
+
+                with diagnose_rd_terminal(), diagnose_workflow_checkpoint():
                     assert drive_one(
                         factory, settings, owner_id=user.id, workflow_id=wid
                     ).state == (

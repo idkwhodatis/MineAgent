@@ -123,7 +123,25 @@ def run(payload):
         return canonical_bytes(reply)
 
     client._exchange = exchange
-    model = client.init_client(config.llm.models[0])
+    from openevolve.llm.ensemble import LLMEnsemble
+
+    # Exercise the pinned upstream sampler, not only the adapter directly.
+    # Its logging path reads vars(sampled_model)["model"] before generation.
+    model = LLMEnsemble(config.llm.models)
+    assert len(model.models) == 1
+    assert model.models[0].binding == initial.model_binding
+    if mode == "valid":
+        original_name = config.llm.models[0].name
+        config.llm.models[0].name = original_name + "-drift"
+        try:
+            LLMEnsemble(config.llm.models)
+        except BrokerAbort:
+            pass
+        else:
+            raise AssertionError("model identity drift was accepted")
+        finally:
+            config.llm.models[0].name = original_name
+        assert calls == []
     grant = client.ProviderOperationGrant(
         admission_id=initial.admission_id,
         context=context,

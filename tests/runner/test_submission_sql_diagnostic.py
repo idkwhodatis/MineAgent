@@ -34,6 +34,21 @@ def test_closed_sqlstate_whitelist_never_formats_private_exception():
             "family": family,
             **({"category": "other"} if state in {"P0001", "23514"} else {}),
         }
+    # Every admitted standard code must stay exact, including newly covered
+    # resource/state/data failures. Private variants cannot leak as a category.
+    for state in diagnostic.STATES:
+        for private in (state + "-private", "private-" + state, state + "\n"):
+            error = PrivateError()
+            error.sqlstate = private
+            assert diagnostic.classify(SimpleNamespace(original_exception=error)) == {
+                "sqlstate": "other",
+                "family": "other",
+            }
+        error = PrivateError()
+        error.pgcode = state
+        assert diagnostic.classify(SimpleNamespace(original_exception=error))[
+            "sqlstate"
+        ] == state
     for state in ("23505-private", "99999", "private", None, [], 23505):
         error = PrivateError()
         error.sqlstate = state
