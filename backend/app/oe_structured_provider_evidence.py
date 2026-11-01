@@ -42,6 +42,7 @@ def read_completed_response(session, fence, exchange, config, settings):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         fail()
     scoped(exchange, fence)
@@ -176,6 +177,7 @@ def read_physical_chain(
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         fail()
     scoped(membership, fence)

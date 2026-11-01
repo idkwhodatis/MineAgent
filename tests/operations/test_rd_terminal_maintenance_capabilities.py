@@ -9,8 +9,9 @@ from backend.app.schema_capabilities import capabilities_for
 from backend.app.services import DomainError
 
 PREVIOUS = "032_normal_oe_note_pins"
-OLD = "032a_rd_terminal_results"
-CURRENT = "032b_oe_append_run_state"
+LEGACY = "032a_rd_terminal_results"
+OLD = "032b_oe_append_run_state"
+CURRENT = "032c_oe_provider_table_checks"
 
 
 def test_maintenance_preserves_every_existing_capability():
@@ -25,7 +26,7 @@ def test_maintenance_preserves_every_existing_capability():
     )
 
 
-@pytest.mark.parametrize("revision", [PREVIOUS, OLD, CURRENT])
+@pytest.mark.parametrize("revision", [PREVIOUS, LEGACY, OLD, CURRENT])
 def test_normal_note_gate_accepts_exact_known_maintenance(revision):
     session = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: [revision]))
     assert require_normal_oe_notes(session) is None
@@ -37,6 +38,9 @@ def test_normal_note_gate_accepts_exact_known_maintenance(revision):
         [],
         ["032b_future"],
         ["033_safe_workflow_branches"],
+        [PREVIOUS, LEGACY],
+        [LEGACY, LEGACY],
+        [LEGACY, OLD],
         [PREVIOUS, OLD],
         [OLD, OLD],
         [OLD, CURRENT],
@@ -86,4 +90,5 @@ def test_every_backend_predecessor_gate_preserves_exact_append_maintenance():
             found[path.name] = found.get(path.name, 0) + 1
     assert len(found) == 49
     assert sum(found.values()) == 80
-    assert capabilities_for(PREVIOUS) == capabilities_for(OLD)
+    assert capabilities_for(PREVIOUS) == capabilities_for(LEGACY)
+    assert capabilities_for(LEGACY) == capabilities_for(OLD)

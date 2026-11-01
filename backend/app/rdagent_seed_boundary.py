@@ -26,6 +26,7 @@ def seeded_boundary_id(session, run, revisions):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         return None
     row = session.scalar(

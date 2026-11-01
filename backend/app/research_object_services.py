@@ -61,6 +61,7 @@ def _versioned_identity(session, owner, kind, content):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             raise _error("oe_structured_object_revision")
         return identity_for_content(owner, kind, content)
@@ -82,6 +83,7 @@ def _versioned_identity(session, owner, kind, content):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             raise _error("rd_provider_receipt_revision")
     if kind == "factor_generation_feedback":
@@ -110,6 +112,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             ):
                 raise _error("rd_numeric_failure_feedback_revision")
             return failure_identity(owner, kind, content)
@@ -139,6 +142,7 @@ def _versioned_identity(session, owner, kind, content):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             ):
                 raise _error("rd_analysis_feedback_revision")
             return analysis_identity(owner, kind, content)
@@ -438,6 +442,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             raise _error("rd_execution_object_revision")
         require_research_spec(session, fence)
@@ -458,6 +463,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             from packages.rdagent_adapter.analysis_object_codec import parse_document
         # Identity dispatch alone is insufficient: reservation validates the
@@ -470,6 +476,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             import json
 
@@ -524,6 +531,7 @@ def reserve_object(session, fence, kind, content, budget_reservation_id, setting
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             raise _error("oe_object_revision")
         require_search_identity(_current_search(session, fence))

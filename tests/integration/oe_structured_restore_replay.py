@@ -85,6 +85,7 @@ def assert_normal_restore(
         "030_declared_upload_basket",
         "032a_rd_terminal_results",
         "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
     }
     ids = tuple(execution_ids)
     assert ids and len(ids) == len(set(ids))
@@ -124,6 +125,7 @@ def assert_normal_restore(
             "030_declared_upload_basket",
             "032a_rd_terminal_results",
             "032b_oe_append_run_state",
+            "032c_oe_provider_table_checks",
         }:
             assert "declared_upload_closure" in keys
         assert keys == {key for key in after if key.endswith("_closure")}

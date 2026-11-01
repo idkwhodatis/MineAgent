@@ -29,6 +29,7 @@ def seeded_bootstrap_if_declared(session, fence, *, binding, spec, config):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         return None
     row = session.scalar(

@@ -76,6 +76,7 @@ def factor_usage(session, owner_id, factor_id, version_id, offset=0):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         raise DomainError(
             "oe_structured_history_schema_unavailable",

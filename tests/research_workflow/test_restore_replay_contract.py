@@ -34,7 +34,7 @@ def test_roundtrip_is_same_fixture_and_never_adds_execution_or_disclosure():
         and node.func.attr in {"post", "put", "delete", "patch"}
         for node in ast.walk(tree)
     )
-    assert 'manifest["schema_revision"] == "029_research_workflow"' in source
+    assert 'manifest["schema_revision"] == "032c_oe_provider_table_checks"' in source
     assert '"workflow_closure"' in source and '"research_input_closure"' in source
     assert "final[key] == before[key]" in source
     assert "_files(target) == files" in source

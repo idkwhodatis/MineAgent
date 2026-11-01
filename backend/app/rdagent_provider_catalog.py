@@ -53,6 +53,7 @@ def provider_options(settings, owner_id, revision):
                 "032_normal_oe_note_pins",
                 "032a_rd_terminal_results",
                 "032b_oe_append_run_state",
+                "032c_oe_provider_table_checks",
             ) or (
                 runtime.controller_profile is not None
                 and revision
@@ -68,6 +69,7 @@ def provider_options(settings, owner_id, revision):
                     "032_normal_oe_note_pins",
                     "032a_rd_terminal_results",
                     "032b_oe_append_run_state",
+                    "032c_oe_provider_table_checks",
                 )
             ):
                 reason, enabled = "runtime_schema_unavailable", False
@@ -89,6 +91,7 @@ def provider_options(settings, owner_id, revision):
                     "032_normal_oe_note_pins",
                     "032a_rd_terminal_results",
                     "032b_oe_append_run_state",
+                    "032c_oe_provider_table_checks",
                 ):
                     seeded_enabled = False
                     seeded_reason = "runtime_schema_unavailable"

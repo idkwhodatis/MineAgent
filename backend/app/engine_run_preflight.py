@@ -241,6 +241,7 @@ def preflight(session, owner_id, request, settings):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ) and (
             selected_profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -256,6 +257,7 @@ def preflight(session, owner_id, request, settings):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             )
         ):
             runtime_available = True

@@ -63,6 +63,7 @@ def publish_evidence(factory, fence, settings, kind, content, key):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             fail()
         held = reserve_budget(
@@ -109,6 +110,7 @@ def bind_physical_receipt(session, fence, membership_id, object_id, sha256, sett
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         fail()
     _, config = decode_spec(session, run)

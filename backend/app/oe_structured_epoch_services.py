@@ -61,6 +61,7 @@ def _current(session, fence, settings):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         fail()
     require_native_storage_guard(settings.storage_root)

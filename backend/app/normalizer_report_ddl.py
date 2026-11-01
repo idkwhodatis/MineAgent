@@ -62,6 +62,7 @@ def require_report_capability(session):
         "032_normal_oe_note_pins": (2, 3, 16),
         "032a_rd_terminal_results": (2, 3, 16),
         "032b_oe_append_run_state": (2, 3, 16),
+        "032c_oe_provider_table_checks": (2, 3, 16),
     }
     versions = versions_by_revision.get(revisions[0])
     if versions is None:

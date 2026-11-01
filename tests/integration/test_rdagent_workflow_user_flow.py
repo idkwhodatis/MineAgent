@@ -1,9 +1,9 @@
-"""032b normal workflow admission→driver→ordinary RD task actual first-child gate.
+"""032c normal workflow admission→driver→ordinary RD task actual first-child gate.
 
 Only the localhost HTTP provider is synthetic. This is not a migration/worker
 mock or a precreated attached run. Default-off feedback must visibly wait;
 explicit opt-in follows actual checkpoint/release/feedback into a NEW seeded
-child and verifies both independent computations. Requires coherent032b maintenance install.
+child and verifies both independent computations. Requires coherent032c maintenance install.
 """
 
 import hashlib
@@ -45,7 +45,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     drill_databases, tmp_path, monkeypatch, allow_feedback_release
 ):
     if os.environ.get("MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED") != "1":
-        pytest.fail("Explicit032b actual workflow runtime gate required", pytrace=False)
+        pytest.fail("Explicit032c actual workflow runtime gate required", pytrace=False)
     import test_backup_restore as legacy
 
     from backend.app.core.security import get_password_hash
@@ -99,7 +99,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     assert sdk.is_absolute() and sdk.is_file()
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "032b_oe_append_run_state")
+        legacy._upgrade(engine, "032c_oe_provider_table_checks")
         storage = tmp_path / "workflow-provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)

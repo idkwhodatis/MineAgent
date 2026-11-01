@@ -37,6 +37,7 @@ def recover_controller_unit(factory, settings, admission_id):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             ):
                 raise ProcessError("oe_structured_controller_recovery_revision")
             row = session.get(ResearchProcessAdmission, admission_id)

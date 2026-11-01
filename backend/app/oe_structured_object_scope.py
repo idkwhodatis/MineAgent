@@ -19,6 +19,7 @@ def require_object_scope(session, fence, kind, content):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         fail()
     _, config = decode_spec(session, run)

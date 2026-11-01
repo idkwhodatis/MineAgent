@@ -97,6 +97,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)

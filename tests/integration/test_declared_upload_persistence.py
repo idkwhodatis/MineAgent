@@ -115,3 +115,18 @@ def test_oe_append_fence_repair_preserves_current_attempt_guards(migrated_engine
                 assert result.scalar() == marker
             finally:
                 transaction.rollback()
+
+
+def test_oe_provider_row_checks_preserve_legacy_and_reject_drift(migrated_engine):
+    from oe_provider_table_checks_fixture import statements
+
+    with migrated_engine.connect() as connection:
+        transaction = connection.begin()
+        try:
+            for statement in statements():
+                result = connection.exec_driver_sql(
+                    statement, execution_options={"no_parameters": True}
+                )
+            assert result.scalar() == "OE032C_PROVIDER_CHECK_MATRIX_COMPLETE"
+        finally:
+            transaction.rollback()

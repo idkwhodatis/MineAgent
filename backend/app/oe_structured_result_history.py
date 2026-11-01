@@ -551,6 +551,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ) or capabilities_for(
             versions[0]
         ).oe_structured_closure_schema != _closure_schema_for_research(
@@ -586,6 +587,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
                 ["032_normal_oe_note_pins"],
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
+                ["032c_oe_provider_table_checks"],
             ):
                 fail()
             from backend.app.oe_workflow_models import OEWorkflowSubmission
@@ -607,6 +609,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             ["032_normal_oe_note_pins"],
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
+            ["032c_oe_provider_table_checks"],
         ):
             workflow_context = {}
         attempts = list(
@@ -738,6 +741,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
                     ["032_normal_oe_note_pins"],
                     ["032a_rd_terminal_results"],
                     ["032b_oe_append_run_state"],
+                    ["032c_oe_provider_table_checks"],
                 )
                 else {}
             ),

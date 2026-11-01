@@ -103,6 +103,7 @@ def provider_config_in_session(session):
         "032_normal_oe_note_pins",
         "032a_rd_terminal_results",
         "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
     }:
         raise ValueError("Unsupported historical snapshot revision")
     return revisions[0] in {
@@ -118,6 +119,7 @@ def provider_config_in_session(session):
         "032_normal_oe_note_pins",
         "032a_rd_terminal_results",
         "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
     }
 
 
@@ -142,6 +144,7 @@ def workflow_config_in_session(session):
         "032_normal_oe_note_pins",
         "032a_rd_terminal_results",
         "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
     }:
         raise ValueError("Unsupported workflow snapshot revision")
     return revisions in (
@@ -151,6 +154,7 @@ def workflow_config_in_session(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     )
 
 
@@ -168,6 +172,7 @@ def composed_controller_in_session(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     )
 
 
@@ -178,6 +183,7 @@ def declared_upload_in_session(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     )
 
 
@@ -192,4 +198,5 @@ def seeded_controller_in_session(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     )

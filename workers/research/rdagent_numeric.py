@@ -58,6 +58,7 @@ def require_configured_revision(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         raise ProcessError("configured_numeric_schema_closed")
 

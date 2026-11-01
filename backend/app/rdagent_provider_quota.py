@@ -27,6 +27,7 @@ def provider_process_holds(session):
         ["032_normal_oe_note_pins"],
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
+        ["032c_oe_provider_table_checks"],
     ):
         from backend.app.oe_structured_quota import sdk_process_holds
 
