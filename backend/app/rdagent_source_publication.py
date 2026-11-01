@@ -330,8 +330,8 @@ def finalize_source(session, fence, *, publication_id, settings):
 
     Caller retains source_storage_guard across this fresh transaction and file
     publication. A failed/uncertain transaction never releases the reservation.
-    Settlement requires a separately registered source-outcome proof (not N1's
-    research-object proof), so this disabled draft conservatively keeps it held.
+    This low-level primitive retains the hold; the public writer pairs it with
+    source-specific full conservative settlement in the same transaction.
     """
     import hashlib
 
@@ -595,9 +595,9 @@ def publish_reserved_source(factory, fence, *, publication_id, content, settings
                 )
                 is not None
             ):
-                return finalize_source(
+                return _finalize_settled_source(
                     session, fence, publication_id=publication.id, settings=settings
-                )
+                )[0]
             _require_publication_generation_open(session, fence, publication)
             _require_source_reservation(session, fence, publication)
             from runtimes.factor_parser.supervisor import assert_quiescent
@@ -646,7 +646,7 @@ def publish_reserved_source(factory, fence, *, publication_id, content, settings
         with neutral_transaction(
             factory, fence, resource_scope="factor_objects"
         ) as session:
-            result = finalize_source(
+            result, _ = _finalize_settled_source(
                 session, fence, publication_id=publication_id, settings=settings
             )
         return result
@@ -659,6 +659,17 @@ def settle_source_conservatively(session, fence, *, publication_id, settings):
     source/cleanup proof. A future measured settlement adapter needs independent
     temporary/orphan cleanup and final physical inventory evidence.
     """
+    return _finalize_settled_source(
+        session, fence, publication_id=publication_id, settings=settings
+    )[1]
+
+
+def _finalize_settled_source(session, fence, *, publication_id, settings):
+    """Atomically retain verified source outcome and its full conservative charge.
+
+    finalize_source rechecks the current owner/attempt fence and source guard,
+    bytes, journal and retained graph, including replay. No exception refunds.
+    """
     from backend.app.research_broker_services import settle_budget
 
     outcome = finalize_source(
@@ -667,10 +678,12 @@ def settle_source_conservatively(session, fence, *, publication_id, settings):
     publication = _scope_row(
         session, FactorSourcePublication, outcome.publication_id, fence
     )
-    return settle_budget(
+    settlement = settle_budget(
         session,
         fence,
         publication.budget_reservation_id,
         charge=BudgetVector(storage_bytes=publication.peak_bytes),
         outcome="conservative_unknown",
     )
+
+    return outcome, settlement

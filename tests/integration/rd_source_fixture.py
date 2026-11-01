@@ -16,7 +16,6 @@ from uuid import UUID, uuid4
 from sqlalchemy import null, select
 
 from backend.app.core.atomic_storage import provision_directory
-from backend.app.core.maintenance import shared_lifecycle
 from backend.app.factor_models import FactorObject, FactorVersion
 from backend.app.models import ExecutionAttempt, ResearchRun, utcnow
 from backend.app.rdagent_controller_services import (
@@ -37,8 +36,6 @@ from backend.app.rdagent_services import (
 from backend.app.rdagent_source_publication import (
     publish_reserved_source,
     reserve_source,
-    settle_source_conservatively,
-    source_storage_guard,
 )
 from backend.app.research_broker_models import (
     ResearchBudgetControl,
@@ -490,14 +487,6 @@ def persist_maintained_source(
         content=source_utf8,
         settings=settings,
     )
-    with (
-        shared_lifecycle(factory.kw["bind"], settings.storage_root),
-        source_storage_guard(settings.storage_root),
-        neutral_transaction(factory, fence, resource_scope="factor_objects") as session,
-    ):
-        settle_source_conservatively(
-            session, fence, publication_id=publication_id, settings=settings
-        )
     from backend.app.rdagent_models import (
         FactorResearchAttemptBinding,
         FactorSourcePublicationOutcome,

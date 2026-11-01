@@ -24,13 +24,14 @@ from backend.app.rdagent_source_witness_services import derive_source_read_witne
 from backend.app.research_broker_models import (
     ResearchBudgetControl,
     ResearchBudgetReservation,
+    ResearchBudgetSettlement,
     ResearchModelOperation,
 )
 from backend.app.research_lifecycle import neutral_transaction
 from backend.app.research_object_models import ResearchObject
 from backend.app.services import DomainError
 from backend.app.storage import read_verified
-from packages.research_runtime.budget_contracts import validate_ledger
+from packages.research_runtime.budget_contracts import BudgetVector, validate_ledger
 
 pytestmark = pytest.mark.postgres
 SOURCE = b"# Maintained source retention fixture; never executed.\ndef factor():\n    return 1\n"
@@ -72,9 +73,117 @@ def persist(setup, source=SOURCE):
     )
 
 
-def test_actual_files_fenced_publisher_and_host_parser_witness(source_setup):
+def source_accounting(factory, publication_id):
+    from backend.app.rdagent_models import FactorSourcePublication
+
+    with factory() as session:
+        publication = session.get(FactorSourcePublication, publication_id)
+        reservation = session.get(
+            ResearchBudgetReservation, publication.budget_reservation_id
+        )
+        settlements = session.scalars(
+            select(ResearchBudgetSettlement).where(
+                ResearchBudgetSettlement.reservation_id == reservation.id
+            )
+        ).all()
+        budget = session.scalar(
+            select(ResearchBudgetControl).where(
+                ResearchBudgetControl.run_id == publication.run_id
+            )
+        )
+        assert reservation.state == "settled" and len(settlements) == 1
+        settlement = settlements[0]
+        assert (
+            settlement.charge
+            == reservation.amounts
+            == BudgetVector(storage_bytes=publication.peak_bytes).model_dump()
+        )
+        assert settlement.outcome == "conservative_unknown"
+        for field in ("owner_id", "run_id", "attempt_id", "generation"):
+            assert getattr(settlement, field) == getattr(publication, field)
+        return settlement.id, budget.used.copy(), budget.reserved.copy()
+
+
+def test_actual_files_fenced_publisher_and_host_parser_witness(
+    source_setup, monkeypatch
+):
     factory, _, _, settings = source_setup
+    import rd_source_fixture
+
+    from backend.app import research_broker_services as broker
+    from backend.app.rdagent_models import (
+        FactorSourcePublication,
+        FactorSourcePublicationOutcome,
+    )
+
+    original = rd_source_fixture.publish_reserved_source
+    fault = RuntimeError("source settlement fault injection")
+    checked = []
+
+    def first_publication(*args, **kwargs):
+        publication_id = kwargs["publication_id"]
+        with factory() as session:
+            publication = session.get(FactorSourcePublication, publication_id)
+            budget = session.scalar(
+                select(ResearchBudgetControl).where(
+                    ResearchBudgetControl.run_id == publication.run_id
+                )
+            )
+            before = budget.used.copy(), budget.reserved.copy()
+            reservation_id = publication.budget_reservation_id
+
+        def reject(*a, **k):
+            # Source outcome was flushed earlier in the same real transaction.
+            assert (
+                a[0].scalar(
+                    select(FactorSourcePublicationOutcome).where(
+                        FactorSourcePublicationOutcome.publication_id == publication_id
+                    )
+                )
+                is not None
+            )
+            raise fault
+
+        with monkeypatch.context() as scoped:
+            scoped.setattr(broker, "settle_budget", reject)
+            with pytest.raises(RuntimeError) as caught:
+                original(*args, **kwargs)
+            assert caught.value is fault
+        with factory() as session:
+            assert (
+                session.scalar(
+                    select(FactorSourcePublicationOutcome).where(
+                        FactorSourcePublicationOutcome.publication_id == publication_id
+                    )
+                )
+                is None
+            )
+            assert (
+                session.get(ResearchBudgetReservation, reservation_id).state
+                == "reserved"
+            )
+            assert (
+                session.scalar(
+                    select(ResearchBudgetSettlement).where(
+                        ResearchBudgetSettlement.reservation_id == reservation_id
+                    )
+                )
+                is None
+            )
+            budget = session.scalar(
+                select(ResearchBudgetControl).where(
+                    ResearchBudgetControl.run_id == publication.run_id
+                )
+            )
+            assert (budget.used, budget.reserved) == before
+        checked.append(publication_id)
+        # Known rolled-back transaction, same reserved source; no new generation/provider.
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(rd_source_fixture, "publish_reserved_source", first_publication)
     saved = persist(source_setup)
+    assert checked == [saved.publication_id]
+    source_accounting(factory, saved.publication_id)
     assert saved.provenance == PROVENANCE
     assert saved.version.code.encode() == SOURCE
     assert (
@@ -162,6 +271,7 @@ def test_nonempty_invalid_python_is_retained_without_execution(source_setup):
 def test_exact_source_publication_replay_and_wrong_bytes(source_setup):
     saved = persist(source_setup)
     factory, _, _, settings = source_setup
+    before = source_accounting(factory, saved.publication_id)
     again = publish_reserved_source(
         factory,
         saved.fence,
@@ -170,6 +280,7 @@ def test_exact_source_publication_replay_and_wrong_bytes(source_setup):
         settings=settings,
     )
     assert again.source_id == saved.source.id
+    assert source_accounting(factory, saved.publication_id) == before
     with pytest.raises(DomainError):
         publish_reserved_source(
             factory,
@@ -178,6 +289,7 @@ def test_exact_source_publication_replay_and_wrong_bytes(source_setup):
             content=SOURCE + b"# drift\n",
             settings=settings,
         )
+    assert source_accounting(factory, saved.publication_id) == before
 
 
 @pytest.mark.parametrize(

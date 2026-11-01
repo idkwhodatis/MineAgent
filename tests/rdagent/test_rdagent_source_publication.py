@@ -115,6 +115,9 @@ def test_source_publication_rejects_before_io_without_exact_transaction(action):
         "completed_replay",
         "observed",
         "terminal",
+        "settlement_error",
+        "replay_settlement_error",
+        "replay_fence",
     ],
 )
 def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
@@ -183,7 +186,12 @@ def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
                 return object()
             if failure == "terminal" and model.__name__ == "FactorGenerationOutcome":
                 return object()
-            return object() if failure == "completed_replay" else None
+            return (
+                object()
+                if failure
+                in {"completed_replay", "replay_settlement_error", "replay_fence"}
+                else None
+            )
 
         def scalars(self, statement):
             # Explicit historical source-only schema in this filesystem double.
@@ -224,9 +232,27 @@ def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
 
     def finalize(*args, **kwargs):
         assert events[-1] == "transaction_enter"
-        if failure == "fresh_fence":
+        if failure in {"fresh_fence", "replay_fence"}:
             raise DomainError("attempt_fenced", "injected lost fence", 409)
-        return "immutable_source_outcome"
+        return SimpleNamespace(publication_id=row.id)
+
+    def settle(session, current, reservation_id, *, charge, outcome):
+        assert current == fence and reservation_id == row.budget_reservation_id
+        assert charge.storage_bytes == row.peak_bytes
+        assert (
+            charge.model_dump()
+            == service.BudgetVector(storage_bytes=row.peak_bytes).model_dump()
+        )
+        assert outcome == "conservative_unknown"
+        assert events[-1] == "transaction_enter"
+        events.append("settlement")
+        if failure in {"settlement_error", "replay_settlement_error"}:
+            raise DomainError("invalid_accounting", "injected settlement failure", 409)
+        return "immutable_settlement"
+
+    import backend.app.research_broker_services as broker
+
+    monkeypatch.setattr(broker, "settle_budget", settle)
 
     monkeypatch.setattr(maintenance, "shared_lifecycle", lifecycle_guard)
     monkeypatch.setattr(lifecycle, "neutral_transaction", transaction)
@@ -252,6 +278,9 @@ def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
         "file_capacity",
         "observed",
         "terminal",
+        "settlement_error",
+        "replay_settlement_error",
+        "replay_fence",
     }:
         with pytest.raises((DomainError, OSError)):
             service.publish_reserved_source(
@@ -262,20 +291,19 @@ def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
                 settings=settings,
             )
     else:
-        assert (
-            service.publish_reserved_source(
-                factory,
-                fence,
-                publication_id=row.id,
-                content=content,
-                settings=settings,
-            )
-            == "immutable_source_outcome"
-        )
+        assert service.publish_reserved_source(
+            factory,
+            fence,
+            publication_id=row.id,
+            content=content,
+            settings=settings,
+        ) == SimpleNamespace(publication_id=row.id)
     if failure in {
         "capacity",
         "file_capacity",
         "completed_replay",
+        "replay_settlement_error",
+        "replay_fence",
         "observed",
         "terminal",
     }:
@@ -289,6 +317,12 @@ def test_source_writer_crash_boundaries_keep_files_and_do_not_refund(
         assert events.count("transaction_enter") == 1
     if failure in {"none", "fresh_fence"}:
         assert events.count("transaction_enter") == 2
+    assert events.count("settlement") == int(
+        failure
+        in {"none", "completed_replay", "settlement_error", "replay_settlement_error"}
+    )
+    if failure in {"settlement_error", "replay_settlement_error"}:
+        assert events[-2:] == ["settlement", "storage_exit"]
     assert events[0] == "maintenance_enter" and "storage_exit" in events
 
 

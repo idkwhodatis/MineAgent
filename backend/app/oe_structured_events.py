@@ -43,6 +43,7 @@ from backend.app.oe_structured_models import (
     OEStructuredCandidate,
     OEStructuredProviderExchange,
 )
+from backend.app.oe_structured_operational_models import OEStructuredControlState
 from backend.app.oe_structured_placement_services import record_placement
 from backend.app.oe_structured_provider_evidence import read_completed_response
 from backend.app.oe_structured_provider_operation import require_provider_operation
@@ -183,7 +184,24 @@ def _transaction_event(session, fence, event, settings, peer, ticket_key):
             parent_candidate_sha256=parent.candidate_sha256,
             selection_sha256=sampling.selection_sha256,
         )
-        return sampling.id, value.model_dump(mode="json")
+        state = scoped(
+            session.get(OEStructuredControlState, sampling.sampling_state_id), fence
+        )
+        if (
+            state.id != sampling.sampling_state_id
+            or state.epoch_id != sampling.epoch_id
+            or state.epoch_id != event.epoch_id
+            or state.phase != "sampling"
+            or state.sequence != 2 * sampling.ordinal
+            or state.frontier != sampling.ordinal - 1
+        ):
+            fail("oe_structured_sampling_identity")
+        return sampling.id, {
+            "iteration_grant": value.model_dump(mode="json"),
+            "sampling_receipt_id": str(state.id),
+            "control_sequence": state.sequence,
+            "state_sha256": state.state_sha256,
+        }
     if event.kind == "worker_placement":
         row = record_placement(
             session, fence, event.epoch_id, canonical_bytes(p), settings, peer=peer
