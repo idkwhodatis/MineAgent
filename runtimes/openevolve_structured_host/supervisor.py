@@ -56,6 +56,9 @@ from runtimes.research_supervisor.supervisor import (
 MANAGED = "mineagent-oe-structured-orchestrator-v1"
 ENTRYPOINT = ("python", "-I", "-m", "runtimes.openevolve_structured.deadline")
 TMPFS = {
+    # Private POSIX semaphores for the trusted single-worker spawn pool.
+    # ipc=none remains; the immutable profile already reserves these 64KiB.
+    "/dev/shm": "rw,noexec,nosuid,nodev,size=65536,uid=65533,gid=65533,mode=0700",
     "/tmp": "rw,noexec,nosuid,nodev,size=16m,uid=65533,gid=65533,mode=0700",
     "/work": "rw,noexec,nosuid,nodev,size=64m,uid=65533,gid=65533,mode=0700",
 }
@@ -577,6 +580,8 @@ class ControllerSupervisor:
                 "/tmp:" + TMPFS["/tmp"],
                 "--tmpfs",
                 "/work:" + TMPFS["/work"],
+                "--tmpfs",
+                "/dev/shm:" + TMPFS["/dev/shm"],
             ]
             for key, value in _labels(launch).items():
                 args += ["--label", key + "=" + value]
