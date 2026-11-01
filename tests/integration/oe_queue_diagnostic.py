@@ -15,6 +15,7 @@ from packages.rdagent_provider.transport import ProviderFailure
 from packages.research_runtime.process_contracts import ProcessError
 
 CODES = {
+    "oe_structured_controller_context",
     "oe_structured_socket_owner",
     "oe_structured_controller_launch_authority",
     "oe_structured_controller_expired_before_start",

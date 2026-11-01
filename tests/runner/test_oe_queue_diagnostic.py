@@ -31,6 +31,7 @@ def test_queue_failure_closed_codes_database_and_no_exception_text(monkeypatch):
         ValueError("synthetic_private"),
         ProcessError("synthetic_private"),
         ProcessError("oe_structured_original_lease_private"),
+        ProcessError("oe_structured_controller_context_private"),
     ):
         result = diagnostic.failure(error)
         assert result["code"] == "unknown"

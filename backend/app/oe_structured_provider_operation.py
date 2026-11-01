@@ -1,6 +1,8 @@
 """Rebuild a normal SDK request from current real worker and retained rendering."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from datetime import datetime
+from uuid import UUID
 
 from backend.app.oe_structured_candidate_services import require_parent_candidate
 from backend.app.oe_structured_controller_context import fail, scoped
@@ -15,8 +17,44 @@ from packages.openevolve_structured.provider_response import build_request
 
 
 @dataclass(frozen=True)
+class ProviderIntentSnapshot:
+    """Persisted values, never SQLAlchemy object identity across transactions."""
+
+    epoch_id: UUID
+    sampling_state_id: UUID
+    ordinal: int
+    parent_candidate_id: UUID
+    selection_canonical: str
+    selection_sha256: str
+    context_canonical: str
+    context_sha256: str
+    rendered_canonical: str
+    rendered_sha256: str
+    worker_ticket_sha256: str
+    worker_identity_canonical: str
+    worker_identity_sha256: str
+    id: UUID
+    owner_id: UUID
+    run_id: UUID
+    attempt_id: UUID
+    generation: int
+    created_at: datetime
+
+
+def snapshot_intent(intent):
+    if type(intent) is not OEStructuredIterationIntent:
+        fail()
+    return ProviderIntentSnapshot(
+        **{
+            field.name: getattr(intent, field.name)
+            for field in fields(ProviderIntentSnapshot)
+        }
+    )
+
+
+@dataclass(frozen=True)
 class ResolvedProviderOperation:
-    intent: object
+    intent: ProviderIntentSnapshot
     config: object
     request: OEChatRequest
     context: SearchOperationContext
@@ -79,4 +117,6 @@ def require_provider_operation(session, fence, intent_id, settings, *, peer):
         != parent
     ):
         fail()
-    return ResolvedProviderOperation(intent, parent.config, request, context)
+    return ResolvedProviderOperation(
+        snapshot_intent(intent), parent.config, request, context
+    )
