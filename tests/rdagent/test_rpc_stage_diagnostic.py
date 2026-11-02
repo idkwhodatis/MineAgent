@@ -59,7 +59,10 @@ def test_actual_rpc_timing_preserves_deadline_and_redacts_payload(monkeypatch, c
         now[0] = 60.001
         return {"private-result": "secret"}
 
-    with pytest.raises(rpc.RPCError, match="^deadline$"), module.diagnose_rd_rpc():
+    with (
+        pytest.raises(rpc.RPCError, match="^deadline$") as caught,
+        module.diagnose_rd_rpc(),
+    ):
         worker.serve_one(
             channel,
             sequence=0,
@@ -68,6 +71,8 @@ def test_actual_rpc_timing_preserves_deadline_and_redacts_payload(monkeypatch, c
             handle=handler,
         )
     assert len(observed) == 1 and not channel.sent
+    assert module._queue_failure(caught.value)["rpc_method"] == "execute_or_reuse"
+    assert "observer_failure" not in module._queue_failure(caught.value)
     assert worker.serve_one is original
     output = capsys.readouterr().out
     assert all(v not in output for v in ("secret", "private", "actual-authority"))
@@ -171,6 +176,111 @@ def test_queue_diagnostic_preserves_exception_and_redacts_unknown_codes(
     assert repeated.value is error and rdagent_queue.execute is execute
     output = capsys.readouterr().out
     assert "diagnostic_unavailable" in output and "secret" not in output
+
+    # Real serve_one frames may contain hostile request values, never emit them.
+    class HostileDict(dict):
+        def get(self, *args):
+            raise AssertionError("private mapping must not be inspected")
+
+    class HostileString(str):
+        def __hash__(self):
+            raise AssertionError("private string must not be hashed")
+
+    for request in (
+        {"method": "private-secret-method"},
+        {"method": {"private": "secret"}},
+        {"method": HostileString("execute_or_reuse")},
+        HostileDict(method="execute_or_reuse"),
+    ):
+        with monkeypatch.context() as patcher:
+            patcher.setattr(rpc, "receive", lambda *_, request=request: request)
+            with pytest.raises(rpc.RPCError) as caught:
+                rpc.serve_one(
+                    None, sequence=0, deadline=1, authenticate=None, handle=None
+                )
+            report = module._queue_failure(caught.value)
+        assert report["rpc_method"] == "unknown"
+        assert "private" not in json.dumps(report)
+
+    def reject(*_):
+        raise RuntimeError("private handler failure")
+
+    for method in sorted(rpc.METHODS):
+        request = {
+            "schema_version": rpc.SCHEMA,
+            "sequence": 0,
+            "ticket": "private",
+            "method": method,
+            "body": {"private": "secret"},
+        }
+        with monkeypatch.context() as patcher:
+            patcher.setattr(rpc, "receive", lambda *_, request=request: request)
+            with pytest.raises(RuntimeError) as caught:
+                rpc.serve_one(
+                    None,
+                    sequence=0,
+                    deadline=1,
+                    authenticate=lambda *_: None,
+                    handle=reject,
+                )
+            report = module._queue_failure(caught.value)
+        assert report["rpc_method"] == method
+        assert "private" not in json.dumps(report)
+
+    from runtimes.rdagent_operational import daemon_identity as observer
+
+    def observed_failure(call, expected):
+        with pytest.raises(ProcessError) as caught:
+            call()
+        report = module._queue_failure(caught.value)
+        assert report["observer_failure"] == expected
+        assert "private" not in json.dumps(report)
+
+    observed_failure(lambda: observer.parse_top(b"private-secret"), "daemon_top")
+    observed_failure(
+        lambda: observer._inspect(
+            SimpleNamespace(_inspect=lambda _: {}), "private", "private", 1
+        ),
+        "container_state",
+    )
+    with monkeypatch.context() as patcher:
+        patcher.setattr(observer, "_read", lambda *_: "2 (private)")
+        observed_failure(lambda: observer._host_snapshot(1), "host_snapshot")
+    with monkeypatch.context() as patcher:
+        from unittest.mock import MagicMock
+
+        path = MagicMock()
+        path.__truediv__.return_value = path
+        path.open.return_value.__enter__.return_value.read.return_value = b""
+        patcher.setattr(observer, "Path", lambda _: path)
+        observed_failure(lambda: observer._read(1, "private", 1), "host_read")
+    parameters = {
+        "container_id": "a" * 64,
+        "image_id": "sha256:" + "b" * 64,
+        "leader_pid": 1,
+        "pid": 1,
+        "deadline": 1,
+    }
+    observed_failure(lambda: observer._observe(**{**parameters, "pid": -1}), "unknown")
+    with monkeypatch.context() as patcher:
+        patcher.setattr(observer, "DockerSupervisor", lambda _: object())
+        patcher.setattr(observer, "time", SimpleNamespace(monotonic=lambda: 2))
+        observed_failure(lambda: observer._observe(**parameters), "deadline")
+
+    # A matching module/function name alone is not a trusted code identity.
+    from types import FunctionType
+
+    def spoof():
+        raise ProcessError("rd_controller_daemon_identity")
+
+    fake = FunctionType(
+        spoof.__code__.replace(co_name="_observe"),
+        {"__name__": observer.__name__, "ProcessError": ProcessError},
+        closure=spoof.__closure__,
+    )
+    with pytest.raises(ProcessError) as caught:
+        fake()
+    assert "observer_failure" not in module._queue_failure(caught.value)
 
 
 def test_queue_state_is_bounded_and_only_emits_allowlisted_fields():

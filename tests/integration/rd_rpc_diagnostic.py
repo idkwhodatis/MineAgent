@@ -144,6 +144,44 @@ def diagnose_rd_rpc():
             )
 
 
+def _closed_trace_context(error):
+    """Only exact runtime code identities and fixed primitive vocabularies."""
+    from types import CodeType
+
+    from runtimes.rdagent_operational import daemon_identity, rpc
+
+    observers = [
+        (daemon_identity._observe.__code__, "unknown"),
+        (daemon_identity._inspect.__code__, "container_state"),
+        (daemon_identity._host_snapshot.__code__, "host_snapshot"),
+        (daemon_identity._read.__code__, "host_read"),
+        (daemon_identity.parse_top.__code__, "daemon_top"),
+    ]
+    current = [
+        value
+        for value in daemon_identity._observe.__code__.co_consts
+        if isinstance(value, CodeType)
+        and value.co_qualname == "_observe.<locals>.current"
+    ]
+    if len(current) == 1:
+        observers.append((current[0], "deadline"))
+    result = {}
+    trace = error.__traceback__
+    while trace is not None:
+        frame = trace.tb_frame
+        if frame.f_code is rpc.serve_one.__code__:
+            request = frame.f_locals.get("request")
+            method = request.get("method") if type(request) is dict else None
+            result["rpc_method"] = (
+                method if type(method) is str and method in rpc.METHODS else "unknown"
+            )
+        for code, category in observers:
+            if frame.f_code is code:
+                result["observer_failure"] = category
+        trace = trace.tb_next
+    return result
+
+
 def _queue_failure(error):
     """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
     from pydantic import ValidationError
@@ -258,7 +296,13 @@ def _queue_failure(error):
         key = (trace.tb_frame.f_globals.get("__name__"), trace.tb_frame.f_code.co_name)
         stage = stages.get(key, stage)
         trace = trace.tb_next
-    return {"family": family, "code": code, "stage": stage, "sqlstate": sqlstate}
+    return {
+        "family": family,
+        "code": code,
+        "stage": stage,
+        "sqlstate": sqlstate,
+        **_closed_trace_context(error),
+    }
 
 
 def _queue_state(factory, run_id):
