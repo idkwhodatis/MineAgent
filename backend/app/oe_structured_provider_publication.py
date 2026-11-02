@@ -44,7 +44,9 @@ KINDS = {
 }
 
 
-def publish_evidence(factory, fence, settings, kind, content, key):
+def publish_evidence(
+    factory, fence, settings, kind, content, key, *, bind_finalized=None
+):
     if (
         kind not in KINDS
         or type(content) is not bytes
@@ -94,10 +96,21 @@ def publish_evidence(factory, fence, settings, kind, content, key):
                     != content
                 ):
                     fail()
+                if bind_finalized is not None:
+                    bind_finalized(session, obj.id)
+                    require_neutral_transaction(
+                        session, fence, resource_scope="objects"
+                    )
                 return obj.id
         publication = reserve_object(session, fence, kind, content, held.id, settings)
         publication_id = publication.id
-    return publish_reserved_object(factory, fence, publication_id, content, settings)
+    if bind_finalized is None:
+        return publish_reserved_object(
+            factory, fence, publication_id, content, settings
+        )
+    return publish_reserved_object(
+        factory, fence, publication_id, content, settings, bind_finalized=bind_finalized
+    )
 
 
 def bind_physical_receipt(session, fence, membership_id, object_id, sha256, settings):
@@ -167,10 +180,8 @@ def bind_physical_receipt(session, fence, membership_id, object_id, sha256, sett
 
 def retain_physical_receipt(factory, fence, settings, membership_id, document, key):
     raw = receipt_bytes(document)
-    oid = publish_evidence(
-        factory, fence, settings, OBJECT_KIND, raw, key + ":" + document.kind
-    )
-    with neutral_transaction(factory, fence, resource_scope="objects") as session:
+
+    def bind(session, oid):
         bind_physical_receipt(
             session,
             fence,
@@ -179,3 +190,13 @@ def retain_physical_receipt(factory, fence, settings, membership_id, document, k
             hashlib.sha256(raw).hexdigest(),
             settings,
         )
+
+    publish_evidence(
+        factory,
+        fence,
+        settings,
+        OBJECT_KIND,
+        raw,
+        key + ":" + document.kind,
+        bind_finalized=bind,
+    )

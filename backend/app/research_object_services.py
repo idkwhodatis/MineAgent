@@ -719,13 +719,26 @@ def finalize_object(session, fence, publication_id, settings):
     return existing.id
 
 
-def publish_reserved_object(factory, fence, publication_id, content, settings):
+def publish_reserved_object(
+    factory, fence, publication_id, content, settings, *, bind_finalized=None
+):
     """Publish only an already committed reservation; lease loss leaves charged files.
 
     Never call from another transaction. The lifecycle/filesystem guards span both
     short DB transactions and writes. No process/model work occurs in this helper.
+    Optional trusted bind_finalized(session, object_id) runs before final commit
+    (including completed replay); it must not commit, reconnect or perform I/O.
     """
     from backend.app.openevolve_lock_admission import publication_storage_admission
+
+    def finish(session):
+        object_id = finalize_object(session, fence, publication_id, settings)
+        if bind_finalized is not None:
+            # The callback shares this fenced transaction and its commit veto.
+            # A failure retains the committed hold and any published files.
+            bind_finalized(session, object_id)
+            require_neutral_transaction(session, fence, resource_scope="objects")
+        return object_id
 
     with (
         shared_lifecycle(factory.kw["bind"], settings.storage_root),
@@ -744,7 +757,7 @@ def publish_reserved_object(factory, fence, publication_id, content, settings):
             # Completed exact replay performs verified reads only, never another
             # physical publication or fresh temporary allocation.
             if session.get(ResearchObjectOutcome, publication.id) is not None:
-                return finalize_object(session, fence, publication.id, settings)
+                return finish(session)
             _check_write_capacity(session, fence, publication, settings)
             from backend.app.research_broker_services import require_reservation
 
@@ -775,7 +788,7 @@ def publish_reserved_object(factory, fence, publication_id, content, settings):
             durable_root=Path(settings.storage_root),
         )
         with neutral_transaction(factory, fence, resource_scope="objects") as session:
-            result = finalize_object(session, fence, publication_id, settings)
+            result = finish(session)
         return result
 
 
