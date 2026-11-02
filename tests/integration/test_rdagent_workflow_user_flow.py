@@ -15,6 +15,7 @@ from types import SimpleNamespace as NS
 from uuid import UUID, uuid4
 
 import pytest
+import rd_hash_reuse_experiment as hash_experiment
 from fastapi.testclient import TestClient
 from normal_rd_fixture_diagnostic import report_normal_rd_state
 from rd_composed_profile_fixture import PROFILE, assert_composed_controller
@@ -98,8 +99,16 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     sdk = Path(os.environ["MINEAGENT_PROVIDER_SDK_PYTHON"])
     assert sdk.is_absolute() and sdk.is_file()
     engine = legacy._engine(drill_databases.source)
+    experiment_receipt = None
     try:
         legacy._upgrade(engine, "032c_oe_provider_table_checks")
+        experiment_receipt = hash_experiment.prepare(
+            engine,
+            drill_databases,
+            policy="explicit-opt-in-two-children"
+            if allow_feedback_release
+            else "default-off-waits",
+        )
         storage = tmp_path / "workflow-provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)
@@ -584,6 +593,13 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 )
                 assert after_edit.status_code == 200, after_edit.text
                 assert after_edit.json() == accepted_inputs
+                hash_experiment.probes(
+                    engine,
+                    drill_databases,
+                    receipt=experiment_receipt,
+                    phase="first",
+                    run_id=rid,
+                )
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 queue = create_queue_app(settings)
@@ -913,6 +929,13 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     assert (
                         canonical_bytes(session.get(ResearchRun, rid).config) == frozen
                     )
+                hash_experiment.probes(
+                    engine,
+                    drill_databases,
+                    receipt=experiment_receipt,
+                    phase="seeded",
+                    run_id=second_id,
+                )
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
                 with (
@@ -1076,4 +1099,5 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 assert_browser_history(wid)
                 assert_restored_history(wid)
     finally:
+        hash_experiment.finish(experiment_receipt)
         engine.dispose()

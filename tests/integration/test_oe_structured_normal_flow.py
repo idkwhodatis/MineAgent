@@ -54,6 +54,7 @@ def test_normal_demo_generated_factor_and_model_child_reach_actual_engine(
 
 
 def _run_flow(migrated_engine, settings, monkeypatch):
+    from oe_pg_diagnostic import diagnose_receipt_functions
     from oe_queue_diagnostic import diagnose_oe_queue
     from oe_structured_browser import (
         assert_oe_results_in_browser,
@@ -268,6 +269,7 @@ def _run_flow(migrated_engine, settings, monkeypatch):
                 assert dispatch_outbox(session, settings=configured) == 1
             queue = create_queue_app(configured)
             with (
+                diagnose_receipt_functions(migrated_engine, stage="normal"),
                 diagnose_oe_queue(factory, rid, synthetic_calls=oe_calls),
                 queue.open(),
             ):
