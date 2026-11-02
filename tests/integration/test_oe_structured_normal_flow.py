@@ -267,7 +267,10 @@ def _run_flow(migrated_engine, settings, monkeypatch):
             with factory.begin() as session:
                 assert dispatch_outbox(session, settings=configured) == 1
             queue = create_queue_app(configured)
-            with diagnose_oe_queue(factory, rid), queue.open():
+            with (
+                diagnose_oe_queue(factory, rid, synthetic_calls=oe_calls),
+                queue.open(),
+            ):
                 queue.run_worker(
                     queues=["research"],
                     concurrency=1,

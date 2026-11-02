@@ -153,7 +153,8 @@ def test_actual_queue_wiring_preserves_success_assertion_and_fixed_stage_catalog
     diagnostic = module(monkeypatch)
     root = Path(__file__).parents[2]
     flow = (root / "tests/integration/test_oe_structured_normal_flow.py").read_text()
-    assert "with diagnose_oe_queue(factory, rid), queue.open():" in flow
+    assert "diagnose_oe_queue(factory, rid, synthetic_calls=oe_calls)" in flow
+    assert "queue.open()" in flow
     assert 'assert run.status == "succeeded"' in flow
     assert "wait=False" in flow and "concurrency=1" in flow
     for name, function in diagnostic.STAGES:

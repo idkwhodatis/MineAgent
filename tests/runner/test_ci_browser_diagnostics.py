@@ -280,6 +280,9 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
     directory = tmp_path / "frontend/tests" / (source_suite + "-acceptance")
     directory.mkdir(parents=True)
     (directory / "results.spec.ts").write_text("\n" * 30)
+    helper = directory / "factor-library.ts"
+    helper.write_text("\n" * 30)
+    (directory / "private-helper.ts").write_text("\n" * 30)
     private = secrets.token_urlsafe(48)
     source = tmp_path / "report.xml"
     report = ET.Element("testsuites", name=private)
@@ -289,6 +292,9 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
         private + " https://private.invalid/secret\n at results.spec.ts:12:5\n"
         " at results.spec.ts:99999:1 at results.spec.ts:0:1\n"
         " at evil.spec.ts:1:1 at results.spec.ts:12:99999"
+        " at factor-library.ts:19:3 at factor-library.ts:0:1"
+        " at factor-library.ts:31:1 at factor-library.ts:19:10001"
+        " at private-helper.ts:1:1 at other-factor-library.ts:1:1"
     )
     source.write_bytes(ET.tostring(report))
     assert failure_sites(source, tmp_path)[0]["source_frames"] == []
@@ -297,11 +303,23 @@ def test_engine_result_projection_is_explicit_and_never_exports_private_payload(
         {
             "case_index": 0,
             "outcome": "failed",
-            "source_frames": [{"file": "results.spec.ts", "line": 12, "column": 5}],
+            "source_frames": (
+                [{"file": "factor-library.ts", "line": 19, "column": 3}]
+                if source_suite == "engine-results"
+                else []
+            )
+            + [{"file": "results.spec.ts", "line": 12, "column": 5}],
         }
     ]
     projected = failure_diagnostic(source, tmp_path, source_suite=source_suite)
     assert private not in projected and "https" not in projected
+    assert "private-helper" not in projected and "other-factor-library" not in projected
+    # Even the exact helper basename cannot authorize a symlink target.
+    helper.unlink()
+    helper.symlink_to(directory / "private-helper.ts")
+    assert failure_sites(source, tmp_path, source_suite=source_suite)[0][
+        "source_frames"
+    ] == [{"file": "results.spec.ts", "line": 12, "column": 5}]
     for suite in ("../engine-results-acceptance", "/tmp", "unknown", None):
         assert failure_diagnostic(source, tmp_path, source_suite=suite).endswith(
             ":unavailable"

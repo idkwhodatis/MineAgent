@@ -233,9 +233,15 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
     cases = list(report.iter("testcase"))
     if len(cases) > 512:
         raise ValueError("Browser case bound exceeded")
+    directory = root / "frontend/tests" / suites[source_suite]
+    paths = list(directory.glob("*.spec.ts"))
+    # This exact public helper contains the configured-result navigation asserts.
+    # Do not admit arbitrary .ts helpers or cross-suite source paths.
+    if source_suite == "engine-results":
+        paths.append(directory / "factor-library.ts")
     allowed = {
         path.name: len(path.read_text().splitlines())
-        for path in (root / "frontend/tests" / suites[source_suite]).glob("*.spec.ts")
+        for path in paths
         if path.is_file() and not path.is_symlink() and path.stat().st_size <= 1_000_000
     }
     result = []
@@ -249,7 +255,7 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
             # Only a known public source basename and bounded numeric line/column
             # escape. Never copy a title, message, argument, URL, body or raw stack.
             for match in re.finditer(
-                r"(?:^|[\s(/])([A-Za-z0-9_-]+\.spec\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
+                r"(?:^|[\s(/])([A-Za-z0-9_-]+(?:\.spec)?\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
                 failure.text or "",
             ):
                 name, line, column = match[1], int(match[2]), int(match[3])

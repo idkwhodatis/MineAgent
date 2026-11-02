@@ -432,7 +432,8 @@ def emit(marker, value):
 
 
 @contextmanager
-def diagnose_oe_queue(factory, run_id):
+def diagnose_oe_queue(factory, run_id, *, synthetic_calls=None):
+    from oe_provider_diagnostic import diagnose_provider
     from oe_serve_diagnostic import diagnose_serve
 
     from workers.research import oe_structured_queue
@@ -457,6 +458,7 @@ def diagnose_oe_queue(factory, run_id):
         with (
             patch.object(oe_structured_queue, "execute", execute),
             diagnose_serve(factory, run_id, emit),
+            diagnose_provider(emit, synthetic_calls),
         ):
             yield
     finally:
