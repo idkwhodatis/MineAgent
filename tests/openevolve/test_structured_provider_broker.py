@@ -238,7 +238,7 @@ def settlement_case(monkeypatch):
     case = fixture(monkeypatch)
     case.transport.state = "submitted"
     case.operation.state = "open"
-    case.reservation.state = "reserved"
+    case.reservation.state = "uncertain"
     case.added = []
     case.charges = []
     case.session.add = case.added.append

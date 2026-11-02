@@ -131,7 +131,7 @@ def _settle(
         session.get(ResearchBudgetReservation, transport.reservation_id), fence
     )
     if (
-        reservation.state != "reserved"
+        reservation.state != "uncertain"
         or reservation.purpose != "model_transport"
         or reservation.logical_key
         != "oe-structured-provider:" + str(member.iteration_intent_id)

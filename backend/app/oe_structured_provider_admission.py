@@ -13,7 +13,7 @@ from backend.app.research_broker_models import (
     ResearchModelTransport,
     ResearchOperationContext,
 )
-from backend.app.research_broker_services import reserve_budget
+from backend.app.research_broker_services import mark_submitted, reserve_budget
 from backend.app.research_object_services import read_research_object
 from packages.factors.contracts import canonical_bytes
 from packages.openevolve_structured.provider_accounting import request_reservation
@@ -119,7 +119,7 @@ def admit_provider_transport(
         operation_id=operation.id,
         ordinal=1,
         reservation_id=reservation.id,
-        state="submitted",
+        state="reserved",
     )
     member = OEStructuredProviderTransport(
         id=uuid4(),
@@ -134,6 +134,9 @@ def admit_provider_transport(
     session.add(transport)
     session.add(member)
     session.flush()
+    # The immutable trigger requires reserved INSERT; submit and retain the
+    # uncertain budget hold atomically before the caller can launch the SDK.
+    mark_submitted(session, fence, transport.id)
     if (
         require_provider_operation(session, fence, intent_id, settings, peer=peer)
         != bound

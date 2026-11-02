@@ -64,6 +64,8 @@ STATES = {
 
 # Exact full static RAISE literals only; never render the server message.
 RAISED_CATEGORIES = {
+    "Neutral initial state is invalid": "neutral_initial_state",
+    "Model physical transport and accounting evidence disagree": "model_transport_accounting",
     "workflow owner is busy": "workflow_owner_busy",
     "Workflow immutable finite graph differs": "workflow_graph",
     "Workflow OE immutable predecessor/input/submission graph differs": "oe_workflow_attachment",

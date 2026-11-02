@@ -45,12 +45,22 @@ def setup(monkeypatch):
     fence = NS(**scope)
     peer = object()
     bound = NS(request=request, context=context, config=NS(model_binding=binding))
-    added, events = [], []
+    added, events, states = [], [], []
+    held = None
     state = NS(previous=None, held="reserved", aborted=False, operation=False)
 
+    from backend.app import research_broker_services as neutral
+
     class Session:
+        def get(self, model, key):
+            return next(row for row in added if type(row) is model and row.id == key)
+
         def scalar(self, statement):
             model = statement.column_descriptions[0]["entity"]
+            if model is service.ResearchModelTransport:
+                return next(row for row in added if type(row) is model)
+            if model is neutral.ResearchBudgetReservation:
+                return held
             if model is service.OEStructuredProviderTransport:
                 return state.previous
             if model is service.ResearchContextAbort:
@@ -65,6 +75,16 @@ def setup(monkeypatch):
 
         def flush(self):
             events.append("flush")
+            states.append(
+                (
+                    None if held is None else held.state,
+                    tuple(
+                        row.state
+                        for row in added
+                        if type(row) is service.ResearchModelTransport
+                    ),
+                )
+            )
 
     def require(*a, **kw):
         assert kw["peer"] is peer
@@ -72,13 +92,15 @@ def setup(monkeypatch):
         return bound
 
     def reserve(*a, **kw):
+        nonlocal held
         assert kw["amounts"] == request_reservation(request, binding)
         assert kw["purpose"] == "model_transport"
         assert kw["logical_key"] == "oe-structured-provider:" + str(
             context.iteration_intent_id
         )
         events.append("reserve")
-        return NS(id=uuid4(), state=state.held)
+        held = NS(id=uuid4(), **scope, state=state.held)
+        return held
 
     from backend.app import rdagent_provider_quota
 
@@ -89,6 +111,9 @@ def setup(monkeypatch):
     )
     monkeypatch.setattr(service, "require_provider_operation", require)
     monkeypatch.setattr(service, "reserve_budget", reserve)
+    # Only fenced ledger acquisition is doubled; use the actual shared
+    # mark_submitted -> mark_reservation_uncertain transition helpers.
+    monkeypatch.setattr(neutral, "_budget", lambda *a: NS())
     monkeypatch.setattr(
         service, "read_research_object", lambda *a: canonical_bytes(request)
     )
@@ -105,7 +130,7 @@ def setup(monkeypatch):
             peer=peer,
         )
 
-    return NS(call=call, state=state, events=events, added=added)
+    return NS(call=call, state=state, events=events, added=added, states=states)
 
 
 def test_exact_one_submitted_sdk_membership_no_implicit_commit(monkeypatch):
@@ -115,6 +140,11 @@ def test_exact_one_submitted_sdk_membership_no_implicit_commit(monkeypatch):
     assert member.transport_id == transport.id
     assert operation.state == "open" and transport.state == "submitted"
     assert transport.ordinal == 1 and operation.ordinal == 0
+    assert case.states[-3:] == [
+        ("reserved", ("reserved",)),
+        ("uncertain", ("reserved",)),
+        ("uncertain", ("submitted",)),
+    ]
     assert case.events.index("quota") < case.events.index("reserve")
     assert case.events[-1] == "require"
     assert len(case.added) == 4  # context + operation + transport + membership

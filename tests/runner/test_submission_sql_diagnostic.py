@@ -128,6 +128,8 @@ def test_raised_categories_are_exact_frozen_literals_not_private_messages():
             (message, category),
             (message + " synthetic_private", "other"),
             ("synthetic_private " + message, "other"),
+            (message + "\nparameters: synthetic_private", "other"),
+            (message + "x" * 65536, "other"),
             ([], "other"),
         ):
             error = SimpleNamespace(
