@@ -191,10 +191,7 @@ def test_fixed_inventory_exists_in_frozen_migrations_and_call_sites():
     )
     workflow = (ROOT / ".github/workflows/mineagent-structured-factor.yml").read_text()
     assert "postgres:18.6 -c track_functions=pl" in workflow
-    assert (
-        "python -m pytest tests/integration/test_oe_structured_normal_flow.py"
-        in workflow
-    )
+    assert "selectors=(tests/integration/test_oe_structured_normal_flow.py)" in workflow
     normal = (ROOT / "tests/integration/test_oe_structured_normal_flow.py").read_text()
     assert normal.index(
         'diagnose_receipt_functions(migrated_engine, stage="normal")'

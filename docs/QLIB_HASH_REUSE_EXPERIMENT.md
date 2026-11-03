@@ -25,13 +25,14 @@ backup fixture, with its random test-database name and actual schema revision
 checked before mutation. It verifies pinned SQL from 029 through 032c, the actual
 installed original function body and catalog properties, and the installed
 replacement body plus unchanged OID/owner/ACL and all inspected properties.
-Only `mineagent_rd_workflow_submission_check(uuid)` is replaced. The transformation
+Candidate replaces exactly `mineagent_rd_workflow_submission_check(uuid)` and
+`mineagent_rd_workflow_config(jsonb)`, in one guarded fixture transaction. The first transformation
 reuses config/input hashes within a single invocation (four/two evaluations become
 one each); the inverse transformation exactly reconstructs every original
 predicate, full validation call and exception. No persistent cache, migration,
 provider/runtime capability or predicate removal is introduced.
 
-Candidate provenance says `full032c_experimental_submission_hash_reuse`, never
+Candidate provenance says `full032c_experimental_hash_and_canonical_reuse`, never
 unmodified/coherent production032c. The Alembic version alone is not claimed to
 identify the altered schema.
 
@@ -74,3 +75,31 @@ PostgreSQL single-user schema-alias typed-table projection verified original and
 candidate body bytes, exact catalog defaults, unchanged OID and all non-body
 `pg_proc` fields, then rolled back. That is **not** an execution of the full032c
 SQLAlchemy installer or populated worker; those require the hosted experiment.
+
+## Second local-only reuse candidate
+
+The combined candidate retains the first hash optimization and reuses one
+workflow-input canonical string for its unchanged 32768-byte bound and SHA256
+comparison. Native encode/sha256/convert_to calls are explicitly pg_catalog-qualified
+to preserve the original metadata helper's namespace resolution. Earlier rejection
+conditions remain before serialization. All other
+predicates and the false-on-error wrapper remain; the exact inverse reconstructs
+the original function. The original control is unchanged. Actual installed
+canonical/metadata helper bodies, immutable/strict properties, search paths,
+arguments and default depth=0 are verified before and after replacement; source
+pins include018 and021, alongside029–032c. Both function hashes and helper/source
+hashes identify this combined experiment, not the earlier hash-only candidate.
+
+Local evidence:135 real-PG predicate comparisons (including the original112 and
+null/Unicode/escaped/control/byte-boundary cases) matched. Five rotated samples
+of15 calls on each of two captured real-writer typed-table projections compared
+original, hash-only and combined. Combined median improvement over hash-only was
+6.59% /2.71% in the final explicitly pg_catalog-qualified run; this is not full-trigger/worker/concurrency or deadline-success
+evidence. Helper catalog/body projection checks rolled back. Full physical
+fixture and original deadline checks still belong to the hosted comparison.
+
+Artifacts additionally retain strictly allowlisted existing `RD_QUEUE_FAILURE`
+and `RD_RPC_TIMING` records (closed enums, bounded integers/tails, no payloads,
+identities or exception text) so an unsuccessful comparison preserves its exact
+classified failure boundary. The earlier run omitted these records; its exact
+failure method cannot be inferred merely from the approximately131-second cases.

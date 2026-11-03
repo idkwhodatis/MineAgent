@@ -30,6 +30,14 @@ def test_normal_demo_generated_factor_and_model_child_reach_actual_engine(
     engine = legacy._engine(drill_databases.source)
     try:
         legacy._upgrade(engine, "032c_oe_provider_table_checks")
+        from oe_raw_ascii_experiment import prepare
+
+        experiment = prepare(engine, drill_databases)
+        if experiment is not None:
+            print(
+                "OE_RAW_ASCII_EXPERIMENT_V1:" + json.dumps(experiment, sort_keys=True),
+                flush=True,
+            )
         storage = tmp_path / "normal-oe-flow"
         storage.mkdir(mode=0o700)
         settings = legacy._note_settings(engine, storage)

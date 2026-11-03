@@ -211,7 +211,7 @@ def test_report_requires_expected_body_not_arbitrary_hash():
         "mode": "candidate",
         "policy": "default-off-waits",
         "schema_revision": candidate.REVISION,
-        "schema_state": "full032c_experimental_submission_hash_reuse",
+        "schema_state": "full032c_experimental_hash_and_canonical_reuse",
         "migration_sql_sha256": candidate.PINS,
         "original_body_sha256": expected_bodies()[0],
         "installed_body_sha256": expected_bodies()[1],
@@ -219,6 +219,9 @@ def test_report_requires_expected_body_not_arbitrary_hash():
         "production_acceptance": False,
         "elapsed_seconds": 1.0,
     }
+    from tests.integration.rd_canonical_reuse_experiment import provenance
+
+    value.update(provenance("candidate"))
     assert closed_record("QLIB_HASH_EXPERIMENT", value, "candidate") == value
     assert (
         closed_record(
@@ -276,3 +279,120 @@ def test_failed_control_is_preserved_without_masking_candidate_success(
     assert result["experiment_complete"] and result["paired_probes_equal"]
     assert result["unpaired_phases"] == [[report.POLICIES[1], "seeded"]]
     assert result["whole_graph_equivalence"] == "not_established"
+
+
+def rpc_timing():
+    return {
+        "summary": [
+            {
+                "method": "submit_embedding",
+                "stage": "handle",
+                "count": 1,
+                "total_ms": 12,
+                "max_ms": 12,
+            }
+        ],
+        "tail": [
+            {
+                "method": "submit_embedding",
+                "sequence": 9,
+                "stage": "handle",
+                "elapsed_ms": 12,
+                "remaining_ms": -1,
+                "ok": False,
+            }
+        ],
+    }
+
+
+def queue_failure():
+    return {
+        "family": "rpc",
+        "code": "deadline",
+        "stage": "observer",
+        "sqlstate": "none",
+        "rpc_method": "submit_embedding",
+        "observer_failure": "deadline",
+    }
+
+
+@pytest.mark.parametrize(
+    "prefix,record",
+    [("RD_QUEUE_FAILURE", queue_failure()), ("RD_RPC_TIMING", rpc_timing())],
+)
+def test_existing_closed_rpc_records_survive_report(prefix, record):
+    from script.qlib_hash_experiment_report import closed_record
+
+    assert closed_record(prefix, record, "candidate") == record
+    assert closed_record(prefix, {**record, "payload": "private"}, "candidate") is None
+
+
+@pytest.mark.parametrize(
+    "key", ["family", "code", "stage", "sqlstate", "rpc_method", "observer_failure"]
+)
+def test_queue_failure_rejects_unlisted_values_and_payloads(key):
+    from script.qlib_hash_experiment_report import closed_record
+
+    for value in ("private-token", ["private-token"], {"message": "private"}, 17):
+        assert (
+            closed_record(
+                "RD_QUEUE_FAILURE", {**queue_failure(), key: value}, "candidate"
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "section,key,value",
+    [
+        ("summary", "method", "private"),
+        ("tail", "method", "private"),
+        ("summary", "stage", "private"),
+        ("tail", "stage", "private"),
+        ("summary", "count", True),
+        ("summary", "total_ms", 3_600_001),
+        ("tail", "remaining_ms", -3_600_001),
+        ("tail", "elapsed_ms", float("nan")),
+        ("tail", "sequence", "private"),
+        ("tail", "ok", 1),
+    ],
+)
+def test_rpc_timing_rejects_unbounded_or_unlisted_values(section, key, value):
+    from script.qlib_hash_experiment_report import closed_record
+
+    record = rpc_timing()
+    record[section][0][key] = value
+    assert closed_record("RD_RPC_TIMING", record, "candidate") is None
+
+
+def test_rpc_timing_rejects_duplicates_and_overflow():
+    from script.qlib_hash_experiment_report import closed_record
+
+    record = rpc_timing()
+    record["summary"] *= 2
+    assert closed_record("RD_RPC_TIMING", record, "candidate") is None
+    record = rpc_timing()
+    record["tail"] *= 65
+    assert closed_record("RD_RPC_TIMING", record, "candidate") is None
+
+
+def test_report_retains_closed_boundary_without_raw_errors(tmp_path, monkeypatch):
+    import json
+
+    from script import qlib_hash_experiment_report as report
+
+    monkeypatch.setattr(report, "PRIVATE", tmp_path)
+    monkeypatch.setattr(report, "PROOF", tmp_path / "proof")
+    (tmp_path / "hash-candidate.log").write_text(
+        "RD_QUEUE_FAILURE:"
+        + json.dumps(queue_failure())
+        + "\nRD_RPC_TIMING:"
+        + json.dumps(rpc_timing())
+        + '\nRD_QUEUE_FAILURE:{"message":"private-token"}\nprivate traceback'
+    )
+    assert report.report("candidate", 1) is False
+    output = (tmp_path / "proof/hash-candidate.json").read_text()
+    value = json.loads(output)
+    assert value["diagnostics"]["RD_QUEUE_FAILURE"] == [queue_failure()]
+    assert value["diagnostics"]["RD_RPC_TIMING"] == [rpc_timing()]
+    assert "private-token" not in output and "traceback" not in output

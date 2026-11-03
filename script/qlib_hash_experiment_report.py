@@ -37,6 +37,178 @@ def expected_bodies():
     )
 
 
+FAILURE_VALUES = {
+    "family": frozenset(
+        [
+            "rpc",
+            "process",
+            "provider",
+            "domain",
+            "value",
+            "validation",
+            "attribute",
+            "type",
+            "key",
+            "timeout",
+            "other",
+            "orm",
+            "database",
+        ]
+    ),
+    "code": frozenset(
+        [
+            "unknown",
+            "deadline",
+            "rd_controller_daemon_identity",
+            "rd_controller_peer",
+            "rd_controller_not_running",
+            "rd_controller_launch",
+            "rd_controller_receipts",
+            "rd_controller_peer_drift",
+            "rd_controller_incomplete_generation",
+            "rd_provider_containment_unknown",
+            "original_controller_deadline",
+            "provider_secret_unavailable",
+            "provider_timeout",
+            "provider_outcome_unknown",
+            "provider_containment_unconfirmed",
+            "rd_controller_deadline",
+            "rd_controller_expired_before_create",
+            "rd_controller_expired_before_start",
+            "rd_controller_expired_peer",
+            "rd_controller_kernel_deadline_exceeded",
+            "rd_controller_original_deadline_completion_missing",
+            "rd_controller_incomplete_or_failed_reports",
+            "rd_controller_daemon_stop_uncertain",
+            "rd_controller_absence_uncertain",
+            "neutral_transaction_lost",
+            "neutral_busy",
+            "numeric_process_command_deadline",
+            "numeric_process_command_cleanup",
+        ]
+    ),
+    "stage": frozenset(
+        [
+            "unknown",
+            "queue",
+            "controller",
+            "controller_start",
+            "controller_accept",
+            "controller_finish",
+            "rpc_read",
+            "rpc_send",
+            "peer",
+            "observer",
+            "provider",
+            "evaluation",
+            "failure_phase",
+            "failure_finalize",
+            "member_response",
+            "object_publish",
+            "object_reserve",
+            "object_persist",
+            "failure_document",
+            "transaction",
+        ]
+    ),
+    "sqlstate": frozenset(
+        ["none", "other", "23503", "23505", "23514", "40001", "55P03", "57014"]
+    ),
+    "observer_failure": frozenset(
+        [
+            "unknown",
+            "container_state",
+            "host_snapshot",
+            "host_read",
+            "daemon_top",
+            "deadline",
+        ]
+    ),
+}
+
+
+def bounded_integer(value, low=0, high=3_600_000):
+    return type(value) is int and low <= value <= high
+
+
+def closed_rpc_record(prefix, value):
+    from runtimes.rdagent_operational.rpc import METHODS
+
+    if type(value) is not dict:
+        return None
+    methods = METHODS | {"unknown", "invalid"}
+    stages = {"read", "send", "auth", "handle", "commit"}
+    if prefix == "RD_QUEUE_FAILURE":
+        required = {"family", "code", "stage", "sqlstate"}
+        if not required <= set(value) <= required | {"rpc_method", "observer_failure"}:
+            return None
+        for key, entry in value.items():
+            allowed = (
+                METHODS | {"unknown"} if key == "rpc_method" else FAILURE_VALUES[key]
+            )
+            if type(entry) is not str or entry not in allowed:
+                return None
+        return value
+    if prefix != "RD_RPC_TIMING" or set(value) != {"summary", "tail"}:
+        return None
+    summary, tail = value["summary"], value["tail"]
+    if (
+        type(summary) is not list
+        or type(tail) is not list
+        or len(summary) > len(methods) * len(stages)
+        or len(tail) > 64
+    ):
+        return None
+    identities = set()
+    for row in summary:
+        if type(row) is not dict or set(row) != {
+            "method",
+            "stage",
+            "count",
+            "total_ms",
+            "max_ms",
+        }:
+            return None
+        if (
+            type(row["method"]) is not str
+            or row["method"] not in methods
+            or type(row["stage"]) is not str
+            or row["stage"] not in stages
+        ):
+            return None
+        identity = (row["method"], row["stage"])
+        if identity in identities or not all(
+            bounded_integer(row[k]) for k in ("count", "total_ms", "max_ms")
+        ):
+            return None
+        identities.add(identity)
+    for row in tail:
+        if type(row) is not dict or set(row) != {
+            "method",
+            "sequence",
+            "stage",
+            "elapsed_ms",
+            "remaining_ms",
+            "ok",
+        }:
+            return None
+        if (
+            type(row["method"]) is not str
+            or row["method"] not in methods
+            or type(row["stage"]) is not str
+            or row["stage"] not in stages
+        ):
+            return None
+        if (
+            not bounded_integer(row["sequence"])
+            or not bounded_integer(row["elapsed_ms"])
+            or not bounded_integer(row["remaining_ms"], -3_600_000)
+            or type(row["ok"]) is not bool
+        ):
+            return None
+    return value
+
+
 def closed_record(prefix, value, mode):
     # Import offline-only helper; no installation takes place while reporting.
     from tests.integration.rd_hash_reuse_experiment import PINS, REVISION
@@ -44,7 +216,12 @@ def closed_record(prefix, value, mode):
 
     if not isinstance(value, dict):
         return None
+    if prefix in ("RD_QUEUE_FAILURE", "RD_RPC_TIMING"):
+        return closed_rpc_record(prefix, value)
     if prefix == "QLIB_HASH_EXPERIMENT":
+        from tests.integration.rd_canonical_reuse_experiment import provenance
+
+        canonical = provenance(mode)
         keys = {
             "mode",
             "policy",
@@ -56,16 +233,18 @@ def closed_record(prefix, value, mode):
             "catalog_properties_verified",
             "production_acceptance",
             "elapsed_seconds",
-        }
+        } | set(canonical)
         if (
             set(value) == keys
             and value["mode"] == mode
+            and all(value[key] == expected for key, expected in canonical.items())
+            and type(value["canonical_reuse"]) is bool
             and value["policy"] in POLICIES
             and value["schema_revision"] == REVISION
             and value["schema_state"]
             == "full032c_"
             + (
-                "experimental_submission_hash_reuse"
+                "experimental_hash_and_canonical_reuse"
                 if mode == "candidate"
                 else "unmodified"
             )
@@ -164,7 +343,13 @@ def report(mode, exit_code):
             )
     records = {
         key: []
-        for key in ("QLIB_HASH_EXPERIMENT", "QLIB_HASH_PROBES", "RD_PG_FUNCTIONS")
+        for key in (
+            "QLIB_HASH_EXPERIMENT",
+            "QLIB_HASH_PROBES",
+            "RD_PG_FUNCTIONS",
+            "RD_QUEUE_FAILURE",
+            "RD_RPC_TIMING",
+        )
     }
     log = PRIVATE / f"hash-{mode}.log"
     if log.is_file() and log.stat().st_size <= 16 * 1024 * 1024:
@@ -179,7 +364,9 @@ def report(mode, exit_code):
                     )
                 except (ValueError, TypeError, KeyError):
                     value = None
-                if value is not None and len(retained) < 8:
+                if value is not None and len(retained) < (
+                    24 if prefix == "RD_QUEUE_FAILURE" else 8
+                ):
                     retained.append(value)
     complete = (
         len(cases) == 2

@@ -146,15 +146,21 @@ def _fixture(connection, engine, fixture):
 
 
 def prepare(engine, fixture, *, policy=None):
-    """Return closed provenance, replacing only the pinned disposable function."""
+    """Return closed provenance, replacing only the two pinned disposable functions."""
     selected = mode()
     if selected is None:
         return None
     if policy not in ("default-off-waits", "explicit-opt-in-two-children"):
         raise ValueError("Closed experiment policy required")
+    from tests.integration import rd_canonical_reuse_experiment as canonical
+
     old, new = previous_function(), candidate_sql()
+    config_old, config_new = canonical.original_sql(), canonical.candidate_sql()
+    canonical_provenance = canonical.provenance(selected)
     with engine.begin() as connection:
         _fixture(connection, engine, fixture)
+        canonical.verify_installed_helpers(connection)
+        config_before = canonical.verify_installed_config(connection, config_old)
         before = _catalog(connection)
         if before[0] != _body(old):
             raise ValueError("Installed original experiment body drift")
@@ -163,6 +169,16 @@ def prepare(engine, fixture, *, policy=None):
                 new.replace("@SCHEMA@", '"public"'),
                 execution_options={"no_parameters": True},
             )
+            connection.exec_driver_sql(
+                config_new.replace("@SCHEMA@", '"public"'),
+                execution_options={"no_parameters": True},
+            )
+        canonical.verify_installed_helpers(connection)
+        config_after = canonical.verify_installed_config(
+            connection, config_new if selected == "candidate" else config_old
+        )
+        if config_after[1:] != config_before[1:]:
+            raise ValueError("Workflow config catalog changed during replacement")
         after = _catalog(connection)
         if (
             after[0] != _body(new if selected == "candidate" else old)
@@ -175,7 +191,7 @@ def prepare(engine, fixture, *, policy=None):
         "schema_revision": REVISION,
         "schema_state": "full032c_"
         + (
-            "experimental_submission_hash_reuse"
+            "experimental_hash_and_canonical_reuse"
             if selected == "candidate"
             else "unmodified"
         ),
@@ -184,6 +200,7 @@ def prepare(engine, fixture, *, policy=None):
         "installed_body_sha256": sha256(after[0].encode()).hexdigest(),
         "catalog_properties_verified": True,
         "production_acceptance": False,
+        **canonical_provenance,
         "started": monotonic(),
     }
 
