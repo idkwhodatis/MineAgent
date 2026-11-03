@@ -201,3 +201,152 @@ def test_static_supervisor_and_validation_categories_are_closed(monkeypatch):
         assert result["validation_overflow"] is (count > 32)
         assert result["validation_types"] == (["int_type"] if count == 1 else [])
         assert "synthetic_private" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "code", ["provider_input_rejected", "provider_stop_receipt_unconfirmed"]
+)
+def test_fixed_provider_failure_codes_without_private_state(monkeypatch, code):
+    from packages.rdagent_provider.transport import ProviderFailure
+
+    diagnostic = module(monkeypatch)
+    error = ProviderFailure(code, outcome_unknown=False, contained=True)
+    error.add_note("synthetic_private_note")
+    error.__cause__ = ValueError("synthetic_private_cause")
+    assert diagnostic.failure(error) == {
+        "family": "provider",
+        "code": code,
+        "stage": "unknown",
+    }
+    assert "synthetic_private" not in json.dumps(diagnostic.failure(error))
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "provider_input_rejected_private",
+        "private_provider_input_rejected",
+        "provider_stop_receipt_unconfirmed_private",
+        "private_provider_stop_receipt_unconfirmed",
+        "provider_admission_unconfirmed",
+        "provider_identity_receipt_unconfirmed",
+        "PROVIDER_INPUT_REJECTED",
+        None,
+        1,
+    ],
+)
+def test_provider_code_spoofs_and_other_unknowns_stay_closed(monkeypatch, code):
+    from packages.rdagent_provider.transport import ProviderFailure
+
+    diagnostic = module(monkeypatch)
+    error = ProviderFailure(code)
+    projected = diagnostic.failure(error)
+    assert projected == {"family": "provider", "code": "unknown", "stage": "unknown"}
+    assert "private" not in json.dumps(projected)
+
+
+def test_provider_family_cannot_be_spoofed_by_class_name(monkeypatch):
+    diagnostic = module(monkeypatch)
+    impostor = type("ProviderFailure", (RuntimeError,), {})
+    error = impostor("synthetic_private")
+    error.code = "provider_input_rejected"
+    assert diagnostic.failure(error)["family"] == "other"
+
+    class Code(str):
+        pass
+
+    from packages.rdagent_provider.transport import ProviderFailure
+
+    error = ProviderFailure(Code("provider_input_rejected"))
+    assert diagnostic.failure(error) == {
+        "family": "provider",
+        "code": "unknown",
+        "stage": "unknown",
+    }
+
+
+@pytest.mark.parametrize(
+    "failure_at, expected, launches, wires",
+    [
+        ("intent_deadline", "provider_input_rejected", 0, 0),
+        ("started", "provider_stop_receipt_unconfirmed", 1, 0),
+        ("stopped", "provider_stop_receipt_unconfirmed", 1, 1),
+    ],
+)
+def test_actual_oe_transport_reproduces_distinct_closed_failures(
+    monkeypatch, failure_at, expected, launches, wires
+):
+    """Real broker/complete_chat/execute and DTOs, synthetic DB/clock/process only.
+
+    This proves reachability, not which branch occurred in hosted run41570049735.
+    No SDK process, Docker, network, real credentials or database is used.
+    """
+    import sys
+
+    from backend.app import oe_structured_provider_broker as broker
+    from packages.openevolve_structured.provider_transport import complete_chat
+    from packages.rdagent_provider import transport
+    from tests.openevolve.test_structured_provider_broker import arranged
+
+    diagnostic = module(monkeypatch)
+    case = arranged(monkeypatch)
+    case.peer._context.deadline = 130.0
+    clock = SimpleNamespace(ns=100_000_000_000)
+    times = SimpleNamespace(
+        monotonic=lambda: clock.ns / 1_000_000_000, monotonic_ns=lambda: clock.ns
+    )
+    monkeypatch.setattr(broker, "time", times)
+    monkeypatch.setattr(transport, "time", times)
+    monkeypatch.setattr(
+        broker,
+        "Path",
+        lambda _: SimpleNamespace(
+            read_text=lambda: "00000000-0000-0000-0000-000000000001"
+        ),
+    )
+    retain = broker.retain_physical_receipt
+    counts = {"launch": 0, "wire": 0}
+
+    def retained(*args):
+        retain(*args)
+        document = args[4]
+        if failure_at == "intent_deadline" and document.kind == "intent":
+            clock.ns = document.deadline_monotonic_ns + 1
+        elif document.kind == failure_at:
+            raise ProcessError("synthetic_private_callback")
+
+    def sdk(*args, **kwargs):
+        kwargs["python_executable"] = sys.executable
+        return complete_chat(*args, **kwargs)
+
+    def launch(*args, **kwargs):
+        counts["launch"] += 1
+        return SimpleNamespace(pid=123)
+
+    def identity(process, deadline):
+        intent = case.documents[0]
+        return transport.ProcessIdentity(
+            123, 42, 123, 123, 2, str(intent.boot_id), deadline
+        )
+
+    def wire(*args):
+        counts["wire"] += 1
+        return b"result_is_never_parsed_after_stop_callback_failure"
+
+    monkeypatch.setattr(broker, "retain_physical_receipt", retained)
+    monkeypatch.setattr(broker, "complete_chat", sdk)
+    monkeypatch.setattr(
+        transport, "subprocess", SimpleNamespace(Popen=launch, PIPE=-1, DEVNULL=-3)
+    )
+    monkeypatch.setattr(transport, "_observe_process", identity)
+    monkeypatch.setattr(transport, "_stop_group", lambda _: True)
+    monkeypatch.setattr(transport, "_wire_exchange", wire)
+    with pytest.raises(transport.ProviderFailure) as caught:
+        case.call()
+    assert caught.value.code == expected
+    assert counts == {"launch": launches, "wire": wires}
+    assert case.documents[0].kind == "intent"
+    assert "submitted" in case.events
+    result = diagnostic.failure(caught.value)
+    assert result == {"family": "provider", "code": expected, "stage": "provider"}
+    assert "synthetic_private" not in json.dumps(result)

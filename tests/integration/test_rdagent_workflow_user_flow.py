@@ -725,7 +725,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                         checkpoint.terminal_canonical
                     )
                     assert root.status == (
-                        "paused" if allow_feedback_release else "running"
+                        "paused" if allow_feedback_release else "ready"
                     )
                     assert terminal.child_run_id == rid
                     assert terminal.source_id == source.id

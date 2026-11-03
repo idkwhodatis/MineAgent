@@ -21,6 +21,8 @@ CODES = {
     "oe_structured_controller_expired_before_start",
     "oe_structured_population_identity",
     "provider_timeout",
+    "provider_input_rejected",
+    "provider_stop_receipt_unconfirmed",
     "oe_structured_event_key",
     "oe_structured_controller_revision",
     "oe_structured_controller_stop_busy",
