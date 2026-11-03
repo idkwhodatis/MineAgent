@@ -263,7 +263,7 @@ def test_queue_diagnostic_preserves_exception_and_redacts_unknown_codes(
     }
     observed_failure(lambda: observer._observe(**{**parameters, "pid": -1}), "unknown")
     with monkeypatch.context() as patcher:
-        patcher.setattr(observer, "DockerSupervisor", lambda _: object())
+        patcher.setattr(observer, "DockerSupervisor", lambda _, **kwargs: object())
         patcher.setattr(observer, "time", SimpleNamespace(monotonic=lambda: 2))
         observed_failure(lambda: observer._observe(**parameters), "deadline")
 
@@ -403,3 +403,70 @@ def test_only_fixed_failure_function_stages_are_rendered(module_name, function, 
         "sqlstate": "none",
     }
     assert "private" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("method", ["remaining", "io_error"])
+@pytest.mark.parametrize(
+    "case", ["original", "operation", "other_error", "subclass", "oe"]
+)
+def test_transport_deadline_diagnostic_requires_exact_error_and_code(
+    monkeypatch, method, case
+):
+    from packages.research_runtime.process_contracts import ProcessError
+    from runtimes.research_supervisor import docker_observation_transport as transport
+
+    module = _diagnostic()
+    clock = SimpleNamespace(now=0.0)
+    monkeypatch.setattr(transport, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    deadline = 100.0 if case == "operation" else 1.0
+    code = (
+        "oe_controller_daemon_identity"
+        if case == "oe"
+        else "rd_controller_daemon_identity"
+    )
+    budget = transport._Budget(deadline, code)
+    clock.now = 11.0 if case == "operation" else 2.0
+    private_local = "private-local-value"
+    with pytest.raises(ProcessError) as caught:
+        getattr(budget, method)()
+    error = caught.value
+    if case == "other_error":
+        error = ProcessError("private-unknown-code").with_traceback(error.__traceback__)
+    elif case == "subclass":
+
+        class OtherProcessError(ProcessError):
+            pass
+
+        error = OtherProcessError(code).with_traceback(error.__traceback__)
+    error.add_note("private-exception-note")
+    report = module._queue_failure(error)
+    if case == "original":
+        assert report["observer_failure"] == "deadline"
+        assert report["code"] == "rd_controller_daemon_identity"
+    else:
+        assert "observer_failure" not in report
+    if case == "operation":
+        assert error.code == "research_process_uncertain"
+        assert report["code"] == "unknown"
+    assert private_local not in json.dumps(report)
+    assert "private" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("method", ["remaining", "io_error"])
+def test_transport_deadline_diagnostic_rejects_spoofed_code_names(method):
+    from types import FunctionType
+
+    from packages.research_runtime.process_contracts import ProcessError
+    from runtimes.research_supervisor import docker_observation_transport as transport
+
+    def spoof():
+        raise ProcessError("rd_controller_daemon_identity")
+
+    fake = FunctionType(
+        spoof.__code__.replace(co_name=method, co_qualname="_Budget." + method),
+        {"__name__": transport.__name__, "ProcessError": ProcessError},
+        closure=spoof.__closure__,
+    )
+    with pytest.raises(ProcessError) as caught:
+        fake()
+    assert "observer_failure" not in _diagnostic()._queue_failure(caught.value)

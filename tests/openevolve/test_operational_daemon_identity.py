@@ -53,7 +53,7 @@ def observer(monkeypatch):
     cli = SimpleNamespace(
         _inspect=Mock(return_value=document), _command=Mock(return_value=(0, RAW))
     )
-    monkeypatch.setattr(module, "DockerSupervisor", lambda _: cli)
+    monkeypatch.setattr(module, "DockerSupervisor", lambda _, **kwargs: cli)
     hosts = {
         100: (100, 500, "0::/unit\n", 1, (0,) * 4, (0,) * 4),
         101: (101, 501, "0::/unit\n", 100, (65533,) * 4, (65533,) * 4),
@@ -207,6 +207,8 @@ def test_oe_distinct_600_second_window(observer):
     context = module.DaemonIdentityContext("d" * 64, observer.value.image_id, 100, 610)
     # Fixed clock in fixture is10; RD's 60-second observer cannot do this.
     assert context.observe_pair(101)[1].host_pid == 101
-    too_late = module.DaemonIdentityContext("d" * 64, observer.value.image_id, 100, 610.01)
+    too_late = module.DaemonIdentityContext(
+        "d" * 64, observer.value.image_id, 100, 610.01
+    )
     with pytest.raises(ProcessError):
         too_late.observe_pair(101)

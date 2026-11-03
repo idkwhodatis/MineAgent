@@ -11,6 +11,9 @@ on:
       - "packages/rdagent_adapter/**"
       - "tests/rdagent/**"
       - "runtimes/rdagent_operational/**"
+      - "runtimes/research_supervisor/**"
+      - "tests/research_runtime/test_docker_observation_transport.py"
+      - "tests/research_runtime/test_controller_transport_integration.py"
       - "runtimes/rdagent/**"
       - "workers/research/rdagent_operational.py"
       - "tests/integration/test_rdagent_actual_controller.py"
@@ -60,7 +63,7 @@ jobs:
           source=Path('var/numeric-private/contracts.xml')
           summarize(source,Path('var/numeric-proof/contracts-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases) == 5346
+          assert len(cases) == 5890
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYCONTRACTS
       - name: Fetch only exact existing numeric wheels

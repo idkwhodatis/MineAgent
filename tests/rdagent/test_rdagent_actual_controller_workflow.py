@@ -108,7 +108,13 @@ def test_controller_gate_requires_complete_contract_and_persistence_inventory():
         in workflow
     )
     assert "tests/structured tests/structured_factor_strategy" in workflow
-    assert "assert len(cases) == 5346" in workflow
+    assert "assert len(cases) == 5890" in workflow
+    for source in (
+        "runtimes/research_supervisor/**",
+        "tests/research_runtime/test_docker_observation_transport.py",
+        "tests/research_runtime/test_controller_transport_integration.py",
+    ):
+        assert source in workflow
     assert "var/numeric-proof/contracts-outcomes.xml" in workflow
     for source in (
         "tests/integration/test_rd_controller_persistence.py",

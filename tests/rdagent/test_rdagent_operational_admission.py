@@ -275,7 +275,7 @@ def test_claim_uses_persisted_profile_with_full_fresh_observer(
     )
     monkeypatch.setattr(module, "utcnow", lambda: now + timedelta(seconds=1))
     monkeypatch.setattr(daemon.time, "monotonic", lambda: 10.0)
-    monkeypatch.setattr(daemon, "DockerSupervisor", lambda _: cli)
+    monkeypatch.setattr(daemon, "DockerSupervisor", lambda _, **kwargs: cli)
     hosts = Mock(return_value=host)
     monkeypatch.setattr(daemon, "_host_snapshot", hosts)
     persist = Mock(return_value=admission)

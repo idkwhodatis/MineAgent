@@ -53,7 +53,7 @@ def observer(monkeypatch):
     cli = SimpleNamespace(
         _inspect=Mock(return_value=document), _command=Mock(return_value=(0, RAW))
     )
-    monkeypatch.setattr(module, "DockerSupervisor", lambda _: cli)
+    monkeypatch.setattr(module, "DockerSupervisor", lambda _, **kwargs: cli)
     hosts = {
         100: (100, 500, "0::/unit\n", 1, (0,) * 4, (0,) * 4),
         101: (101, 501, "0::/unit\n", 100, (65533,) * 4, (65533,) * 4),

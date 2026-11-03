@@ -4,8 +4,8 @@ Docker top's daemon-side ps supplies the real PID namespace inode when host
 readlink is denied by ptrace checks. No namespace value is inferred from NSpid,
 process names or controller claims. Caller must supply immutable host-owned unit
 context. No launch, exec, shell, capability change, or authority issuance occurs.
-The shared CLI has a 10-second per-command ceiling; original-deadline checks reject
-late results but do not claim to interrupt that CLI sooner.
+The shared read-only transport preserves the 10-second operation ceiling and
+interrupts I/O at the earlier original deadline. Profile checks remain here.
 
 Source: https://github.com/moby/moby/blob/master/daemon/top_unix.go
 The accepted hostile-deadline no-reader proof uses this same fixed top inventory.
@@ -23,7 +23,9 @@ from packages.rdagent_adapter.controller_profile import (
 )
 from packages.research_runtime.process_contracts import ProcessError
 from runtimes.rdagent_operational.peer import KernelIdentity
-from runtimes.research_supervisor.supervisor import DockerSupervisor
+from runtimes.research_supervisor.docker_observation_transport import (
+    DockerObservationTransport as DockerSupervisor,
+)
 
 MAX_TOP_BYTES = 16384
 MAX_PROCESSES = 64
@@ -163,7 +165,9 @@ def _observe(
             _fail()
 
     try:
-        cli = DockerSupervisor(image_id)
+        cli = DockerSupervisor(
+            image_id, deadline=deadline, identity_code="rd_controller_daemon_identity"
+        )
         current()
         _inspect(cli, container_id, image_id, leader_pid)
         current()

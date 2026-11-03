@@ -187,7 +187,7 @@ def test_expiry_during_db_load_is_still_rejected_by_full_observer(
 
     monkeypatch.setattr(daemon_identity.DaemonIdentityContext, "observe_pair", pair)
     cli = Mock()
-    monkeypatch.setattr(daemon_identity, "DockerSupervisor", lambda image: cli)
+    monkeypatch.setattr(daemon_identity, "DockerSupervisor", lambda image, **kwargs: cli)
     callback.on_load = lambda: callback.now.__setitem__(0, 100.0)
     with pytest.raises(ProcessError, match="rd_controller_daemon_identity"):
         invoke(callback)

@@ -148,7 +148,9 @@ def _closed_trace_context(error):
     """Only exact runtime code identities and fixed primitive vocabularies."""
     from types import CodeType
 
+    from packages.research_runtime.process_contracts import ProcessError
     from runtimes.rdagent_operational import daemon_identity, rpc
+    from runtimes.research_supervisor.docker_observation_transport import _Budget
 
     observers = [
         (daemon_identity._observe.__code__, "unknown"),
@@ -165,6 +167,15 @@ def _closed_trace_context(error):
     ]
     if len(current) == 1:
         observers.append((current[0], "deadline"))
+    # These methods also reject operation-ceiling/I/O faults. Only the exact
+    # original-deadline error may use their trusted code identities as evidence.
+    if type(error) is ProcessError and error.code == "rd_controller_daemon_identity":
+        observers.extend(
+            (
+                (_Budget.remaining.__code__, "deadline"),
+                (_Budget.io_error.__code__, "deadline"),
+            )
+        )
     result = {}
     trace = error.__traceback__
     while trace is not None:
