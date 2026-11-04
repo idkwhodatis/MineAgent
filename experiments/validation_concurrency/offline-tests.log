@@ -1,0 +1,67 @@
+test_2904_bounded_two_transaction_parameter_cases (test_component_model.CoordinationTests.test_2904_bounded_two_transaction_parameter_cases)
+Parameter cases, not unique interleavings; shared full-graph oracle. ... ok
+test_dangling_parent_insertion_repair_locks_workflow (test_component_model.CoordinationTests.test_dangling_parent_insertion_repair_locks_workflow) ... ok
+test_disjoint_model_components_commit_without_lost_updates (test_component_model.CoordinationTests.test_disjoint_model_components_commit_without_lost_updates) ... ok
+test_endpoint_move_conflicts_with_both_sides (test_component_model.CoordinationTests.test_endpoint_move_conflicts_with_both_sides) ... ok
+test_failed_multi_key_admission_does_not_partially_acquire (test_component_model.CoordinationTests.test_failed_multi_key_admission_does_not_partially_acquire) ... ok
+test_no_write_before_admission (test_component_model.CoordinationTests.test_no_write_before_admission) ... ok
+test_parent_lock_excludes_new_reverse_reference_phantom (test_component_model.CoordinationTests.test_parent_lock_excludes_new_reverse_reference_phantom) ... ok
+test_preheld_lock_rejected_by_abstract_assumption (test_component_model.CoordinationTests.test_preheld_lock_rejected_by_abstract_assumption) ... ok
+test_reverse_reference_between_discovery_and_lock_aborts (test_component_model.CoordinationTests.test_reverse_reference_between_discovery_and_lock_aborts) ... ok
+test_scope_expansion_after_mutation_requires_whole_retry (test_component_model.CoordinationTests.test_scope_expansion_after_mutation_requires_whole_retry) ... ok
+test_scope_expansion_cannot_retry_inside_savepoint (test_component_model.CoordinationTests.test_scope_expansion_cannot_retry_inside_savepoint) ... ok
+test_shared_parent_cross_owner_conflict (test_component_model.CoordinationTests.test_shared_parent_cross_owner_conflict) ... ok
+test_bad_new_only_routing_counterexample (test_component_model.RoutingTests.test_bad_new_only_routing_counterexample) ... ok
+test_deleted_workflow_retains_receipt_identity_and_old_parent (test_component_model.RoutingTests.test_deleted_workflow_retains_receipt_identity_and_old_parent) ... ok
+test_exhaustive_changed_predicates_are_routed (test_component_model.RoutingTests.test_exhaustive_changed_predicates_are_routed)
+1,568 states x 22 mutations = 34,496 bounded comparisons. ... ok
+test_intermediate_edge_is_not_lost (test_component_model.RoutingTests.test_intermediate_edge_is_not_lost) ... ok
+test_missing_parent_is_still_a_lock_key (test_component_model.RoutingTests.test_missing_parent_is_still_a_lock_key) ... ok
+test_old_and_new_parent_components (test_component_model.RoutingTests.test_old_and_new_parent_components) ... ok
+test_receipt_with_missing_workflow_never_routes_to_empty_set (test_component_model.RoutingTests.test_receipt_with_missing_workflow_never_routes_to_empty_set) ... ok
+test_constraint_mode_rolls_back_with_savepoint_in_model (test_component_model.SavepointTests.test_constraint_mode_rolls_back_with_savepoint_in_model) ... ok
+test_failed_statement_can_rollback_to_prior_savepoint (test_component_model.SavepointTests.test_failed_statement_can_rollback_to_prior_savepoint) ... ok
+test_nested_rollback_discards_later_savepoint (test_component_model.SavepointTests.test_nested_rollback_discards_later_savepoint) ... ok
+test_post_savepoint_admission_locks_are_released_in_model (test_component_model.SavepointTests.test_post_savepoint_admission_locks_are_released_in_model) ... ok
+test_pre_savepoint_locks_and_dirty_work_are_retained (test_component_model.SavepointTests.test_pre_savepoint_locks_and_dirty_work_are_retained) ... ok
+test_savepoint_rolls_back_data_and_generation (test_component_model.SavepointTests.test_savepoint_rolls_back_data_and_generation) ... ok
+test_commit_rejects_deferred_orphan (test_component_model.ValidationTests.test_commit_rejects_deferred_orphan) ... ok
+test_corruption_in_same_shared_component_is_rejected (test_component_model.ValidationTests.test_corruption_in_same_shared_component_is_rejected) ... ok
+test_deterministic_affected_error_precedence (test_component_model.ValidationTests.test_deterministic_affected_error_precedence) ... ok
+test_finite_deferred_rewrite_reaches_new_fixed_point (test_component_model.ValidationTests.test_finite_deferred_rewrite_reaches_new_fixed_point) ... ok
+test_immediate_mode_applies_to_next_statement (test_component_model.ValidationTests.test_immediate_mode_applies_to_next_statement) ... ok
+test_invalid_write_categories_fail_closed (test_component_model.ValidationTests.test_invalid_write_categories_fail_closed) ... ok
+test_large_unchanged_component_is_not_mislabeled_cycle (test_component_model.ValidationTests.test_large_unchanged_component_is_not_mislabeled_cycle) ... ok
+test_later_deferred_mutation_cannot_be_marked_already_checked (test_component_model.ValidationTests.test_later_deferred_mutation_cannot_be_marked_already_checked) ... ok
+test_later_write_invalidates_previously_successful_check (test_component_model.ValidationTests.test_later_write_invalidates_previously_successful_check) ... ok
+test_one_statement_can_make_and_repair_intermediate_orphan (test_component_model.ValidationTests.test_one_statement_can_make_and_repair_intermediate_orphan) ... ok
+test_redundant_check_skips_only_unchanged_generation (test_component_model.ValidationTests.test_redundant_check_skips_only_unchanged_generation) ... ok
+test_repeated_trigger_rewrite_hits_fail_closed_limit (test_component_model.ValidationTests.test_repeated_trigger_rewrite_hits_fail_closed_limit) ... ok
+test_set_immediate_rejects_at_boundary (test_component_model.ValidationTests.test_set_immediate_rejects_at_boundary) ... ok
+test_unrelated_preexisting_corruption_is_not_rejected (test_component_model.ValidationTests.test_unrelated_preexisting_corruption_is_not_rejected) ... ok
+test_expected_category_and_transaction_exit (test_source_model.ErrorAdapterTests.test_expected_category_and_transaction_exit) ... ok
+test_missing_rejection_fails (test_source_model.ErrorAdapterTests.test_missing_rejection_fails) ... ok
+test_wrong_category_sanitized (test_source_model.ErrorAdapterTests.test_wrong_category_sanitized) ... ok
+test_all_tables_deferred_validation (test_source_model.SourceTests.test_all_tables_deferred_validation) ... ok
+test_all_tables_statement_admitted (test_source_model.SourceTests.test_all_tables_statement_admitted) ... ok
+test_local_parameters_reject_ambient_pg_settings (test_source_model.SourceTests.test_local_parameters_reject_ambient_pg_settings) ... ok
+test_local_parameters_require_explicit_unambiguous_destination (test_source_model.SourceTests.test_local_parameters_require_explicit_unambiguous_destination) ... ok
+test_local_parameters_set_bounded_timeout (test_source_model.SourceTests.test_local_parameters_set_bounded_timeout) ... ok
+test_no_authoritative_validated_flag_or_dedup (test_source_model.SourceTests.test_no_authoritative_validated_flag_or_dedup) ... ok
+test_no_default_dsn (test_source_model.SourceTests.test_no_default_dsn) ... usage: run_two_sessions.py [-h] [--execute-permitted-local]
+run_two_sessions.py: error: RD_COORD_MODEL_DSN is required
+ok
+test_no_execution_without_opt_in (test_source_model.SourceTests.test_no_execution_without_opt_in) ... usage: run_two_sessions.py [-h] [--execute-permitted-local]
+run_two_sessions.py: error: execution requires a separately permitted local environment
+ok
+test_reject_arbitrary_schema (test_source_model.SourceTests.test_reject_arbitrary_schema) ... ok
+test_reject_invalid_key (test_source_model.SourceTests.test_reject_invalid_key) ... ok
+test_render_owned_schema (test_source_model.SourceTests.test_render_owned_schema) ... ok
+test_runner_has_no_optimizable_assertions (test_source_model.SourceTests.test_runner_has_no_optimizable_assertions) ... ok
+test_runner_parses_without_execution (test_source_model.SourceTests.test_runner_parses_without_execution) ... ok
+test_truncate_rejected_not_silently_unchecked (test_source_model.SourceTests.test_truncate_rejected_not_silently_unchecked) ... ok
+
+----------------------------------------------------------------------
+Ran 56 tests in 2.253s
+
+OK

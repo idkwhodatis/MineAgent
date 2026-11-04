@@ -1,0 +1,30 @@
+{
+  "reconstructed_utc": "2026-11-03T23:25:11.615154+00:00",
+  "provenance": "Reconstructed from retained context after workspace loss; no original-byte or complete-behavior equivalence claim.",
+  "source_baseline": "83895f4efe4fc9062e59a2af571b36348ed51248",
+  "offline_tests": {
+    "passed": 56,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "component_tests": 39,
+    "source_adapter_tests": 17
+  },
+  "bounded_routing_comparisons": 34496,
+  "two_transaction_parameter_cases": 2904,
+  "case_limits": "Finite model domains only. Parameter cases may duplicate schedules; graph outcome oracle shares model helpers.",
+  "postgres_executed": false,
+  "concurrency_proven": false,
+  "production_acceptance": false,
+  "performance_claim": false,
+  "source_sha256": {
+    "README.md": "0569e6b5d04a364bd81da14906f46364b9767df853548cc4c228ba12c0ecb68f",
+    "DESIGN.md": "a8b95a9bb09bc591e32fafa6e36af06458ab4dfee5118dbf459346cc07b06901",
+    "RECONSTRUCTION.md": "24bd9036b6b7ba2b3da615d3adea841034f0877d3d42d5fadecafeda0a7b7ed0",
+    "component_model.py": "0d7755c71d10cc02c500c9aee1457804ef9f9c6634c75482bb10099fb3a5f988",
+    "test_component_model.py": "770052f870c91ddb1bb42036cbd1c197e1f14809c8247459df92959903de8df9",
+    "model.sql": "25cafb84d69f8bae55964c05e89bc0e3d3533e8525ba9e2d75b8356551d224b1",
+    "run_two_sessions.py": "d83b03aab74e4fbe81b099b55dbd3fa1b4b978d4b74aba4583222275f781c070",
+    "test_source_model.py": "4661739f24647ffb6c7bb1233d0b498c41261523a39012fcc71b7afc7f251039"
+  }
+}
