@@ -111,6 +111,10 @@ class FakeError(Exception):
     def __init__(self, state):
         super().__init__("private payload must not escape")
         self.sqlstate = state
+        self.diag = types.SimpleNamespace(message_primary={
+            "55P03": "model_writer_busy", "23514": "model_graph_invalid",
+            "0A000": "model_truncate_unsupported",
+        }.get(state, "private marker must not escape"))
 
 
 class FakeConnection:

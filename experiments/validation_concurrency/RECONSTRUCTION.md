@@ -1,4 +1,8 @@
-# Reconstruction provenance and limits
+# Historical reconstruction provenance and limits (c993367)
+
+This file describes the published reconstruction baseline. The later harness
+continuation and current measured test result are in README.md, CONTINUATION.md
+and RESULTS.json; the original 56-test result is historical here.
 
 Recovered on 2026-11-03 after the previous working directory, pinned checkout,
 prototype ZIP and test logs were no longer available in the current filesystem.
@@ -18,7 +22,8 @@ prototype ZIP and test logs were no longer available in the current filesystem.
 Fresh review also improved the reconstructed runner rather than preserving two
 old weaknesses: its evidence checks cannot disappear under `python -O`, and it
 rejects ambient libpq settings or service/hostaddr routing. Four new offline
-checks cover these changes. The current total is 56, not the historical 52.
+checks cover these changes. The published reconstruction total was 56, not the
+earlier historical 52.
 
 ## What was not recovered or claimed
 
