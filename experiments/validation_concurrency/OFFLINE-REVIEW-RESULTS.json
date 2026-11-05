@@ -1,0 +1,55 @@
+{
+  "prepared_utc": "2026-11-05T06:20:21.040434+00:00",
+  "reviewed_base_commit": "b9e36f01458ebf0395b2a53262ed3de53ca30281",
+  "scope": "Isolated offline proof-harness hardening; not production code or PostgreSQL proof.",
+  "offline_tests": {
+    "normal_passed": 117,
+    "optimized_passed": 117,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "existing": 90,
+    "added_completeness": 7,
+    "added_independent_invariant": 20
+  },
+  "original_component_algorithm_changed": false,
+  "sql_model_changed": false,
+  "runner_omission_mutants": {
+    "old_runner_survived": 3,
+    "new_runner_rejected": 3,
+    "cleanup_verified_each": true
+  },
+  "invariant_mutants": {
+    "missing_parent_new_test_failures": 4,
+    "missing_receipt_new_test_failures": 5,
+    "orphan_receipt_new_test_failures": 2,
+    "old_component_suite_missed_missing_parent": true
+  },
+  "independent_checks": {
+    "states": 1568,
+    "single_change_transitions": 34496,
+    "seed": 20261105,
+    "two_transaction_batch_schedules": 10000,
+    "disagreements": 0,
+    "live_database_interleavings": false
+  },
+  "saved_review_archive_sha256": "d0f6abd289d574f5a583f3bf617364d9e129dfe0bdf53a4cfb68a00fe35ad33a",
+  "postgres_cases_executed": 0,
+  "postgres_server_started": false,
+  "socket_attempted_during_review": false,
+  "production_acceptance": false,
+  "performance_claim": false,
+  "remaining_gates": [
+    "permitted disposable PostgreSQL 18 runtime",
+    "all 18 live database case groups",
+    "bounded observable commit-validation barrier",
+    "trusted scoped SQL admission and fatal retry state",
+    "actual RD/OE coverage and populated performance"
+  ],
+  "source_sha256": {
+    "run_two_sessions.py": "8bf6408deea3dcef755640e1868e9c7fdd958f6f1acf4d3d199c6fc232a6eba2",
+    "test_runner_lifecycle.py": "f849b07a8de370134674b3c56bb9450ada01aa9a24bbcd9800d4351f834d81e5",
+    "test_independent_component.py": "4773d7a102262b006ea71b91351efbbdaeeeb2b71bcec00809d27ee2d2e956d5",
+    "REVIEW-CHECKPOINT.md": "5fa21a0931d8c73fbfe5aad68d24bd91ba2e90571604584590421508cc35e509"
+  }
+}

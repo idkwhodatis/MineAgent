@@ -81,7 +81,7 @@ class Connection:
 
 class RunnerLifecycleTests(unittest.TestCase):
     def invoke(self, a=None, b=None, *, connect_error=None, params_error=None,
-               case_error=None):
+               case_error=None, case_records=None):
         a, b = a or Connection(1), b or Connection(2)
         connect = Mock(side_effect=connect_error or [a, b])
         module = types.SimpleNamespace(Error=FakeError, connect=connect)
@@ -91,7 +91,9 @@ class RunnerLifecycleTests(unittest.TestCase):
             report["stage"] = "synthetic_case"
             if case_error:
                 raise case_error
-            report["cases_passed"].append({"case": "synthetic_case"})
+            report["cases_passed"].extend(
+                [{"case": name} for name in runner.EXPECTED_CASES]
+                if case_records is None else case_records)
 
         with patch.dict(sys.modules, {"psycopg": module}), \
                 patch.object(runner, "local_connection_parameters", params), \
@@ -168,7 +170,8 @@ class RunnerLifecycleTests(unittest.TestCase):
         self.assertTrue(result["passed"])
         self.assertTrue(result["independent_backends"])
         self.assertTrue(result["cleanup_completed"])
-        self.assertEqual(len(result["cases_passed"]), 1)
+        self.assertEqual(len(result["cases_passed"]), 18)
+        self.assertTrue(result["case_manifest_verified"])
         self.assertEqual(connect.call_count, 2)
         self.assertFalse(result["production_acceptance"])
 
@@ -177,6 +180,41 @@ class RunnerLifecycleTests(unittest.TestCase):
         self.assertFalse(result["passed"])
         self.assertEqual(result["failure"]["stage"], "connection_close")
         self.assertEqual(result["cleanup"]["status"], "verified_absent")
+
+    def assert_incomplete(self, records):
+        result, a, _, _ = self.invoke(case_records=records)
+        self.assertFalse(result["passed"])
+        self.assertFalse(result["case_manifest_verified"])
+        self.assertEqual(result["failure"]["reason"], "case manifest incomplete or unexpected")
+        self.assertEqual(result["failure"]["stage"], "verify_case_completion")
+        self.assertEqual(result["cleanup"]["status"], "verified_absent")
+        self.assertTrue(any(sql.startswith("DROP SCHEMA") for sql in a.executed))
+
+    def test_no_cases_cannot_report_success(self):
+        self.assert_incomplete([])
+
+    def test_partial_case_run_cannot_report_success(self):
+        self.assert_incomplete([{"case": name} for name in runner.EXPECTED_CASES[:-1]])
+
+    def test_unknown_case_cannot_report_success(self):
+        self.assert_incomplete([{"case": "unknown_case"}])
+
+    def test_duplicate_case_cannot_substitute_for_missing_case(self):
+        self.assert_incomplete([{"case": runner.EXPECTED_CASES[0]}] * 18)
+
+    def test_reordered_cases_do_not_match_deterministic_schedule(self):
+        self.assert_incomplete([{"case": name} for name in reversed(runner.EXPECTED_CASES)])
+
+    def test_malformed_case_record_cannot_report_success(self):
+        for record in (None, "malformed_case_record", 18, {}, {"case": None}):
+            with self.subTest(record=record):
+                self.assert_incomplete([record])
+
+    def test_manifest_matches_published_eighteen_case_plan(self):
+        from pathlib import Path
+        plan = json.loads(Path(runner.__file__).with_name("RESULTS.json").read_text())
+        self.assertEqual(tuple(plan["planned_postgres_case_groups"]), runner.EXPECTED_CASES)
+        self.assertEqual(len(set(runner.EXPECTED_CASES)), 18)
 
 
 if __name__ == "__main__":

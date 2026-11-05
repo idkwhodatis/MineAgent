@@ -1,3 +1,7 @@
+> Latest published offline checkpoint: **117 tests**, with case-completeness checks
+> and independent invariant regressions. See [REVIEW-PUBLICATION.md](REVIEW-PUBLICATION.md).
+> The preparation-time 90-test evidence below is preserved as historical context.
+
 # Isolated validation-concurrency prototype continuation
 
 **Offline preparation only. The PostgreSQL harness has not been executed.**

@@ -17,6 +17,41 @@ from proof_assertions import (
 )
 
 
+EXPECTED_CASES = (
+    "initial_uncommitted_visibility_and_gate",
+    "writer_progress_after_commit",
+    "all_dml_routes_and_noop_statement_gate",
+    "missing_receipt_at_commit",
+    "missing_parent_at_commit",
+    "orphan_receipt_at_commit",
+    "immediate_boundary_rejection_then_valid_repair",
+    "later_write_after_immediate_then_deferred",
+    "valid_immediate_deferred_delete_and_repair",
+    "post_savepoint_rows_and_gate_rollback",
+    "pre_savepoint_gate_and_pending_invalid_work_retained",
+    "gate_release_after_full_rollback",
+    "failed_commit_releases_gate",
+    "read_committed_statement_sees_later_commit",
+    "shared_parent_delete_rejected",
+    "caller_flag_has_no_authority",
+    "uncontended_truncate_rejected",
+    "coordinated_delete_then_recreate",
+)
+
+
+def require_case_completion(records):
+    """Reject omitted, duplicated, unknown or reordered case acknowledgments.
+
+    This is a completeness guard, not independent evidence that SQL ran.
+    Each case must still make its own phase and state observations.
+    """
+    if (type(records) is not list
+            or any(type(record) is not dict for record in records)
+            or tuple(record.get("case") for record in records) != EXPECTED_CASES):
+        raise ProofFailure("case manifest incomplete or unexpected", "verify_case_completion",
+                           "observation")
+
+
 def render(schema, key):
     if not re.fullmatch(r"rd_coord_model_[a-f0-9]{32}", schema):
         raise ValueError("invalid owned model schema")
@@ -255,6 +290,7 @@ def run(dsn):
     report = {"model_only": True, "passed": False, "actual_rd_predicates": False,
               "production_acceptance": False, "sql_attempted": False,
               "sql_execution_confirmed": False,
+              "case_manifest_verified": False,
               "independent_backends": False, "cases_passed": [],
               "stage": "connection_parameters", "cleanup": {"status": "not_started"},
               "scope_limits": ["synthetic_global_gate_only", "no_scoped_sql_restart_latch",
@@ -288,6 +324,9 @@ def run(dsn):
                 installed = True
                 report["cleanup"]["status"] = "pending"
                 exercise_cases(a, b, schema, report)
+                report["stage"] = "verify_case_completion"
+                require_case_completion(report["cases_passed"])
+                report["case_manifest_verified"] = True
             except Exception as error:
                 report["failure"] = failure_record(error, report["stage"])
             finally:
@@ -306,6 +345,7 @@ def run(dsn):
     except Exception as error:
         report.setdefault("failure", failure_record(error, report["stage"]))
     report["passed"] = ("failure" not in report and "cleanup_failure" not in report
+                        and report["case_manifest_verified"]
                         and report["cleanup"]["status"] == "verified_absent")
     report["cleanup_completed"] = report["cleanup"]["status"] == "verified_absent"
     report["cleanup_requires_verification"] = report["cleanup"]["status"] not in {"not_started", "verified_absent"}
