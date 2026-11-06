@@ -183,3 +183,13 @@ def test_all_disabled_full_pages_terminate_without_consuming_events(case):
     assert len(case.queries) == 3
     assert all(event.dispatched_at is None for event in pending)
     case.app.assert_not_called()
+
+
+def test_nearly_full_dispatch_batch_keeps_bounded_query_pages(case):
+    ready = [case.add("legacy") for _ in range(99)]
+    pending = [case.add("rd", disabled=True) for _ in range(205)]
+    ready.append(case.add("legacy"))
+    assert dispatcher.dispatch_outbox(case.session) == 100
+    assert len(case.queries) == 4
+    assert all(event.dispatched_at is not None for event in ready)
+    assert all(event.dispatched_at is None for event in pending)

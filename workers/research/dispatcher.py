@@ -26,13 +26,12 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
     selected = []
     after = None
     while len(selected) < limit:
-        remaining = limit - len(selected)
         query = select(OutboxEvent).where(OutboxEvent.dispatched_at.is_(None))
         if after is not None:
             query = query.where(tuple_(OutboxEvent.created_at, OutboxEvent.id) > after)
         events = session.scalars(
             query.order_by(OutboxEvent.created_at, OutboxEvent.id)
-            .limit(remaining)
+            .limit(limit)
             .with_for_update(skip_locked=True)
         ).all()
         if not events:
@@ -99,7 +98,9 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
                 require_legacy_run(run)
                 tasks[event.id] = TASK_NAME
             selected.append(event)
-        if len(events) < remaining:
+            if len(selected) == limit:
+                break
+        if len(selected) == limit or len(events) < limit:
             break
         after = (events[-1].created_at, events[-1].id)
     events = selected
