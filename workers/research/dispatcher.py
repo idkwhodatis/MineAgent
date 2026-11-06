@@ -122,7 +122,7 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
 
 
 def recover_stalled_jobs(
-    session: Session, stale_seconds: int = 120, *, rd=False
+    session: Session, stale_seconds: int = 120, *, rd=False, oe=False
 ) -> int:
     """Requeue only our jobs with missing/stale queue-worker heartbeats.
 
@@ -131,13 +131,17 @@ def recover_stalled_jobs(
     business Run: it cannot retry a live/stale attempt or skip confirmed stop.
     This also closes the crash window between queue delivery and business claim.
     """
-    if type(rd) is not bool:
-        raise ValueError("Explicit queue family required")
+    if type(rd) is not bool or type(oe) is not bool or (rd and oe):
+        raise ValueError("Exactly one explicit queue family required")
     selected_task = TASK_NAME
     if rd:
         from workers.research.rdagent_queue import TASK_NAME as RD_TASK_NAME
 
         selected_task = RD_TASK_NAME
+    elif oe:
+        from workers.research.oe_structured_queue import TASK_NAME as OE_TASK_NAME
+
+        selected_task = OE_TASK_NAME
     if stale_seconds < 30:
         raise ValueError("Queue stall threshold must be at least 30 seconds")
     jobs = (
@@ -185,38 +189,13 @@ def recover_stalled_jobs(
             )
         ).one_or_none()
         if rd:
-            from backend.app.engine_run_submission_schemas import RDSubmit
-            from backend.app.rdagent_submission_models import FactorResearchSubmission
-            from backend.app.rdagent_submission_receipts import (
-                existing_receipt,
-                read_request,
-            )
-            from packages.rdagent_adapter.persisted_identity import (
-                require_source_identity,
-            )
+            from workers.research.queue_recovery import require_rd_receipt
 
-            try:
-                require_source_identity(run)
-            except (ValueError, TypeError, AttributeError):
-                raise DomainError(
-                    "unsupported_queue_identity", "RD queue binding is invalid"
-                ) from None
-            row = session.scalar(
-                select(FactorResearchSubmission).filter_by(
-                    owner_id=run.owner_id, run_id=run.id
-                )
-            )
-            if row is None or args["generation"] != 1:
-                raise DomainError(
-                    "unsupported_queue_identity", "RD queue receipt is missing"
-                )
-            request = read_request(row)
-            existing_receipt(
-                session,
-                run.owner_id,
-                row.idempotency_key,
-                RDSubmit(**request.model_dump(), preflight_sha256=row.preflight_sha256),
-            )
+            require_rd_receipt(session, run, args["generation"])
+        elif oe:
+            from workers.research.queue_recovery import require_oe_receipt
+
+            require_oe_receipt(session, run, args["generation"])
         else:
             require_legacy_run(run)
     for job in jobs:

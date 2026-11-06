@@ -208,6 +208,9 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                 assert disabled.status_code == 200, disabled.text
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
+                from queue_recovery_fixture import assert_stalled_delivery_recovers
+
+                assert_stalled_delivery_recovers(factory, run_id)
                 queue = create_queue_app(settings)
                 with (
                     diagnose_provider_functions(engine, stage="parent"),
@@ -353,6 +356,7 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                     assert session.get(ResearchRun, child_run_id).status == "queued"
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
+                assert_stalled_delivery_recovers(factory, child_run_id)
                 child_queue = create_queue_app(settings)
                 with (
                     diagnose_provider_functions(engine, stage="seeded_child"),

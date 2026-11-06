@@ -235,6 +235,99 @@ def test_actual_typed_contracts_bind_without_current_settings(declaration):
 
 
 @pytest.mark.parametrize(
+    "fault", [None, "missing_attachment", "owner", "origin", "request", "stage"]
+)
+def test_stalled_workflow_oe_receipt_uses_exact_owned_attachment(declaration, fault):
+    from types import SimpleNamespace as NS
+    from uuid import UUID
+
+    from backend.app.core.db import REQUIRED_SCHEMA_REVISION
+    from backend.app.oe_structured_models import (
+        OEStructuredSpec,
+        OEStructuredSubmission,
+    )
+    from backend.app.research_workflow_models import (
+        ResearchWorkflowRevision,
+        ResearchWorkflowStage,
+    )
+    from backend.app.services import DomainError
+    from backend.app.structured_factor_models import StructuredStrategyVersion
+    from workers.research.queue_recovery import require_oe_receipt
+
+    attachment, metadata, args = declaration
+    config = args["config"]
+
+    def row(values):
+        return NS(
+            **{
+                key: UUID(value) if (key == "id" or key.endswith("_id")) else value
+                for key, value in values.items()
+            }
+        )
+
+    run, spec, submission = (row(args[key]) for key in ("run", "spec", "submission"))
+    run.purpose, run.engine, run.generation = "strategy_search", "openevolve", 1
+    run.strategy_version_id = None
+    run.dataset_version_id = config.fixed_inputs.dataset_version_id
+    run.request_sha256 = config.sha256
+    run.idempotency_key = submission.idempotency_key = (
+        "workflow-stage:" + attachment["stage_id"]
+    )
+    spec.snapshot_id = config.fixed_inputs.snapshot_id
+    spec.dataset_id = config.fixed_inputs.dataset_version_id
+    spec.seed_program_version_id = uuid4()
+    version = NS(
+        id=spec.seed_program_version_id,
+        owner_id=run.owner_id,
+        parent_version_id=None,
+        program=config.search.domain.seed_program.model_dump(mode="json"),
+        program_canonical=canonical_bytes(config.search.domain.seed_program).decode(),
+        program_sha256=digest(config.search.domain.seed_program),
+    )
+    attached = row(attachment)
+    stage = row(metadata["indexes"]["research_workflow_stages"][attachment["stage_id"]])
+    stage.definition_sha256 = config.workflow_context.definition_sha256
+    revision = row(
+        metadata["indexes"]["research_workflow_revisions"][
+            attachment["input_revision_id"]
+        ]
+    )
+    revision.inputs_sha256 = config.workflow_context.inputs.selection.sha256
+    rows = {
+        (OEStructuredSpec, run.id): spec,
+        (OEStructuredSubmission, submission.id): submission,
+        (StructuredStrategyVersion, version.id): version,
+        (ResearchWorkflowStage, stage.id): stage,
+        (ResearchWorkflowRevision, revision.id): revision,
+    }
+    session = NS(
+        get=lambda model, identity: rows.get((model, identity)),
+        scalars=lambda query: NS(
+            all=lambda: (
+                [REQUIRED_SCHEMA_REVISION]
+                if str(query) == "SELECT version_num FROM alembic_version"
+                else []
+                if fault == "missing_attachment"
+                else [attached]
+            )
+        ),
+    )
+    if fault == "owner":
+        attached.owner_id = uuid4()
+    elif fault == "origin":
+        submission.origin = "authenticated_user_submission"
+    elif fault == "request":
+        submission.request_canonical += " "
+    elif fault == "stage":
+        stage.child_run_id = uuid4()
+    if fault is None:
+        assert require_oe_receipt(session, run, 1) is None
+    else:
+        with pytest.raises(DomainError):
+            require_oe_receipt(session, run, 1)
+
+
+@pytest.mark.parametrize(
     "field",
     [
         "run_id",

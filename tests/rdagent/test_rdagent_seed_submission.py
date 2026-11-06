@@ -160,6 +160,39 @@ def test_exact_seeded_replay_precedes_current_runtime_and_parent_reads(
     assert not q.session.rows
 
 
+def test_stalled_seeded_receipt_does_not_require_a_fresh_submission(seeded_writer):
+    from backend.app.core.db import REQUIRED_SCHEMA_REVISION
+    from backend.app.models import ResearchRun
+    from workers.research.queue_recovery import require_rd_receipt
+
+    q, parent, body, _ = seeded_writer
+    service.submit_seeded_run(
+        q.session, parent.owner, body, "seed-recovery", q.source.settings
+    )
+    run = next(row for row in q.session.rows if isinstance(row, ResearchRun))
+    session = SimpleNamespace(
+        scalars=lambda query: SimpleNamespace(all=lambda: [REQUIRED_SCHEMA_REVISION]),
+        scalar=lambda query: next(
+            (
+                row
+                for row in q.session.rows
+                if isinstance(row, query.column_descriptions[0]["entity"])
+            ),
+            None,
+        ),
+        get=lambda model, identity: next(
+            (
+                row
+                for row in q.session.rows
+                if isinstance(row, model) and row.id == identity
+            ),
+            None,
+        ),
+    )
+    assert require_rd_receipt(session, run, 1) is None
+    assert run.status == "queued" and run.active_attempt_id is None
+
+
 def test_seeded_profile_rejects_fresh_profile_as_authority(seeded_writer):
     q, _, _, _ = seeded_writer
     with pytest.raises(ValueError):

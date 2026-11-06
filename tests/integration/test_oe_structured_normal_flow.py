@@ -266,6 +266,9 @@ def _run_flow(migrated_engine, settings, monkeypatch):
                 }
             with factory.begin() as session:
                 assert dispatch_outbox(session, settings=configured) == 1
+            from queue_recovery_fixture import assert_stalled_delivery_recovers
+
+            assert_stalled_delivery_recovers(factory, rid)
             queue = create_queue_app(configured)
             with diagnose_oe_queue(factory, rid), queue.open():
                 queue.run_worker(

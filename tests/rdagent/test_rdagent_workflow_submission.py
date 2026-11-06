@@ -411,6 +411,32 @@ def test_delivery_metadata_does_not_claim_file_validation_or_consume_active_head
         )
 
 
+def test_stalled_workflow_receipt_recovery_uses_owned_metadata(
+    actual_graph, monkeypatch
+):
+    from backend.app.core.db import REQUIRED_SCHEMA_REVISION
+    from workers.research.queue_recovery import require_rd_receipt
+
+    value = actual_graph
+    receipt = submit(value)
+    run = next(row for row in value.q.session.rows if isinstance(row, ResearchRun))
+    monkeypatch.setattr(
+        value.q.session,
+        "scalars",
+        lambda query: NS(all=lambda: [REQUIRED_SCHEMA_REVISION]),
+    )
+    monkeypatch.setattr(
+        saved,
+        "resolve_research_declaration",
+        lambda *a, **kw: pytest.fail("recovery must not read source files"),
+    )
+    assert require_rd_receipt(value.q.session, run, 1) is None
+    assert run.status == "queued" and run.active_attempt_id is None
+    receipt.request_sha256 = "f" * 64
+    with pytest.raises(DomainError):
+        require_rd_receipt(value.q.session, run, 1)
+
+
 @pytest.mark.parametrize("read_inputs", [False, True])
 def test_actual_queue_seam_uses_distinct_immutable_workflow_receipt(
     actual_graph, monkeypatch, read_inputs

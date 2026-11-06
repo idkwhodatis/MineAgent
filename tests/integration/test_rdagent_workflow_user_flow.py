@@ -586,6 +586,9 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 assert after_edit.json() == accepted_inputs
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
+                from queue_recovery_fixture import assert_stalled_delivery_recovers
+
+                assert_stalled_delivery_recovers(factory, rid)
                 queue = create_queue_app(settings)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_first"),
@@ -915,6 +918,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                 with factory.begin() as session:
                     assert dispatch_outbox(session, settings=settings) == 1
+                assert_stalled_delivery_recovers(factory, second_id)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_seeded"),
                     diagnose_rd_queue(factory, second_id),

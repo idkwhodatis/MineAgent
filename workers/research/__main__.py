@@ -15,8 +15,9 @@ from backend.app.core.config import get_settings
 from backend.app.core.db import create_db_engine, session_factory
 from backend.app.models import ExecutionAttempt, ResearchRun, WorkerHeartbeat, utcnow
 from backend.app.services import reconcile_attempt
-from workers.research.dispatcher import dispatch_outbox, recover_stalled_jobs
+from workers.research.dispatcher import dispatch_outbox
 from workers.research.queue import create_queue_app
+from workers.research.queue_recovery import recover_stalled_research_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -206,27 +207,7 @@ def main():
                             ),
                             settings=settings,
                         )
-                    recover_stalled_jobs(session)
-                    from sqlalchemy import text
-
-                    from backend.app.rdagent_submission_services import REVISION
-
-                    if session.scalars(
-                        text("SELECT version_num FROM alembic_version")
-                    ).all() in (
-                        [REVISION],
-                        ["024_openevolve_initial"],
-                        ["025_structured_factor_strategy"],
-                        ["026_rd_seeded_submissions"],
-                        ["027_rd_controller_v3"],
-                        ["027a_contract_repairs"],
-                        ["027b_provider_material"],
-                        ["027c_seeded_controller_v4"],
-                        ["028_oe_structured_search"],
-                        ["029_research_workflow"],
-                        ["030_declared_upload_basket"],
-                    ):
-                        recover_stalled_jobs(session, rd=True)
+                    recover_stalled_research_jobs(session)
             if args.role == "dispatcher":
                 dispatch_workflow_tick(factory, settings)
             for attempt_id in rd_ids:

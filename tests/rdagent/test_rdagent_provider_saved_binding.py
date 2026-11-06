@@ -119,3 +119,43 @@ def test_provider_frozen_identity_drift_rejected(provider_saved, field):
         existing_receipt(
             p.saved.session, p.saved.owner, "stable-key", p.saved.submitted
         )
+
+
+@pytest.mark.parametrize("saved_fixture", ["replay", "provider_saved"])
+def test_stalled_delivery_recovers_original_receipt_without_current_profile(
+    request,
+    saved_fixture,
+):
+    from unittest.mock import MagicMock
+
+    from backend.app.core.db import REQUIRED_SCHEMA_REVISION
+    from backend.app.rdagent_submission_models import FactorResearchSubmission
+    from workers.research.dispatcher import recover_stalled_jobs
+
+    value = request.getfixturevalue(saved_fixture)
+    saved = value.saved if saved_fixture == "provider_saved" else value
+    saved.run.generation = 1
+    saved.row.idempotency_key = saved.run.idempotency_key
+    session = MagicMock()
+    session.get.side_effect = saved.session.get
+    session.scalar.side_effect = lambda query: (
+        saved.row
+        if query.column_descriptions[0]["entity"] is FactorResearchSubmission
+        else None
+    )
+    session.scalars.side_effect = lambda query: (
+        SimpleNamespace(all=lambda: [REQUIRED_SCHEMA_REVISION])
+        if str(query) == "SELECT version_num FROM alembic_version"
+        else SimpleNamespace(one_or_none=lambda: saved.run)
+    )
+    session.execute.return_value.mappings.return_value.all.return_value = [
+        {"id": 52, "args": {"run_id": str(saved.run.id), "generation": 1}}
+    ]
+    assert recover_stalled_jobs(session, rd=True) == 1
+    assert session.execute.call_args.args[1] == {"job_id": 52}
+    session.add.assert_not_called()
+    saved.row.request_canonical += " "
+    session.execute.reset_mock()
+    with pytest.raises(DomainError):
+        recover_stalled_jobs(session, rd=True)
+    assert session.execute.call_count == 1

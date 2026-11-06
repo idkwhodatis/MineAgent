@@ -84,52 +84,26 @@ def test_successor_control_still_requires_real_submission_receipt(revision):
     assert not control.controls_for(session, run).cancel
 
 
-def test_reconciler_preserves_exact_rd_stalled_job_dispatch():
-    import ast
-    from pathlib import Path
+def test_reconciler_preserves_exact_rd_stalled_job_dispatch(monkeypatch):
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock
 
-    tree = ast.parse(Path("workers/research/__main__.py").read_text())
-    gates = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.If)
-        and any(
-            isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Name)
-            and call.func.id == "recover_stalled_jobs"
-            and any(
-                k.arg == "rd"
-                and isinstance(k.value, ast.Constant)
-                and k.value.value is True
-                for k in call.keywords
-            )
-            for statement in node.body
-            for call in ast.walk(statement)
-        )
-    ]
-    exact = [
-        node
-        for node in gates
-        if isinstance(node.test, ast.Compare)
-        and isinstance(node.test.ops[0], ast.In)
-        and isinstance(node.test.comparators[0], ast.Tuple)
-    ]
-    assert len(exact) == 1
-    items = exact[0].test.comparators[0].elts
-    assert len(items) == 11
-    assert isinstance(items[0].elts[0], ast.Name) and items[0].elts[0].id == "REVISION"
-    assert [ast.literal_eval(x) for x in items[1:]] == [
-        ["024_openevolve_initial"],
-        ["025_structured_factor_strategy"],
-        ["026_rd_seeded_submissions"],
-        ["027_rd_controller_v3"],
-        ["027a_contract_repairs"],
-        ["027b_provider_material"],
-        ["027c_seeded_controller_v4"],
-        ["028_oe_structured_search"],
-        ["029_research_workflow"],
-        ["030_declared_upload_basket"],
-    ]
+    from workers.research import __main__ as main
+
+    session = MagicMock()
+    session.scalars.return_value.all.return_value = []
+    factory = SimpleNamespace(begin=lambda: nullcontext(session))
+    settings = SimpleNamespace(
+        factor_library_enabled=False, factor_import_enabled=False
+    )
+    monkeypatch.setattr("sys.argv", ["research", "reconciler", "--once"])
+    monkeypatch.setattr(main, "get_settings", lambda: settings)
+    monkeypatch.setattr(main, "create_db_engine", lambda _: object())
+    monkeypatch.setattr(main, "session_factory", lambda _: factory)
+    recover = MagicMock(return_value=0)
+    monkeypatch.setattr(main, "recover_stalled_research_jobs", recover)
+    main.main()
+    recover.assert_called_once_with(session)
 
 
 @pytest.mark.parametrize(
