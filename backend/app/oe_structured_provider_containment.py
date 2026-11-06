@@ -182,11 +182,9 @@ def _group(member, shared, receipts, binding, read):
 def provider_attempt_stopped(session, run, attempt, settings):
     try:
         config = require_run_identity(run)
-        if (
-            attempt.run_id != run.id
-            or attempt.owner_id != run.owner_id
-            or attempt.generation != run.generation
-        ):
+        # Attempts inherit ownership from their run; only the run stores owner_id.
+        # Inventory remains scoped to that owner and this exact attempt below.
+        if attempt.run_id != run.id or attempt.generation != run.generation:
             return False
         from backend.app.oe_structured_operational_models import (
             OEStructuredProviderReceipt,

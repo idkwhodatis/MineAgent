@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from backend.app import oe_structured_provider_containment as service
+from backend.app.models import ExecutionAttempt
 from packages.openevolve_structured.object_identity import identity_for_content
 from tests.openevolve.test_structured_provider_evidence import fixture
 
@@ -78,10 +79,10 @@ def case(monkeypatch, tmp_path):
     run = NS(
         id=c.fence.run_id, owner_id=c.fence.owner_id, generation=c.fence.generation
     )
-    attempt = NS(
+    # Ownership belongs to ResearchRun, not the mapped ExecutionAttempt.
+    attempt = ExecutionAttempt(
         id=c.fence.attempt_id,
         run_id=run.id,
-        owner_id=run.owner_id,
         generation=run.generation,
         status="cancelled",
     )
@@ -101,6 +102,8 @@ def case(monkeypatch, tmp_path):
         "orphan_transport",
         "orphan_receipt",
         "wrong_attempt",
+        "wrong_run",
+        "wrong_generation",
         "usage",
         "submitted",
         "missing_outcome",
@@ -131,6 +134,10 @@ def test_actual_post_revoke_sdk_barrier(case, change):
         c.tables["oe_structured_provider_receipts"][0]["membership_id"] = str(uuid4())
     elif change == "wrong_attempt":
         c.attempt.id = uuid4()
+    elif change == "wrong_run":
+        c.attempt.run_id = uuid4()
+    elif change == "wrong_generation":
+        c.attempt.generation += 1
     elif change == "usage":
         c.tables["research_model_outcomes"][0]["usage"]["calls"] = 0
     elif change == "submitted":
@@ -157,6 +164,24 @@ def test_stopped_unsuccessful_transport_is_not_completed_response(case, state):
     assert service.provider_attempt_stopped(None, c.run, c.attempt, c.settings)
     c.tables["research_budget_reservations"][0]["state"] = "uncertain"
     assert not service.provider_attempt_stopped(None, c.run, c.attempt, c.settings)
+
+
+@pytest.mark.parametrize("field", ["owner_id", "run_id", "attempt_id", "generation"])
+def test_mapped_attempt_rejects_foreign_inventory(case, monkeypatch, field):
+    original = service._rows
+
+    def rows(session, model, **filters):
+        assert filters["owner_id"] == case.run.owner_id
+        values = original(session, model, **filters)
+        if model.__tablename__ == "research_model_operations":
+            assert filters["run_id"] == case.run.id
+            values[0][field] = 2 if field == "generation" else str(uuid4())
+        return values
+
+    monkeypatch.setattr(service, "_rows", rows)
+    assert not service.provider_attempt_stopped(
+        None, case.run, case.attempt, case.settings
+    )
 
 
 def test_query_bound_is_enforced_before_validating_any_rows():
