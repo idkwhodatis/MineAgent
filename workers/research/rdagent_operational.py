@@ -475,9 +475,9 @@ def _execute_controller(factory, fence, settings, *, handler_type):
             attempt.sandbox_stopped = whole_stop
             # Actual Docker inspect result; stop.v1 itself proves absence only.
             attempt.exit_code = None if running is None else running.measured_exit_code
-            attempt.finished_at = utcnow()
+            attempt.finished_at = run.updated_at = utcnow()
             if not success:
-                attempt.error = "rd_controller_execution_failed"
+                attempt.error = run.error = "rd_controller_execution_failed"
             from backend.app.research_lifecycle import _NEUTRAL_KEY
 
             session.info[_NEUTRAL_KEY]["terminal"] = (

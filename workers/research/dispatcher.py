@@ -6,7 +6,7 @@ Run and checks its generation. We do not claim end-to-end exactly-once execution
 
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, tuple_
 from sqlalchemy.orm import Session
 
 from backend.app.core import maintenance  # noqa: F401 -- before queue/row locks
@@ -19,80 +19,89 @@ from workers.research.queue import TASK_NAME, create_queue_app
 def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int:
     if session.bind.dialect.name != "postgresql":
         raise ValueError("Outbox dispatcher requires PostgreSQL")
-    events = session.scalars(
-        select(OutboxEvent)
-        .where(OutboxEvent.dispatched_at.is_(None))
-        .order_by(OutboxEvent.created_at, OutboxEvent.id)
-        .limit(limit)
-        .with_for_update(skip_locked=True)
-    ).all()
-    if not events:
-        return 0
-    # Validate every identity before creating any queue job. Missing rows fail closed.
+    # The limit counts dispatchable events, not disabled events. Advance through
+    # ordered pages without consuming pending events or losing SKIP LOCKED safety.
+    # Validate the complete selected batch before creating any queue job.
     tasks = {}
     selected = []
-    for event in events:
-        run = session.get(ResearchRun, event.run_id)
-        if run is not None and (run.purpose, run.engine) == (
-            "factor_research",
-            "rdagent",
-        ):
-            from workers.research.rdagent_queue import (
-                TASK_NAME as RD_TASK_NAME,
-            )
-            from workers.research.rdagent_queue import (
-                require_dispatch_binding,
-            )
+    after = None
+    while len(selected) < limit:
+        remaining = limit - len(selected)
+        query = select(OutboxEvent).where(OutboxEvent.dispatched_at.is_(None))
+        if after is not None:
+            query = query.where(tuple_(OutboxEvent.created_at, OutboxEvent.id) > after)
+        events = session.scalars(
+            query.order_by(OutboxEvent.created_at, OutboxEvent.id)
+            .limit(remaining)
+            .with_for_update(skip_locked=True)
+        ).all()
+        if not events:
+            break
+        for event in events:
+            run = session.get(ResearchRun, event.run_id)
+            if run is not None and (run.purpose, run.engine) == (
+                "factor_research",
+                "rdagent",
+            ):
+                from workers.research.rdagent_queue import (
+                    TASK_NAME as RD_TASK_NAME,
+                )
+                from workers.research.rdagent_queue import (
+                    require_dispatch_binding,
+                )
 
-            try:
-                require_dispatch_binding(session, run, event, settings)
-            except DomainError as exc:
-                if exc.code in {
-                    "engine_submission_not_enabled",
-                    "engine_runtime_unconfigured",
-                    "engine_runtime_unsupported",
-                    "runtime_profile_changed",
-                }:
-                    # Leave the durable event pending, without blocking unrelated
-                    # legacy work or manufacturing a delivered/accepted receipt.
-                    continue
-                raise
-            tasks[event.id] = RD_TASK_NAME
-        elif (
-            run is not None
-            and (run.purpose, run.engine) == ("strategy_search", "openevolve")
-            and isinstance(run.config, dict)
-            and run.config.get("schema_version")
-            in {
-                "mineagent.oe-structured-provider-run.v1",
-                "mineagent.oe-structured-provider-run.v2",
-            }
-        ):
-            from workers.research.oe_structured_queue import (
-                TASK_NAME as OE_TASK_NAME,
-            )
-            from workers.research.oe_structured_queue import (
-                require_dispatch_binding as require_oe_dispatch_binding,
-            )
+                try:
+                    require_dispatch_binding(session, run, event, settings)
+                except DomainError as exc:
+                    if exc.code in {
+                        "engine_submission_not_enabled",
+                        "engine_runtime_unconfigured",
+                        "engine_runtime_unsupported",
+                        "runtime_profile_changed",
+                    }:
+                        # Leave the durable event pending, without blocking unrelated
+                        # legacy work or manufacturing a delivered/accepted receipt.
+                        continue
+                    raise
+                tasks[event.id] = RD_TASK_NAME
+            elif (
+                run is not None
+                and (run.purpose, run.engine) == ("strategy_search", "openevolve")
+                and isinstance(run.config, dict)
+                and run.config.get("schema_version")
+                in {
+                    "mineagent.oe-structured-provider-run.v1",
+                    "mineagent.oe-structured-provider-run.v2",
+                }
+            ):
+                from workers.research.oe_structured_queue import (
+                    TASK_NAME as OE_TASK_NAME,
+                )
+                from workers.research.oe_structured_queue import (
+                    require_dispatch_binding as require_oe_dispatch_binding,
+                )
 
-            try:
-                require_oe_dispatch_binding(session, run, event, settings)
-            except DomainError as exc:
-                if exc.code in {
-                    "oe_submission_disabled",
-                    "oe_runtime_unconfigured",
-                    "oe_model_unavailable",
-                    "oe_provider_disabled",
-                    "oe_model_pricing_unavailable",
-                }:
-                    # Operator disablement does not consume the original outbox.
-                    continue
-                raise
-            tasks[event.id] = OE_TASK_NAME
-        else:
-            require_legacy_run(run)
-            tasks[event.id] = TASK_NAME
-        selected.append(event)
+                try:
+                    require_oe_dispatch_binding(session, run, event, settings)
+                except DomainError as exc:
+                    if exc.code in {
+                        "oe_submission_disabled",
+                        "oe_runtime_unconfigured",
+                        "oe_model_unavailable",
+                        "oe_provider_disabled",
+                        "oe_model_pricing_unavailable",
+                    }:
+                        # Operator disablement does not consume the original outbox.
+                        continue
+                    raise
+                tasks[event.id] = OE_TASK_NAME
+            else:
+                require_legacy_run(run)
+                tasks[event.id] = TASK_NAME
+            selected.append(event)
+        if len(events) < remaining:
+            break
+        after = (events[-1].created_at, events[-1].id)
     events = selected
     if not events:
         return 0
