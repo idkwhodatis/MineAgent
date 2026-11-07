@@ -398,13 +398,35 @@ def _verified_file(path, ref):
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size != ref.size_bytes:
             raise TraceStorageError()
-        digest = hashlib.sha256()
-        while chunk := os.read(fd, 1024 * 1024):
+
+        def identity(value):
+            return (
+                value.st_dev,
+                value.st_ino,
+                value.st_mode,
+                value.st_nlink,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+
+        digest, size = hashlib.sha256(), 0
+        while chunk := os.read(fd, min(1024 * 1024, info.st_size - size + 1)):
+            size += len(chunk)
+            if size > info.st_size:
+                raise TraceStorageError()
             digest.update(chunk)
-        if digest.hexdigest() != ref.sha256:
+        if (
+            size != info.st_size
+            or digest.hexdigest() != ref.sha256
+            or identity(os.fstat(fd)) != identity(info)
+        ):
             raise TraceStorageError()
-        # /proc preserves the verified open inode even if its pathname is renamed.
+        # /proc pins the inode, not its contents. Check it again after every
+        # query has finished, before ExitStack permits the result to return.
         yield f"/proc/self/fd/{fd}"
+        if identity(os.fstat(fd)) != identity(info):
+            raise TraceStorageError()
     except FileNotFoundError:
         raise TraceStorageError(
             "trace_artifact_missing",

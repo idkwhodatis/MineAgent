@@ -168,8 +168,16 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
             )
         except DomainError as exc:
             if exc.code == "workflow_waiting_child":
-                return TickOutcome(workflow_id, "child_owned_by_engine_worker")
+                diagnostic = _record_child_terminal_diagnostic(
+                    factory, settings, owner_id, workflow_id, stage_id, revision
+                )
+                return TickOutcome(
+                    workflow_id, diagnostic or "child_owned_by_engine_worker"
+                )
             if exc.code == "workflow_waiting_containment":
+                _record_containment_wait(
+                    factory, settings, owner_id, workflow_id, stage_id, revision
+                )
                 return TickOutcome(workflow_id, "workflow_waiting_containment")
             raise
         return TickOutcome(workflow_id, "structured_stage_closed")
@@ -551,7 +559,7 @@ def _record_child_terminal_diagnostic(
             stage is None
             or (stage.owner_id, stage.workflow_id, stage.id)
             != (owner_id, workflow_id, stage_id)
-            or stage.kind != "rd_factor_generation"
+            or stage.kind not in {"rd_factor_generation", "structured_factor_execution"}
             or stage.child_run_id is None
         ):
             raise DomainError(
@@ -565,27 +573,39 @@ def _record_child_terminal_diagnostic(
         if run is None or (run.owner_id, run.id, run.engine, run.purpose) != (
             owner_id,
             stage.child_run_id,
-            "rdagent",
-            "factor_research",
+            "rdagent" if stage.kind == "rd_factor_generation" else "openevolve",
+            "factor_research"
+            if stage.kind == "rd_factor_generation"
+            else "strategy_search",
         ):
             raise DomainError(
                 "workflow_graph_inconsistent", "Current child identity differs", 409
             )
         if run.status not in {"failed", "cancelled"}:
             return None
-        receipt = session.scalar(
-            select(FactorWorkflowSubmission).filter_by(
-                owner_id=owner_id,
-                workflow_id=workflow_id,
-                stage_id=stage_id,
-                run_id=run.id,
+        if stage.kind == "rd_factor_generation":
+            receipt = session.scalar(
+                select(FactorWorkflowSubmission).filter_by(
+                    owner_id=owner_id,
+                    workflow_id=workflow_id,
+                    stage_id=stage_id,
+                    run_id=run.id,
+                )
             )
-        )
-        if receipt is None:
-            raise DomainError(
-                "workflow_graph_inconsistent", "Current child receipt missing", 409
-            )
-        receipt = verify_workflow_submission_metadata(session, owner_id, receipt.id)
+            if receipt is None:
+                raise DomainError(
+                    "workflow_graph_inconsistent", "Current child receipt missing", 409
+                )
+            receipt = verify_workflow_submission_metadata(session, owner_id, receipt.id)
+        else:
+            from backend.app.oe_structured_identity import decode_spec
+            from backend.app.oe_workflow_metadata import require_attachment
+
+            # Metadata only, just as for RD. The immutable config, spec and
+            # workflow attachment must agree before publishing a diagnostic.
+            # This is not a physical-stop, result-release or checkpoint grant.
+            spec, config = decode_spec(session, run)
+            receipt = require_attachment(session, run, spec, config)
         if (
             receipt.owner_id,
             receipt.workflow_id,

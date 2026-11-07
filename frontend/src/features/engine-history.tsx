@@ -1,5 +1,8 @@
 import { deploymentUrl } from "@/lib/deployment";
 import { EngineInputs } from "./engine-inputs";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshTerminalEngineEvidence } from "@/lib/engine-history-refresh";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ErrorState, Loading, PageHeader, Panel } from "@/components/common";
@@ -136,6 +139,7 @@ export function EngineHistoryPage() {
 export function EngineHistoryDetailPage() {
   const { runId } = useParams({ from: "/workspace/engine-runs/$runId" });
   const { offset } = useSearch({ from: "/workspace/engine-runs/$runId" });
+  const queryClient = useQueryClient();
   const run = useQuery({
     ...engineDetailOptions(runId),
     refetchInterval: (query) =>
@@ -149,6 +153,10 @@ export function EngineHistoryDetailPage() {
     refetchInterval:
       run.data && engineRunActive(run.data.status) ? 2000 : false,
   });
+  useEffect(() => {
+    if (run.data?.status && !engineRunActive(run.data.status))
+      void refreshTerminalEngineEvidence(queryClient, runId);
+  }, [queryClient, runId, run.data?.status]);
   if (run.isPending) return <Loading />;
   if (run.error)
     return <ErrorState error={run.error} retry={() => void run.refetch()} />;

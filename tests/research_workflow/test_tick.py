@@ -192,20 +192,30 @@ def test_actual_child_checkpoint_precedes_feedback_or_terminal(
     )
 
 
-def test_missing_sdk_stop_has_distinct_waiting_not_release(monkeypatch):
+@pytest.mark.parametrize(
+    "kind", ["rd_factor_generation", "structured_factor_execution"]
+)
+def test_missing_sdk_stop_has_distinct_waiting_not_release(monkeypatch, kind):
     from backend.app.services import DomainError
 
     owner, workflow, stage, selection = (uuid4() for _ in range(4))
     monkeypatch.setattr(
         tick,
         "_read",
-        lambda *a: (4, "running", None, selection, stage, "rd_factor_generation"),
+        lambda *a: (4, "running", None, selection, stage, kind),
     )
 
     def unresolved(*a, **k):
         raise DomainError("workflow_waiting_containment", "Missing SDK stop", 409)
 
-    monkeypatch.setattr(tick, "checkpoint_rd_stage", unresolved)
+    if kind == "rd_factor_generation":
+        monkeypatch.setattr(tick, "checkpoint_rd_stage", unresolved)
+    else:
+        from backend.app import research_workflow_oe_checkpoint
+
+        monkeypatch.setattr(
+            research_workflow_oe_checkpoint, "checkpoint_oe_stage", unresolved
+        )
     calls = []
     monkeypatch.setattr(
         tick, "_record_containment_wait", lambda *a: calls.append(a[-2:])
@@ -454,8 +464,11 @@ def test_wait_diagnostic_uses_root_cas_without_repeated_mutation(
         "receipt_swap",
     ],
 )
+@pytest.mark.parametrize(
+    "kind", ["rd_factor_generation", "structured_factor_execution"]
+)
 def test_child_terminal_metadata_blocks_without_fabricated_checkpoint(
-    monkeypatch, scenario
+    monkeypatch, scenario, kind
 ):
     from contextlib import contextmanager, nullcontext
 
@@ -476,14 +489,16 @@ def test_child_terminal_metadata_blocks_without_fabricated_checkpoint(
         owner_id=owner,
         workflow_id=workflow,
         id=stage_id,
-        kind="rd_factor_generation",
+        kind=kind,
         child_run_id=child,
     )
     run = NS(
         owner_id=owner,
         id=child,
-        engine="rdagent",
-        purpose="factor_research",
+        engine="rdagent" if kind == "rd_factor_generation" else "openevolve",
+        purpose="factor_research"
+        if kind == "rd_factor_generation"
+        else "strategy_search",
         status="failed",
     )
     receipt = NS(
@@ -527,6 +542,10 @@ def test_child_terminal_metadata_blocks_without_fabricated_checkpoint(
         "verify_workflow_submission_metadata",
         lambda *a: receipt,
     )
+    from backend.app import oe_structured_identity, oe_workflow_metadata
+
+    monkeypatch.setattr(oe_structured_identity, "decode_spec", lambda *a: (None, None))
+    monkeypatch.setattr(oe_workflow_metadata, "require_attachment", lambda *a: receipt)
     if scenario in {"foreign", "receipt_swap"}:
         with pytest.raises(DomainError, match="differs"):
             tick._record_child_terminal_diagnostic(
