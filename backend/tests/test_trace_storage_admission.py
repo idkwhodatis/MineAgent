@@ -242,7 +242,13 @@ def test_nofollow_rejects_actual_leaf_swap_after_path_check(
     replaced = []
 
     def replace_then_open(candidate, flags, *args, **kwargs):
-        if Path(candidate) == path and not replaced:
+        directory = kwargs.get("dir_fd")
+        is_target = Path(candidate) == path
+        if directory is not None and Path(candidate) == Path(path.name):
+            pinned = storage.os.fstat(directory)
+            parent = path.parent.stat()
+            is_target = (pinned.st_dev, pinned.st_ino) == (parent.st_dev, parent.st_ino)
+        if is_target and not replaced:
             assert flags & storage.os.O_NOFOLLOW
             path.rename(outside)
             path.symlink_to(outside)
@@ -251,6 +257,7 @@ def test_nofollow_rejects_actual_leaf_swap_after_path_check(
 
     monkeypatch.setattr(storage.os, "open", replace_then_open)
     response = h.api.get(f"/api/v1/artifacts/{artifact.id}/download")
+    assert replaced, "The leaf-symlink race must run at the actual artifact open"
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "trace_integrity"
     assert str(tmp_path) not in response.text

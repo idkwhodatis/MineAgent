@@ -20,12 +20,12 @@ def _read_fifo(root, result):
 
 def test_special_file_is_rejected_without_waiting_for_a_writer(tmp_path):
     os.mkfifo(tmp_path / "fifo")
-    context = multiprocessing.get_context("fork")
+    context = multiprocessing.get_context("spawn")
     result = context.Queue()
     process = context.Process(target=_read_fifo, args=(str(tmp_path), result))
     process.start()
     try:
-        process.join(timeout=2)
+        process.join(timeout=5)
         assert not process.is_alive(), (
             "Artifact FIFO open blocked before type validation"
         )
