@@ -86,7 +86,12 @@ def prepare_workflow(session, owner_id, request, settings):
             }
         )
         if not plan.budget_ceiling.covers(
-            children.add(BudgetVector(storage_bytes=PUBLICATION_PEAK_BYTES))
+            children.add(
+                BudgetVector(
+                    storage_bytes=PUBLICATION_PEAK_BYTES
+                    + 65536 * (plan.maximum_iterations - 1)
+                )
+            )
         ):
             fail("workflow_budget_insufficient")
     commitment = {

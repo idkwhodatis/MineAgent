@@ -82,6 +82,72 @@ def test_server_template_and_runtime_not_public_knobs(declaration):
     )
 
 
+@pytest.mark.parametrize("iterations", [2, 8])
+@pytest.mark.parametrize("shortfall", [0, 1])
+def test_external_preflight_and_creation_share_aggregate_storage_budget(
+    declaration, monkeypatch, iterations, shortfall
+):
+    from backend.app import research_workflow_admission as admission
+    from packages.research_inputs.derivation import ExternalNormalizationDefinition
+    from packages.research_runtime.budget_contracts import BudgetVector
+    from tests.research_workflow.test_admission import Session
+
+    f = declaration
+    definition = ExternalNormalizationDefinition(
+        raw_object_id=uuid4(), raw_sha256="a" * 64, mapping={}
+    )
+    obj = NS(kind="raw_external", sha256=definition.raw_sha256)
+    children = BudgetVector(
+        **{
+            key: getattr(f.template.budget, key) * iterations
+            for key in BudgetVector.model_fields
+        }
+    )
+    ceiling = children.add(
+        BudgetVector(
+            storage_bytes=service.PUBLICATION_PEAK_BYTES
+            + 65536 * (iterations - 1)
+            - shortfall
+        )
+    )
+    request = f.request.model_copy(
+        update={
+            "maximum_iterations": iterations,
+            "external_definition": definition,
+            "budget_ceiling": ceiling,
+        }
+    )
+    monkeypatch.setattr(service, "read_input_object", lambda *a: None)
+    settings = NS(storage_root="unused")
+    if shortfall:
+        with pytest.raises(DomainError) as error:
+            service.prepare_workflow(
+                NS(scalar=lambda *a: obj), f.p.owner_id, request, settings
+            )
+        assert error.value.code == "workflow_budget_insufficient"
+        return
+
+    prepared = service.prepare_workflow(
+        NS(scalar=lambda *a: obj), f.p.owner_id, request, settings
+    )
+    for name in ("require_schema", "_try_neutral_lock", "read_input_object"):
+        monkeypatch.setattr(admission, name, lambda *a: None)
+    monkeypatch.setattr(admission, "resolve_model_input_versions", lambda *a: ())
+    session = Session([None, obj])
+    result = admission.create_workflow(
+        session,
+        f.p.owner_id,
+        CreateWorkflow(
+            idempotency_key="external-exact-budget",
+            plan=prepared.plan,
+            external_definition=definition,
+        ),
+        settings,
+    )
+    assert result.status == "ready" and session.flushed
+    assert len(session.added) == 3
+
+
 @pytest.mark.parametrize("key", ["owner_id", "runtime", "plan", "engine_image_id"])
 def test_public_body_rejects_internal_launch_fields(declaration, key):
     value = declaration.request.model_dump(mode="json")
