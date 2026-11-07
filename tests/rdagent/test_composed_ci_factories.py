@@ -114,9 +114,7 @@ def test_new_actual_gate_explicitly_migrates_controller_capable_revision(file):
     assert upgrades[0].args[1].value == expected
     if file == "test_rdagent_workflow_user_flow.py":
         replay = (ROOT / "tests/integration/workflow_restore_replay.py").read_text()
-        assert (
-            'manifest["schema_revision"] == "032d_rd_validation_cost"' in replay
-        )
+        assert 'manifest["schema_revision"] == "032d_rd_validation_cost"' in replay
     if "restore" in file or file == "test_rdagent_user_flow.py":
         assert 'manifest["schema_revision"] == "027c_seeded_controller_v4"' in source
         assert '"mineagent.research-restore-closure.v12"' in source

@@ -16,9 +16,7 @@ def canonical_original():
 
 
 def schema_original():
-    return function(
-        literal("025_structured_factor_strategy.py"), "mineagent_rd_schema"
-    )
+    return function(literal("025_structured_factor_strategy.py"), "mineagent_rd_schema")
 
 
 DEPTH_CHECK = """     IF depth>=24 THEN
