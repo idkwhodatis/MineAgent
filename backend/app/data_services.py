@@ -115,10 +115,17 @@ def listing_contracts(session, owner_id, ids):
 
 
 def persist_listings(session, owner_id, listings):
-    # Serialize registry merges. Identity is venue/security scoped, not ticker globally.
+    # Lock the complete batch canonically before any registry writes. Provider
+    # requests can list the same securities in opposite orders, and different
+    # venue listings can share an instrument. Both cases must serialize without
+    # deadlocks or racing a check-then-insert of the shared instrument.
+    listings = list(listings)
+    for iid in sorted({UUID(item.instrument_id) for item in listings}):
+        advisory_lock(session, "instrument:" + str(iid))
+    for lid in sorted({UUID(item.listing_id) for item in listings}):
+        advisory_lock(session, "listing:" + str(lid))
     for item in listings:
         iid, lid = UUID(item.instrument_id), UUID(item.listing_id)
-        advisory_lock(session, "listing:" + str(lid))
         if session.get(Instrument, iid) is None:
             session.add(
                 Instrument(

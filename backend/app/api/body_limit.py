@@ -27,7 +27,9 @@ class BodyLimitMiddleware:
             # The server already owns this chunk. Do not copy an oversized one
             # into our bounded accumulator before rejecting the request.
             if len(body) + len(chunk) > self.max_bytes:
-                correlation = str(uuid4())
+                correlation = scope.get("state", {}).get("correlation_id") or str(
+                    uuid4()
+                )
                 content = json.dumps(
                     {
                         "code": "request_size",

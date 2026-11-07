@@ -47,12 +47,13 @@ class FactorImportIngressMiddleware:
         self.inflight = 0
 
     async def reject(self, send, code, status):
+        correlation_id = str(uuid4())
         body = json.dumps(
             {
                 "code": code,
                 "message": "Factor import body was not admitted",
                 "details": None,
-                "correlation_id": str(uuid4()),
+                "correlation_id": correlation_id,
             }
         ).encode()
         await send(
@@ -62,6 +63,8 @@ class FactorImportIngressMiddleware:
                 "headers": [
                     (b"content-type", b"application/json"),
                     (b"cache-control", b"no-store"),
+                    (b"x-correlation-id", correlation_id.encode()),
+                    (b"x-content-type-options", b"nosniff"),
                 ],
             }
         )
@@ -121,6 +124,13 @@ def import_available(settings):
     )
 
 
+def public_admission(row):
+    result = public(row)
+    # Worker lease credentials are never public, including idempotent POST replay.
+    result.pop("lease_token", None)
+    return result
+
+
 def admit_import(session, owner_id, archive, key, settings):
     enabled(settings)
     if not import_available(settings):
@@ -172,7 +182,7 @@ def admit_import(session, owner_id, archive, key, settings):
                 previous.archive_sha256,
                 settings.max_upload_bytes,
             )
-            result = public(previous)
+            result = public_admission(previous)
         else:
             try:
                 decode_package(archive)
@@ -196,16 +206,14 @@ def admit_import(session, owner_id, archive, key, settings):
             )
             session.add(admission)
             session.flush()
-            result = public(admission)
+            result = public_admission(admission)
     return result
 
 
 def import_status(session, owner_id, admission_id, settings):
     enabled(settings)
     row = owned(session, FactorImportAdmission, owner_id, admission_id)
-    result = public(row)
-    # Lease/runtime control is not a client capability.
-    result.pop("lease_token", None)
+    result = public_admission(row)
     if row.result_envelope_id:
         envelope = owned(
             session, FactorImportEnvelope, owner_id, row.result_envelope_id

@@ -2,8 +2,6 @@
 
 import asyncio
 import re
-import time
-from collections import defaultdict, deque
 from datetime import timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -24,6 +22,7 @@ from backend.app.core.db import (
     create_db_engine,
     session_factory,
 )
+from backend.app.core.login_limit import LoginLimiter
 from backend.app.core.security import (
     DUMMY_HASH,
     create_access_token,
@@ -99,21 +98,7 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine if engine is not None else create_db_engine(settings)
     app.state.session_factory = session_factory(app.state.engine)
-    login_failures: dict[str, deque] = defaultdict(deque)
-    if settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_credentials=False,
-            allow_methods=["GET", "POST"],
-            allow_headers=[
-                "Authorization",
-                "Content-Type",
-                "Idempotency-Key",
-                "Last-Event-ID",
-            ],
-            expose_headers=["X-Correlation-ID"],
-        )
+    login_limiter = LoginLimiter()
 
     @app.middleware("http")
     async def correlation(request: Request, call_next):
@@ -182,6 +167,12 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 "message": "Unexpected server error",
                 "details": None,
                 "correlation_id": request.state.correlation_id,
+            },
+            # Starlette's outer error handler bypasses normal response middleware.
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Correlation-ID": request.state.correlation_id,
             },
         )
 
@@ -262,29 +253,28 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     ):
         # Per-process backstop; production proxy must enforce a shared rate limit.
         key = request.client.host if request.client else "unknown"
-        now = time.monotonic()
-        failures = login_failures[key]
-        while failures and failures[0] < now - 60:
-            failures.popleft()
-        if len(failures) >= 10:
+        reservation = login_limiter.begin(key)
+        if reservation is None:
             raise DomainError(
                 "rate_limited", "Too many login attempts; try again in one minute", 429
             )
-        user = session.scalar(
-            select(User).where(User.email == form.username.lower().strip())
-        )
-        valid = verify_password(
-            form.password, user.hashed_password if user else DUMMY_HASH
-        )
-        if not user or not valid or not user.is_active:
-            failures.append(now)
-            if len(login_failures) > 10_000:
-                login_failures.clear()
-            raise DomainError("unauthorized", "Incorrect email or password", 401)
-        return Token(
-            access_token=create_access_token(user.id, settings),
-            expires_in=settings.access_token_minutes * 60,
-        )
+        successful = False
+        try:
+            user = session.scalar(
+                select(User).where(User.email == form.username.lower().strip())
+            )
+            valid = verify_password(
+                form.password, user.hashed_password if user else DUMMY_HASH
+            )
+            if not user or not valid or not user.is_active:
+                raise DomainError("unauthorized", "Incorrect email or password", 401)
+            successful = True
+            return Token(
+                access_token=create_access_token(user.id, settings),
+                expires_in=settings.access_token_minutes * 60,
+            )
+        finally:
+            login_limiter.finish(reservation, successful=successful)
 
     @app.get(PREFIX + "/users/me", response_model=UserPublic, operation_id="read_me")
     def read_me(user: CurrentUser):
@@ -726,6 +716,21 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     app.add_middleware(
         FactorImportIngressMiddleware, max_bytes=settings.max_upload_bytes
     )
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "PATCH"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Idempotency-Key",
+                "Last-Event-ID",
+            ],
+            expose_headers=["X-Correlation-ID"],
+        )
+
     from backend.app.api.subpath import SubpathMiddleware
 
     app.add_middleware(SubpathMiddleware, subpath=settings.subpath)

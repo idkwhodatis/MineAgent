@@ -278,3 +278,44 @@ def test_current_snapshot_evidence_must_be_nonempty_bounded_and_referenced():
         **values, evidence=[{"reference": "User-supplied fixture announcement"}]
     )
     assert item.state == "current_snapshot"
+
+
+@pytest.mark.parametrize("reversed_order", [False, True])
+def test_registry_batch_locks_have_canonical_order_before_any_write(
+    monkeypatch, reversed_order
+):
+    from unittest.mock import MagicMock
+
+    from backend.app import data_services
+
+    # Two listings share an instrument across venues; the third is independent.
+    listings = [
+        make_listing(
+            symbol="SYNTHETIC",
+            mic=mic,
+            currency="USD",
+            timezone="America/New_York",
+            calendar="XNYS",
+            vendor="yfinance",
+            registry_key=registry,
+        )
+        for mic, registry in [("XNAS", "shared"), ("XNYS", "shared"), ("XNAS", "other")]
+    ]
+    expected = [
+        "instrument:" + value
+        for value in sorted({item.instrument_id for item in listings})
+    ] + ["listing:" + value for value in sorted({item.listing_id for item in listings})]
+    locks = []
+    monkeypatch.setattr(
+        data_services, "advisory_lock", lambda session, key: locks.append(key)
+    )
+    session = MagicMock()
+
+    def missing_record(*args):
+        assert locks == expected
+
+    session.get.side_effect = missing_record
+    if reversed_order:
+        listings.reverse()
+    data_services.persist_listings(session, uuid4(), listings)
+    assert locks == expected
