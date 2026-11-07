@@ -187,6 +187,9 @@ def _write_bytes(path, content, mode):
             if written <= 0:
                 raise ProcessError("oe_native_process_output")
             view = view[written:]
+        # Restore the requested mode on this exclusively created inode; umask
+        # must not make runtime-mounted inputs unreadable. Private files stay 0600.
+        os.fchmod(fd, mode)
         os.fsync(fd)
         os.fsync(directory)
     finally:
