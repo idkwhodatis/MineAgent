@@ -16,6 +16,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.app.api.deps import CurrentUser, SessionDep
+from backend.app.api.error_response import CORSErrorResponse
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import (
     REQUIRED_SCHEMA_REVISION,
@@ -99,6 +100,22 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     app.state.engine = engine if engine is not None else create_db_engine(settings)
     app.state.session_factory = session_factory(app.state.engine)
     login_limiter = LoginLimiter()
+    cors_options = (
+        {
+            "allow_origins": settings.cors_origins,
+            "allow_credentials": False,
+            "allow_methods": ["GET", "POST", "PATCH"],
+            "allow_headers": [
+                "Authorization",
+                "Content-Type",
+                "Idempotency-Key",
+                "Last-Event-ID",
+            ],
+            "expose_headers": ["X-Correlation-ID"],
+        }
+        if settings.cors_origins
+        else None
+    )
 
     @app.middleware("http")
     async def correlation(request: Request, call_next):
@@ -160,7 +177,8 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
-        return JSONResponse(
+        return CORSErrorResponse(
+            cors_options=cors_options,
             status_code=500,
             content={
                 "code": "internal_error",
@@ -716,20 +734,8 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
     app.add_middleware(
         FactorImportIngressMiddleware, max_bytes=settings.max_upload_bytes
     )
-    if settings.cors_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_origins,
-            allow_credentials=False,
-            allow_methods=["GET", "POST", "PATCH"],
-            allow_headers=[
-                "Authorization",
-                "Content-Type",
-                "Idempotency-Key",
-                "Last-Event-ID",
-            ],
-            expose_headers=["X-Correlation-ID"],
-        )
+    if cors_options is not None:
+        app.add_middleware(CORSMiddleware, **cors_options)
 
     from backend.app.api.subpath import SubpathMiddleware
 

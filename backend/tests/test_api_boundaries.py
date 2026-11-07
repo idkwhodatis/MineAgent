@@ -262,3 +262,59 @@ def test_cors_still_rejects_unconfigured_origins(app):
         )
     assert response.status_code == 400
     assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.mark.parametrize(
+    "allowed_origins,origin,cookie,expected_origin",
+    [
+        (
+            ["https://workbench.example"],
+            "https://workbench.example",
+            None,
+            "https://workbench.example",
+        ),
+        (["https://workbench.example"], "https://other.example", None, None),
+        (["*"], "https://other.example", None, "*"),
+        (["*"], "https://other.example", "synthetic=not-authentication", "*"),
+        (["https://workbench.example"], None, None, None),
+        ([], "https://workbench.example", None, None),
+    ],
+)
+def test_unhandled_errors_apply_the_same_cors_policy_as_normal_responses(
+    app, allowed_origins, origin, cookie, expected_origin
+):
+    app = main.create_app(
+        app.state.settings.model_copy(update={"cors_origins": allowed_origins}),
+        engine=MagicMock(),
+    )
+
+    @app.get("/synthetic-cors-error")
+    def fail():
+        raise RuntimeError("private diagnostic not for client")
+
+    headers = {}
+    if origin is not None:
+        headers["Origin"] = origin
+    if cookie is not None:
+        headers["Cookie"] = cookie
+    with TestClient(app, raise_server_exceptions=False) as client:
+        normal = client.get("/api/v1/health/live", headers=headers)
+        error = client.get("/synthetic-cors-error", headers=headers)
+    assert error.status_code == 500
+    assert error.json()["code"] == "internal_error"
+    assert error.headers["x-correlation-id"] == error.json()["correlation_id"]
+    assert error.headers["cache-control"] == "no-store"
+    assert error.headers.get("access-control-allow-origin") == expected_origin
+    assert "access-control-allow-credentials" not in error.headers
+    for header in (
+        "access-control-allow-origin",
+        "access-control-allow-credentials",
+        "access-control-expose-headers",
+        "vary",
+    ):
+        assert error.headers.get(header) == normal.headers.get(header)
+    if expected_origin is not None:
+        assert error.headers["access-control-expose-headers"] == "X-Correlation-ID"
+        assert "origin" in {
+            part.strip().lower() for part in error.headers["vary"].split(",")
+        }
