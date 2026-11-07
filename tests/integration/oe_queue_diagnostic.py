@@ -15,6 +15,10 @@ from packages.rdagent_provider.transport import ProviderFailure
 from packages.research_runtime.process_contracts import ProcessError
 
 CODES = {
+    "provider_input_rejected",
+    "provider_admission_unconfirmed",
+    "provider_identity_receipt_unconfirmed",
+    "provider_stop_receipt_unconfirmed",
     "oe_structured_controller_context",
     "oe_structured_socket_owner",
     "oe_structured_controller_launch_authority",
@@ -132,6 +136,15 @@ CODES = {
     "oe_structured_controller_cleanup_inventory",
 }
 STAGES = {
+    ("packages.rdagent_provider.transport", "execute"): "sdk_transport",
+    (
+        "backend.app.oe_structured_provider_broker",
+        "physical_boundary",
+    ): "provider_boundary",
+    (
+        "backend.app.oe_structured_provider_publication",
+        "retain_physical_receipt",
+    ): "provider_receipt",
     ("workers.research.oe_structured_queue", "execute"): "queue",
     ("workers.research.oe_structured_queue", "claim_structured_run"): "claim",
     ("workers.research.oe_structured_controller", "image_inventory"): "image_inventory",
@@ -433,6 +446,7 @@ def emit(marker, value):
 
 @contextmanager
 def diagnose_oe_queue(factory, run_id):
+    from oe_provider_diagnostic import diagnose_provider
     from oe_serve_diagnostic import diagnose_serve
 
     from workers.research import oe_structured_queue
@@ -457,6 +471,7 @@ def diagnose_oe_queue(factory, run_id):
         with (
             patch.object(oe_structured_queue, "execute", execute),
             diagnose_serve(factory, run_id, emit),
+            diagnose_provider(emit, failure),
         ):
             yield
     finally:

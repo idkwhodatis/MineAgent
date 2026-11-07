@@ -24,9 +24,28 @@ def module(monkeypatch):
 
 
 def test_queue_failure_closed_codes_database_and_no_exception_text(monkeypatch):
+    from packages.rdagent_provider.transport import ProviderFailure
+
     diagnostic = module(monkeypatch)
     for code in diagnostic.CODES:
         assert diagnostic.failure(ProcessError(code))["code"] == code
+    source = Path(__file__).parents[2] / "packages/rdagent_provider/transport.py"
+    emitted_codes = {
+        value.value
+        for node in ast.walk(ast.parse(source.read_text()))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "ProviderFailure"
+        for argument in node.args
+        for value in ast.walk(argument)
+        if isinstance(value, ast.Constant)
+        and type(value.value) is str
+        and value.value.startswith("provider_")
+    }
+    assert emitted_codes and emitted_codes <= diagnostic.CODES
+    for code in emitted_codes:
+        observed = diagnostic.failure(ProviderFailure(code))
+        assert observed["family"] == "provider" and observed["code"] == code
     for error in (
         ValueError("synthetic_private"),
         ProcessError("synthetic_private"),
