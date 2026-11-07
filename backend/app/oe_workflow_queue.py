@@ -46,7 +46,11 @@ def dispatch_binding(session, run, row, config, settings):
         settings, run.owner_id, request.model_profile_id
     )
     if runtime.runtime != config.runtime or binding != config.model_binding:
-        fail()
+        raise DomainError(
+            "oe_structured_queued_profile_changed",
+            "Queued workflow model/runtime declaration differs from server profile",
+            409,
+        )
     return request, config, row.preflight_sha256
 
 

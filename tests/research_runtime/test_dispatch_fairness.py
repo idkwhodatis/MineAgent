@@ -193,3 +193,51 @@ def test_nearly_full_dispatch_batch_keeps_bounded_query_pages(case):
     assert len(case.queries) == 4
     assert all(event.dispatched_at is not None for event in ready)
     assert all(event.dispatched_at is None for event in pending)
+
+
+@pytest.mark.parametrize(
+    "family,code",
+    [
+        ("rd", "rd_provider_disabled"),
+        ("rd", "rd_model_unavailable"),
+        ("rd", "rd_model_pricing_unavailable"),
+        ("oe", "oe_structured_queued_profile_changed"),
+    ],
+)
+def test_unavailable_provider_or_changed_oe_profile_does_not_block_other_runs(
+    case, monkeypatch, family, code
+):
+    pending = case.add(family)
+    ready = [case.add("legacy"), case.add(family)]
+    module = rdagent_queue if family == "rd" else oe_structured_queue
+
+    def validate(session, run, event, settings):
+        if run.id == pending.run_id:
+            raise DomainError(code, "Current operator profile unavailable", 409)
+
+    monkeypatch.setattr(module, "require_dispatch_binding", validate)
+    assert dispatcher.dispatch_outbox(case.session) == 2
+    assert pending.dispatched_at is None and pending.job_id is None
+    assert all(event.dispatched_at is not None for event in ready)
+    task = case.tasks[module.TASK_NAME].configure.return_value.defer
+    task.assert_called_once_with(run_id=str(ready[-1].run_id), generation=1)
+    # Restoring the profile can deliver the exact original pending event later.
+    monkeypatch.setattr(module, "require_dispatch_binding", lambda *args: None)
+    case.app.reset_mock()
+    assert dispatcher.dispatch_outbox(case.session) == 1
+    assert pending.dispatched_at is not None
+
+
+def test_corrupt_workflow_binding_still_fails_before_any_queue_job(case, monkeypatch):
+    ready = case.add("legacy")
+    invalid = case.add("oe")
+
+    def reject(*args):
+        raise DomainError("workflow_oe_queued_binding_changed", "Corrupt receipt", 409)
+
+    monkeypatch.setattr(oe_structured_queue, "require_dispatch_binding", reject)
+    with pytest.raises(DomainError) as error:
+        dispatcher.dispatch_outbox(case.session)
+    assert error.value.code == "workflow_oe_queued_binding_changed"
+    assert ready.dispatched_at is None and invalid.dispatched_at is None
+    case.app.assert_not_called()

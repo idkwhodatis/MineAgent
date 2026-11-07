@@ -224,5 +224,7 @@ def test_dispatch_requires_exact_original_normal_receipt_and_current_profile(
         actual, _, sha = queue.require_dispatch_binding(session, run, event, NS())
         assert actual == req and sha == "a" * 64
     else:
-        with pytest.raises(DomainError):
+        with pytest.raises(DomainError) as error:
             queue.require_dispatch_binding(session, run, event, NS())
+        if drift in {"runtime", "binding"}:
+            assert error.value.code == "oe_structured_queued_profile_changed"

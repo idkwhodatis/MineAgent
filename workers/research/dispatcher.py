@@ -57,6 +57,9 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
                         "engine_runtime_unconfigured",
                         "engine_runtime_unsupported",
                         "runtime_profile_changed",
+                        "rd_model_unavailable",
+                        "rd_provider_disabled",
+                        "rd_model_pricing_unavailable",
                     }:
                         # Leave the durable event pending, without blocking unrelated
                         # legacy work or manufacturing a delivered/accepted receipt.
@@ -89,6 +92,7 @@ def dispatch_outbox(session: Session, limit: int = 100, *, settings=None) -> int
                         "oe_model_unavailable",
                         "oe_provider_disabled",
                         "oe_model_pricing_unavailable",
+                        "oe_structured_queued_profile_changed",
                     }:
                         # Operator disablement does not consume the original outbox.
                         continue
