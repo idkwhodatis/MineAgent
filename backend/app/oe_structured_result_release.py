@@ -38,6 +38,7 @@ def owned_execution(session, owner_id, run_id, execution_id):
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         fail()
     run = session.scalar(select(ResearchRun).filter_by(id=run_id, owner_id=owner_id))

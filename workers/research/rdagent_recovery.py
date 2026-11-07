@@ -98,6 +98,7 @@ def reconcile_rd_attempt(factory, attempt_id, settings):
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
                 ["032c_oe_provider_table_checks"],
+                ["032d_rd_validation_cost"],
             ):
                 return False
             pair = _locked(session, attempt_id, revisions=revisions)

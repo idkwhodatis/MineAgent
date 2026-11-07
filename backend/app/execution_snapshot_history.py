@@ -108,6 +108,7 @@ def historical_session(factory, owner_id, settings):
                 ["032a_rd_terminal_results"],
                 ["032b_oe_append_run_state"],
                 ["032c_oe_provider_table_checks"],
+                ["032d_rd_validation_cost"],
             ):
                 fail()
             yield session
@@ -372,6 +373,7 @@ def check_configured_history(session, publication, settings):
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document

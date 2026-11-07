@@ -37,6 +37,7 @@ def test_analysis_revision_preserves_exact_historical_capabilities():
             "032a_rd_terminal_results",
             "032b_oe_append_run_state",
             "032c_oe_provider_table_checks",
+            "032d_rd_validation_cost",
         }:
             assert historical.direct_analysis_schema is None
     old = capabilities_for("021_execution_snapshots")

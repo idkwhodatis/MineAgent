@@ -99,7 +99,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     assert sdk.is_absolute() and sdk.is_file()
     engine = legacy._engine(drill_databases.source)
     try:
-        legacy._upgrade(engine, "032c_oe_provider_table_checks")
+        legacy._upgrade(engine, "032d_rd_validation_cost")
         storage = tmp_path / "workflow-provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)

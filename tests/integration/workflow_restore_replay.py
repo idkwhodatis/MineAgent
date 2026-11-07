@@ -122,7 +122,7 @@ def assert_workflow_restore(
     manifest = _roundtrip(
         drill_databases, tmp_path, source, settings.storage_root, target
     )
-    assert manifest["schema_revision"] == "032c_oe_provider_table_checks"
+    assert manifest["schema_revision"] == "032d_rd_validation_cost"
     assert target.stat().st_ino != settings.storage_root.stat().st_ino
     assert not (target / ".restore-incomplete").exists()
     assert _files(target) == files

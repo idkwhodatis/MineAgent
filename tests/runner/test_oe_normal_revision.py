@@ -20,7 +20,7 @@ def test_normal_flow_and_restore_pin_numeric_maintenance_revision():
         for node in calls
         if isinstance(node.func, ast.Attribute) and node.func.attr == "_upgrade"
     )
-    assert ast.literal_eval(upgrade.args[1]) == "032c_oe_provider_table_checks"
+    assert ast.literal_eval(upgrade.args[1]) == "032d_rd_validation_cost"
     restore = next(
         node
         for node in calls
@@ -32,7 +32,7 @@ def test_normal_flow_and_restore_pin_numeric_maintenance_revision():
             for k in restore.keywords
             if k.arg == "expected_revision"
         )
-        == "032c_oe_provider_table_checks"
+        == "032d_rd_validation_cost"
     )
     source = (root / "oe_structured_restore_replay.py").read_text()
     helper = next(
@@ -57,6 +57,7 @@ def test_normal_flow_and_restore_pin_numeric_maintenance_revision():
         "032a_rd_terminal_results",
         "032b_oe_append_run_state",
         "032c_oe_provider_table_checks",
+        "032d_rd_validation_cost",
     }
     assert 'assert manifest["schema_revision"] == expected_revision' in source
     assert "assert after[key] == before[key]" in source

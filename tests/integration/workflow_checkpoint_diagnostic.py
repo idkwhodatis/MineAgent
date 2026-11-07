@@ -185,7 +185,7 @@ PINS = {
         "catalog",
     ),
     "mineagent_rd_canonical_json": (
-        "fe606083b870809db227974c9c5074469f48a813a9280ebcab572d91e895f9d5",
+        "e64976ca7931a79957c139e9cf1f526ed4e42d9ab95c4231f0ccca62f9920f43",
         "i",
         "catalog",
     ),

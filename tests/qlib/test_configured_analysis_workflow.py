@@ -22,6 +22,10 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     assert "default-off-waits" in text and "explicit-opt-in-two-children" in text
     assert "workflow-contract-outcomes.xml" in text
     assert "workflow-runtime-outcomes.xml" in text
+    assert "tests/integration/test_rdagent_validation_performance.py" in text
+    assert "-k 'not nonconstant_server_loop_probe'" in text
+    assert "assert len(cases)==5" in text
+    assert "validation-semantics-outcomes.xml" in text
     assert "test_actual_configured_source_snapshot_direct_analysis_generation" in text
     assert "('failure','error','skipped')" in text
     assert (

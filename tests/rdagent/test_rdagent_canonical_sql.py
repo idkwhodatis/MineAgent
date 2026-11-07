@@ -347,9 +347,20 @@ def test_reference_special_cases_are_not_approximate_escaping(tmp_path):
                 definition = literal[
                     match.start() : literal.index("$$;", match.start()) + 3
                 ]
-                assert (
-                    definition
-                    == render_sql("public").replace("public.", "@SCHEMA@.").strip()
-                )
+                expected = render_sql("public").replace("public.", "@SCHEMA@.").strip()
+                if path.name == "032d_rd_validation_cost.py" and any(
+                    isinstance(target, ast.Name) and target.id == "UPGRADE_SQL"
+                    for target in node.targets
+                ):
+                    from backend.app.rdagent_validation_performance_sql import (
+                        canonical_sql,
+                    )
+
+                    expected = canonical_sql()
+                assert definition == expected
                 definitions.append((path.name, node.targets[0].id))
-    assert definitions == [("018_rd_source_persistence.py", "UPGRADE_SQL")]
+    assert definitions == [
+        ("018_rd_source_persistence.py", "UPGRADE_SQL"),
+        ("032d_rd_validation_cost.py", "UPGRADE_SQL"),
+        ("032d_rd_validation_cost.py", "DOWNGRADE_SQL"),
+    ]

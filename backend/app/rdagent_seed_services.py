@@ -242,6 +242,7 @@ def require_initial_seed(session, fence, *, submission_id, parent_factor_version
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         raise DomainError(
             "factor_initial_parent", "Seeded generation schema unavailable", 409

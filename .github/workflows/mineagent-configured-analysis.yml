@@ -333,6 +333,22 @@ jobs:
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYRESULT
           test "$status" = 0
+      - name: Require unchanged PostgreSQL validation semantics
+        timeout-minutes: 5
+        run: |
+          python -m pytest tests/integration/test_rdagent_validation_performance.py \
+            -k 'not nonconstant_server_loop_probe' -q \
+            --junitxml=var/numeric-private/validation-semantics.xml
+          python - <<'PYVALIDATION'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/validation-semantics.xml')
+          summarize(source,Path('var/numeric-proof/validation-semantics-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==5
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYVALIDATION
       # Three genuine children across both cases: twelve fixed numeric/controller/
       # analysis units; deterministic normalization adds none. Restore adds no execution.
       - name: Require installed workflow predicates and actual two-policy browser restore

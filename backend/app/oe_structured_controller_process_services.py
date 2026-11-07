@@ -68,6 +68,7 @@ def _current(session, fence):
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         _fail("oe_structured_controller_revision")
 

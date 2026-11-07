@@ -205,6 +205,7 @@ def _provider_preflight(
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -222,6 +223,7 @@ def _provider_preflight(
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
+            ["032d_rd_validation_cost"],
         )
     ):
         reasons.append(
@@ -245,6 +247,7 @@ def _provider_preflight(
             ["032a_rd_terminal_results"],
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
+            ["032d_rd_validation_cost"],
         )
     ):
         reasons.append(

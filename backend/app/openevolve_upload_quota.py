@@ -104,6 +104,7 @@ def upload_holds(session):
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload
@@ -143,6 +144,7 @@ def upload_holds(session):
         ["032a_rd_terminal_results"],
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
+        ["032d_rd_validation_cost"],
     ):
         from backend.app.oe_structured_quota import checkpoint_upload_holds
 
