@@ -153,6 +153,126 @@ def test_next_child_new_revision_has_latest_user_refs_and_only_actual_feedback(
     assert not retry.added and c.events.count("new_child") == 1
 
 
+@pytest.mark.parametrize("count", [31, 32])
+def test_feedback_capacity_preserves_all_selected_refs_or_blocks_without_mutation(
+    continuation, monkeypatch, count
+):
+    c = continuation
+    refs = tuple(
+        InputVersionRef(
+            origin="normalized_external_proposal",
+            record_id=uuid4(),
+            version_id=uuid4(),
+            content_sha256="e" * 64,
+        )
+        for _ in range(count)
+    )
+    selected = WorkflowInputSnapshot(
+        owner_id=c.root.owner_id,
+        workflow_id=c.root.id,
+        revision_id=c.root.current_input_revision_id,
+        refs=refs,
+    )
+    monkeypatch.setattr(service, "read_selected_inputs", lambda *a: selected)
+    session = c.session()
+    before = vars(c.root).copy()
+    if count == 32:
+        with pytest.raises(DomainError) as error:
+            service.claim_next_rd_stage(
+                session, c.root.owner_id, c.command, None, admission=object()
+            )
+        assert error.value.code == "workflow_input_capacity_exceeded"
+        assert not session.added and not c.events
+        assert vars(c.root) == before
+        return
+    service.claim_next_rd_stage(
+        session, c.root.owner_id, c.command, None, admission=object()
+    )
+    revision = next(
+        row for row in session.added if isinstance(row, ResearchWorkflowRevision)
+    )
+    frozen = WorkflowInputSnapshot.model_validate_json(revision.inputs_canonical)
+    assert frozen.refs == refs + c.c.projection.outputs
+
+
+def test_full_input_selection_does_not_stop_unrelated_workflow_tick(
+    continuation, monkeypatch
+):
+    from workers.research import workflow_tick as tick
+
+    c = continuation
+    refs = tuple(
+        InputVersionRef(
+            origin="normalized_external_proposal",
+            record_id=uuid4(),
+            version_id=uuid4(),
+            content_sha256="e" * 64,
+        )
+        for _ in range(32)
+    )
+    selected = c.selection.model_copy(update={"refs": refs})
+    monkeypatch.setattr(service, "read_selected_inputs", lambda *a: selected)
+    other_owner, other_workflow = uuid4(), uuid4()
+
+    @contextmanager
+    def opened():
+        yield NS(
+            execute=lambda q: [
+                (c.root.owner_id, c.root.id),
+                (other_owner, other_workflow),
+            ]
+        )
+
+    class Factory:
+        def __init__(self):
+            self.kw = {"bind": object()}
+
+        def __call__(self):
+            return opened()
+
+    @contextmanager
+    def lifecycle(*a):
+        yield
+
+    monkeypatch.setattr(tick, "shared_lifecycle", lifecycle)
+    monkeypatch.setattr(tick, "require_schema", lambda *a: None)
+    monkeypatch.setattr(
+        tick,
+        "_read",
+        lambda f, s, owner, workflow: (
+            (
+                c.root.revision,
+                "blocked",
+                "workflow_next_child_pending",
+                c.selection.revision_id,
+                c.root.current_stage_id,
+                "experiment_feedback_projection",
+            )
+            if workflow == c.root.id
+            else (1, "ready", None, uuid4(), None, None)
+        ),
+    )
+    monkeypatch.setattr(
+        tick,
+        "dispatch_next_rd_stage",
+        lambda *a, **kw: service.claim_next_rd_stage(
+            c.session(), c.root.owner_id, c.command, None, admission=object()
+        ),
+    )
+    admitted = []
+    monkeypatch.setattr(
+        tick,
+        "dispatch_initial_rd_stage",
+        lambda *a, **kw: admitted.append(kw["command"].workflow_id),
+    )
+    outcomes = tick.tick_workflows(Factory(), NS(storage_root="unused"))
+    assert [(item.workflow_id, item.state) for item in outcomes] == [
+        (c.root.id, "blocked"),
+        (other_workflow, "child_queued"),
+    ]
+    assert admitted == [other_workflow] and not c.events
+
+
 @pytest.mark.parametrize(
     "change", ["cas", "cancel", "pause", "missing_checkpoint", "physical"]
 )

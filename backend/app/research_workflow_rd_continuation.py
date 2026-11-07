@@ -191,6 +191,10 @@ def claim_next_rd_stage(session, owner_id, command, settings, *, admission):
         )
         + facts.outputs
     )
+    if len(refs) > 32:
+        # Retained selections may fill the whole bounded input set. Do not drop
+        # user inputs to make room, or let validation abort unrelated workflows.
+        fail("workflow_input_capacity_exceeded")
     frozen = WorkflowInputSnapshot(
         owner_id=owner_id, workflow_id=root.id, revision_id=uuid4(), refs=refs
     )
