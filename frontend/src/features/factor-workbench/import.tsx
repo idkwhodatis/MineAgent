@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   factorExposureReads,
+  refreshFactorsAfterMutation,
   requireFactorReadsIdle,
 } from "@/lib/factor-publication";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,8 +37,15 @@ export function FactorImportPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const active = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const queries = useQueryClient();
   const readsPending = useIsFetching(factorExposureReads) > 0;
+  function clearSelectedFile() {
+    setFile(undefined);
+    if (fileInput.current) fileInput.current.value = "";
+    onActiveChange?.(false);
+    setError(undefined);
+  }
   async function upload() {
     if (!file || !owner || active.current || !enabled) return;
     active.current = true;
@@ -62,6 +70,7 @@ export function FactorImportPanel({
         throw new Error(
           "Admission archive identity differs from the selected bytes. No result has been selected.",
         );
+      clearSelectedFile();
       onAdmission(result.id);
     } catch (err) {
       setError(err);
@@ -87,6 +96,7 @@ export function FactorImportPanel({
             >
               <input
                 id="factor-import-file"
+                ref={fileInput}
                 type="file"
                 accept=".zip,application/zip"
                 disabled={busy}
@@ -102,6 +112,13 @@ export function FactorImportPanel({
               onClick={() => void upload()}
             >
               {busy ? "Submitting archive…" : "Import exact package"}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={busy || !file}
+              onClick={clearSelectedFile}
+            >
+              Clear selected package
             </Button>
           </div>
           <p className="muted">
@@ -130,6 +147,7 @@ function FactorImportStatus({
   onClose: () => void;
 }) {
   const [polling, setPolling] = useState(true);
+  const queries = useQueryClient();
   const admission = useQuery({
     ...factorImportOptions(id),
     refetchOnWindowFocus: polling,
@@ -137,6 +155,16 @@ function FactorImportStatus({
     refetchInterval: (query) =>
       polling && importStillRunning(query.state.data?.status) ? 1500 : false,
   });
+  const completed =
+    admission.data?.id === id && admission.data.status === "succeeded";
+  useEffect(() => {
+    if (completed)
+      // Finish any earlier list response before requesting post-import data.
+      // A session change must not refresh this owner's data in another account.
+      void refreshFactorsAfterMutation(queries, ["factors", "list"]).catch(
+        () => undefined,
+      );
+  }, [queries, id, completed]);
   if (admission.isPending)
     return <Loading text="Reading exact import admission…" />;
   if (admission.error)

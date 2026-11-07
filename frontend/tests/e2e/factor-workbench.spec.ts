@@ -482,6 +482,12 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
     const admission = await admissionResponse.json();
     expect(admission.archive_sha256).toBe(packageRecord.archive_sha256);
     await expect(page).toHaveURL(new RegExp(`import_id=${admission.id}`));
+    await expect(
+      page.getByLabel("Raw factor ZIP package", { exact: true }),
+    ).toHaveValue("");
+    await expect(
+      page.getByRole("button", { name: "Import exact package", exact: true }),
+    ).toBeDisabled();
     await factorReadLifecycle();
     await page
       .getByRole("button", { name: "Close status view", exact: true })
@@ -490,6 +496,20 @@ if (process.env.E2E_FACTOR_IMPORT_ACCEPTANCE === "1") {
       page.getByRole("region", { name: "Exact import status" }),
     ).toHaveCount(0);
     await expect(page).not.toHaveURL(/import_id=/);
+    // This must work without a full-page navigation resetting importActive.
+    const search = `import-lifecycle-${admission.id}`;
+    const refreshed = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === "/api/v1/factors" &&
+        url.searchParams.get("search") === search
+      );
+    });
+    await page.getByLabel("Search factors", { exact: true }).fill(search);
+    expect((await refreshed).status()).toBe(200);
+    await expect(
+      page.getByText("No matching factors.", { exact: false }),
+    ).toBeVisible();
     await factorReadLifecycle();
     await page.goto(`/factors?import_id=${admission.id}`);
     try {

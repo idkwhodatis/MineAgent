@@ -26,6 +26,7 @@ it("blocks every exposure-recording query until response completion without retr
   for (const kind of [
     "list",
     "detail",
+    "snapshot",
     "values",
     "sample",
     "comparison-values",

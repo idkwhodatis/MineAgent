@@ -6,6 +6,7 @@ import { completeFactorRead } from "./factor-api";
 const exposureReads = new Set([
   "list",
   "detail",
+  "snapshot",
   "values",
   "sample",
   "comparison-values",
@@ -26,20 +27,18 @@ export function requireFactorReadsIdle(
 /** Do not abort an older exposure read or mistake it for post-mutation data. */
 export async function refreshFactorsAfterMutation(
   client: QueryClient,
+  queryKey: readonly unknown[] = ["factors"],
 ): Promise<void> {
   await completeFactorRead(async (requireSameSession) => {
     const pending = client
       .getQueryCache()
-      .findAll({ queryKey: ["factors"] })
+      .findAll({ queryKey })
       .filter((query) => query.state.fetchStatus === "fetching")
       .map((query) => query.promise);
     // These are earlier independent reads, not the mutation's success proof.
     // Keep their original error state; only wait for their actual completion.
     await Promise.allSettled(pending);
     requireSameSession();
-    await client.invalidateQueries(
-      { queryKey: ["factors"] },
-      { cancelRefetch: false },
-    );
+    await client.invalidateQueries({ queryKey }, { cancelRefetch: false });
   });
 }

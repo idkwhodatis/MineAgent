@@ -2,6 +2,8 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   factorCapabilitiesOptions,
+  factorListOptions,
+  factorSnapshotOptions,
   factorValuesOptions,
 } from "../../src/lib/factor-api";
 import {
@@ -74,6 +76,7 @@ it("finishes one bounded query/body across StrictMode-equivalent unsubscribe/rem
   // Actual installed QueryObserver subscription lifecycle, not a browser claim.
   for (const options of [
     factorCapabilitiesOptions,
+    factorSnapshotOptions("snapshot"),
     factorValuesOptions("snapshot"),
     factorExecutionOptions("factor", "version"),
     ...structuredQueries,
@@ -88,7 +91,7 @@ it("finishes one bounded query/body across StrictMode-equivalent unsubscribe/rem
     unsubscribe();
     expect(requests[0].signal.aborted).toBe(false);
     expect(client.isFetching()).toBe(1);
-    if (options.queryKey[1] === "values")
+    if (["values", "snapshot"].includes(String(options.queryKey[1])))
       expect(() => requireFactorReadsIdle(client)).toThrow("still in progress");
     const second = new QueryObserver(
       client,
@@ -352,4 +355,29 @@ it("retains structured transport deadlines and response failures without retries
     expect(failed.client.getQueryData(options.queryKey)).toBeUndefined();
     failed.client.clear();
   }
+});
+
+it("refreshes only post-import lists after their old bodies finish without waiting for unrelated metadata", async () => {
+  const { refreshFactorsAfterMutation } =
+    await import("../../src/lib/factor-publication");
+  const { client, requests } = harness();
+  const observer = new QueryObserver(client, factorListOptions());
+  const stop = observer.subscribe(() => {});
+  const metadata = client.fetchQuery(factorCapabilitiesOptions);
+  const refreshed = refreshFactorsAfterMutation(client, ["factors", "list"]);
+  await Promise.resolve();
+  expect(requests).toHaveLength(2);
+  requests[0].body({ data: [], count: 0 });
+  await vi.waitFor(() => expect(requests).toHaveLength(3));
+  expect(requests[0].signal.aborted).toBe(false);
+  requests[2].body({ data: [], count: 1 });
+  await refreshed;
+  expect(observer.getCurrentResult().data?.count).toBe(1);
+  expect(
+    client.isFetching({ queryKey: factorCapabilitiesOptions.queryKey }),
+  ).toBe(1);
+  requests[1].body({ enabled: true });
+  await metadata;
+  stop();
+  client.clear();
 });

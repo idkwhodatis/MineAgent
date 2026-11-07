@@ -42,7 +42,11 @@ export async function retainExternalInput(
       ]),
     },
   );
-  if (response.status === 401) clearSession(true);
+  if (
+    response.status === 401 &&
+    readSession()?.accessToken === session.accessToken
+  )
+    clearSession(true);
   if (!response.ok)
     throw new Error(
       `External input was not acknowledged (${response.status}). Retain the exact text for a safe same-content retry.`,

@@ -61,7 +61,9 @@ const transport: typeof fetch = async (input, init) => {
   });
   if (
     response.status === 401 &&
-    !new URL(request.url).pathname.endsWith("/login/access-token")
+    !new URL(request.url).pathname.endsWith("/login/access-token") &&
+    request.headers.get("Authorization") ===
+      `Bearer ${readSession()?.accessToken}`
   )
     clearSession(true);
   return response;
