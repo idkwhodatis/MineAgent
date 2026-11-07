@@ -235,12 +235,17 @@ def normalize_upload(
     mapping: UploadMapping,
     request: BarsRequest,
     source_reference: dict[str, Any] | None = None,
+    *,
+    original_bytes: bytes | None = None,
 ) -> ProviderResult:
     """Normalize one immutable original once, with bounded parsing and exact raw bytes.
 
     Worker references must name a bundle artifact whose original bytes it copies
     unchanged. Standalone callers retain the same original inline, never an
     expanded/repeated DataFrame encoding. One listing and daily intervals only.
+    Storage-backed callers pass their verified bytes so the parser never reopens
+    a pathname that may have changed after verification. The path then supplies
+    only the declared format; source_reference still binds the exact bytes.
     """
     import csv
     import io
@@ -277,8 +282,13 @@ def normalize_upload(
         or requested_calendar != mapped_calendar
     ):
         raise ValueError("Upload mapping does not match the requested listing identity")
-    with path.open("rb") as file:
-        original = file.read(10_000_001)
+    if original_bytes is None:
+        with path.open("rb") as file:
+            original = file.read(10_000_001)
+    elif type(original_bytes) is bytes:
+        original = original_bytes
+    else:
+        raise ValueError("Upload original must be immutable bytes")
     if len(original) > 10_000_000:
         raise ValueError("Upload exceeds the 10 MB limit")
     extension = path.suffix.lower()

@@ -4,6 +4,7 @@ import hashlib
 import multiprocessing
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -95,13 +96,36 @@ def test_missing_artifact_retains_recovery_diagnostic(tmp_path):
 
 
 @pytest.mark.parametrize("replacement", [False, True])
+@pytest.mark.parametrize("coarse_timestamps", [False, True])
 def test_inode_or_content_change_during_read_is_rejected(
-    tmp_path, monkeypatch, replacement
+    tmp_path, monkeypatch, replacement, coarse_timestamps
 ):
     path = tmp_path / "object"
     original = b"old immutable data"
     path.write_bytes(original)
     fdopen = os.fdopen
+    if coarse_timestamps:
+        initial = path.stat()
+
+        def coarse_stat(operation):
+            def read(*args, **kwargs):
+                result = operation(*args, **kwargs)
+                if (result.st_dev, result.st_ino) == (initial.st_dev, initial.st_ino):
+                    values = {
+                        key: getattr(result, key)
+                        for key in dir(result)
+                        if key.startswith("st_")
+                    }
+                    # Model two equal-length writes in the same filesystem
+                    # timestamp tick, without relying on scheduling or sleeps.
+                    values.update(st_mtime_ns=0, st_ctime_ns=0)
+                    return SimpleNamespace(**values)
+                return result
+
+            return read
+
+        monkeypatch.setattr(os, "stat", coarse_stat(os.stat))
+        monkeypatch.setattr(os, "fstat", coarse_stat(os.fstat))
 
     class ChangingStream:
         def __init__(self, stream):

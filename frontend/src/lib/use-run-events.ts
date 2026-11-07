@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listRunEvents } from "@/client/sdk.gen";
 import type { EventPublic } from "@/client/types.gen";
@@ -5,6 +6,16 @@ import { queryClient } from "./api";
 import { mergeEvents, parseEvent } from "./events";
 
 export function useRunEvents(runId: string, terminal: boolean) {
+  useEffect(() => {
+    if (!terminal) return;
+    // Independent status/event polls can observe opposite sides of completion.
+    // Fetch one final batch before leaving polling disabled, including when the
+    // older request is still pending and has not populated the cache yet.
+    const filters = { queryKey: ["events", runId], exact: true };
+    void queryClient
+      .cancelQueries(filters)
+      .then(() => queryClient.invalidateQueries(filters));
+  }, [runId, terminal]);
   return useQuery({
     queryKey: ["events", runId],
     queryFn: async ({ signal }) => {

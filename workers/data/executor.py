@@ -266,7 +266,7 @@ def _fetch_blocks(factory, item_id, generation, token, settings, provider, listi
             if kind == "upload":
                 raw = config["upload"]
                 path = safe_path(settings.storage_root, raw["storage_key"])
-                read_verified(
+                original = read_verified(
                     settings.storage_root,
                     raw["storage_key"],
                     raw["sha256"],
@@ -283,6 +283,7 @@ def _fetch_blocks(factory, item_id, generation, token, settings, provider, listi
                     path,
                     mapping,
                     request,
+                    original_bytes=original,
                     source_reference={
                         "artifact": f"source.{raw['format']}",
                         "sha256": raw["sha256"],

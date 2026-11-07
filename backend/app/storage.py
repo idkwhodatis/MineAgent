@@ -47,6 +47,22 @@ def safe_path(root: Path, key: str) -> Path:
     return candidate
 
 
+def _matches_open_content(fd: int, content: bytes) -> bool:
+    """Check the pinned inode again without a second artifact-sized allocation.
+
+    Equal-length writes can share a filesystem timestamp tick. Metadata alone
+    cannot detect them. This remains a bounded read observation, not a lock
+    against writers changing the file after verification returns.
+    """
+    offset = 0
+    while offset < len(content):
+        chunk = os.pread(fd, min(1024 * 1024, len(content) - offset), offset)
+        if not chunk or chunk != content[offset : offset + len(chunk)]:
+            return False
+        offset += len(chunk)
+    return os.pread(fd, 1, offset) == b""
+
+
 def read_verified(root: Path, key: str, expected_sha256: str, max_bytes: int) -> bytes:
     """Read through pinned, no-follow directories, including the storage root.
 
@@ -77,6 +93,9 @@ def read_verified(root: Path, key: str, expected_sha256: str, max_bytes: int) ->
                         409,
                     )
                 content = stream.read(max_bytes + 1)
+                matches = len(content) == info.st_size and _matches_open_content(
+                    stream.fileno(), content
+                )
                 final = os.fstat(stream.fileno())
                 current = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
 
@@ -92,7 +111,7 @@ def read_verified(root: Path, key: str, expected_sha256: str, max_bytes: int) ->
                     )
 
                 if (
-                    len(content) != info.st_size
+                    not matches
                     or identity(info) != identity(final)
                     or identity(info) != identity(current)
                 ):

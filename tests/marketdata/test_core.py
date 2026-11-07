@@ -752,3 +752,31 @@ def test_declared_additional_us_venues_share_explicit_proxy_without_foreign_cale
     assert upload_mapping(mic=mic).calendar == "XNYS"
     with pytest.raises(ValueError, match="Calendar does not match"):
         canonical_calendar(mic, "XSHG", currency="USD", timezone="America/New_York")
+
+
+@pytest.mark.parametrize(
+    "original", [bytearray(b"x"), memoryview(b"x"), b"x" * 10_000_001]
+)
+def test_supplied_upload_bytes_remain_immutable_and_bounded(tmp_path, original):
+    with pytest.raises(ValueError, match="immutable bytes|10 MB limit"):
+        normalize_upload(
+            tmp_path / "never-opened.csv",
+            upload_mapping(),
+            request(),
+            original_bytes=original,
+        )
+
+
+def test_supplied_upload_bytes_must_still_match_source_reference(tmp_path):
+    with pytest.raises(ValueError, match="source reference"):
+        normalize_upload(
+            tmp_path / "never-opened.csv",
+            upload_mapping(),
+            request(),
+            original_bytes=b"session_date,open,high,low,close,volume\n",
+            source_reference={
+                "artifact": "source.csv",
+                "sha256": "0" * 64,
+                "size_bytes": 0,
+            },
+        )
