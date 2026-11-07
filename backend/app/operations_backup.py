@@ -32,7 +32,11 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from backend.app.core.atomic_storage import fsync_directory, provision_directory
+from backend.app.core.atomic_storage import (
+    _open_directory,
+    fsync_directory,
+    provision_directory,
+)
 from backend.app.schema_capabilities import BACKUP_REVISIONS, capabilities_for
 
 FORMAT = "tradegrad.cold-backup.v1"
@@ -859,14 +863,26 @@ def _new_directory(path: Path, parent: Path) -> Path:
 
 
 def _open_file(root: Path, key: str):
-    path = root / _key(key)
-    _directory(path.parent)
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    info = os.fstat(fd)
-    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+    path = _path(root) / _key(key)
+    # Pin every parent component. A separate lstat walk followed by an absolute
+    # open would follow a replacement parent symlink despite O_NOFOLLOW.
+    directory = _open_directory(path.parent)
+    try:
+        fd = os.open(
+            path.name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=directory,
+        )
+    finally:
+        os.close(directory)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise BackupError("Only independent regular files are supported")
+        return os.fdopen(fd, "rb"), info
+    except BaseException:
         os.close(fd)
-        raise BackupError("Only independent regular files are supported")
-    return os.fdopen(fd, "rb"), info
+        raise
 
 
 def _hash_file(root: Path, key: str, maximum: int) -> dict:
