@@ -236,6 +236,8 @@ def test_full_input_selection_does_not_stop_unrelated_workflow_tick(
 
     monkeypatch.setattr(tick, "shared_lifecycle", lifecycle)
     monkeypatch.setattr(tick, "require_schema", lambda *a: None)
+    waits = []
+    monkeypatch.setattr(tick, "_record_wait", lambda *args: waits.append(args[2:]))
     monkeypatch.setattr(
         tick,
         "_read",
@@ -271,6 +273,15 @@ def test_full_input_selection_does_not_stop_unrelated_workflow_tick(
         (other_workflow, "child_queued"),
     ]
     assert admitted == [other_workflow] and not c.events
+    assert waits == [
+        (
+            c.root.owner_id,
+            c.root.id,
+            c.root.current_stage_id,
+            c.root.revision,
+            "workflow_input_capacity_exceeded",
+        )
+    ]
 
 
 @pytest.mark.parametrize(

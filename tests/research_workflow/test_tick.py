@@ -386,14 +386,18 @@ def test_four_waiting_roots_cannot_starve_new_actionable_root(
 
 
 @pytest.mark.parametrize("scenario", ["new", "identical", "stale", "cancel"])
-def test_wait_diagnostic_uses_root_cas_without_repeated_mutation(monkeypatch, scenario):
+@pytest.mark.parametrize(
+    "reason", ["workflow_feedback_release_required", "workflow_input_capacity_exceeded"]
+)
+def test_wait_diagnostic_uses_root_cas_without_repeated_mutation(
+    monkeypatch, scenario, reason
+):
     """Transaction double checks host mutation; actual root SQL is separately probed."""
     from contextlib import contextmanager, nullcontext
 
     from backend.app import research_lifecycle
 
     owner, workflow, stage = uuid4(), uuid4(), uuid4()
-    reason = "workflow_feedback_release_required"
     root = NS(
         current_stage_id=stage,
         revision=7,

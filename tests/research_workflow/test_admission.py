@@ -67,6 +67,7 @@ def root():
         id=uuid4(),
         revision=4,
         status="running",
+        blocked_reason=None,
         current_input_revision_id=uuid4(),
         current_stage_id=uuid4(),
         latest_checkpoint_id=None,
@@ -215,3 +216,55 @@ def test_normalization_incremental_allocation_matches_real_publisher_bounds():
     assert PUBLICATION_PEAK_FILES == len(result.outputs) + 1 == 33
     # Raw already exists before this incremental publication; not charged twice.
     assert OBJECT_LIMITS["raw_external"] == 65536
+
+
+@pytest.mark.parametrize("status", ["blocked", "paused", "pause_requested"])
+def test_valid_selection_rearms_capacity_without_resuming_control(status):
+    row = root()
+    row.status, row.blocked_reason = status, "workflow_input_capacity_exceeded"
+    stage = row.current_stage_id
+    request = SelectWorkflowInputs(
+        workflow_id=row.id, expected_revision=4, idempotency_key="capacity-selection"
+    )
+    session = Session([row, None])
+    result = service.select_workflow_inputs(session, row.owner_id, request, NS())
+    assert row.status == result.status == status and row.current_stage_id == stage
+    assert row.blocked_reason == "workflow_next_child_pending" and row.revision == 5
+    # Accepted replay never rearms a later independently recorded wait.
+    row.blocked_reason = "workflow_input_capacity_exceeded"
+    retry = Session([row, session.added[1]])
+    assert service.select_workflow_inputs(retry, row.owner_id, request, NS()) == result
+    assert row.blocked_reason == "workflow_input_capacity_exceeded"
+    assert row.revision == 5 and not retry.added
+
+
+@pytest.mark.parametrize(
+    "fault", ["cancel_requested", "invalid_selection", "other_wait"]
+)
+def test_selection_does_not_clear_other_waits_or_rearm_unaccepted_changes(
+    monkeypatch, fault
+):
+    row = root()
+    row.status, row.blocked_reason = "blocked", "workflow_input_capacity_exceeded"
+    if fault == "cancel_requested":
+        row.status = "cancel_requested"
+    elif fault == "other_wait":
+        row.blocked_reason = "workflow_feedback_release_required"
+    else:
+
+        def reject(*args):
+            raise DomainError("invalid_input_selection", "Invalid input", 409)
+
+        monkeypatch.setattr(service, "resolve_model_input_versions", reject)
+    before = vars(row).copy()
+    request = SelectWorkflowInputs(
+        workflow_id=row.id, expected_revision=4, idempotency_key="capacity-selection"
+    )
+    session = Session([row, None])
+    if fault == "other_wait":
+        service.select_workflow_inputs(session, row.owner_id, request, NS())
+        assert row.blocked_reason == before["blocked_reason"]
+        return
+    with pytest.raises(DomainError):
+        service.select_workflow_inputs(session, row.owner_id, request, NS())
+    assert vars(row) == before and not session.added

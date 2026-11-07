@@ -264,9 +264,23 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
                 input_revision_id=selection,
                 idempotency_key=f"auto-next-rd:{workflow_id}:{selection}:{revision}",
             )
-            dispatch_next_rd_stage(
-                factory, settings, owner_id=owner_id, command=command
-            )
+            try:
+                dispatch_next_rd_stage(
+                    factory, settings, owner_id=owner_id, command=command
+                )
+            except DomainError as exc:
+                if exc.code != "workflow_input_capacity_exceeded":
+                    raise
+                _record_wait(
+                    factory,
+                    settings,
+                    owner_id,
+                    workflow_id,
+                    stage_id,
+                    revision,
+                    "workflow_input_capacity_exceeded",
+                )
+                return TickOutcome(workflow_id, "blocked")
             return TickOutcome(workflow_id, "child_queued")
         return TickOutcome(workflow_id, "blocked")
     if status == "ready" or (
@@ -351,6 +365,19 @@ def tick_workflows(factory, settings, *, limit=4):
                             "pause_requested",
                             "cancel_requested",
                             "blocked",
+                        )
+                    ),
+                    # Capacity waits need a new input selection, not repeated
+                    # failed claims occupying every bounded dispatch slot.
+                    # Pending controls must still reach the verified checkpoint.
+                    (ResearchWorkflow.blocked_reason.is_(None))
+                    | (
+                        ResearchWorkflow.blocked_reason
+                        != "workflow_input_capacity_exceeded"
+                    )
+                    | (
+                        ResearchWorkflow.status.in_(
+                            ("pause_requested", "cancel_requested")
                         )
                     ),
                     (ResearchWorkflow.status != "blocked")
