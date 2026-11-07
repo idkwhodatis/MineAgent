@@ -16,6 +16,8 @@ from packages.research_workflow.contracts import (
     WorkflowInputSnapshot,
 )
 
+MAX_MODEL_INPUT_BYTES = 32768
+
 
 class ModelStageInputSnapshot(Contract):
     schema_version: Literal["mineagent.workflow-model-inputs.v1"] = (
@@ -47,7 +49,7 @@ class ModelStageInputSnapshot(Contract):
             raise ValueError(
                 "Resolved model inputs must preserve every selected version and order"
             )
-        if len(canonical_bytes(self)) > 32768:
+        if len(canonical_bytes(self)) > MAX_MODEL_INPUT_BYTES:
             raise ValueError("Combined model input exceeds the immutable byte bound")
         return self
 

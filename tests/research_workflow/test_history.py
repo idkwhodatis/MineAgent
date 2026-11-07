@@ -158,8 +158,25 @@ def test_success_outputs_are_historically_verified_without_returning_text(
     assert result.settlement == "not_observed"
 
 
+@pytest.mark.parametrize(
+    "reason,expected",
+    [
+        ("private diagnostic text", "workflow_blocked"),
+        ("workflow_input_capacity_exceeded", "workflow_input_capacity_exceeded"),
+        (
+            "workflow_initial_input_capacity_exceeded",
+            "workflow_initial_input_capacity_exceeded",
+        ),
+        (
+            "workflow_structured_input_capacity_exceeded",
+            "workflow_structured_input_capacity_exceeded",
+        ),
+    ],
+)
 def test_actual_root_read_qualifies_blocked_metadata_and_redacts_unknown_reason(
     monkeypatch,
+    reason,
+    expected,
 ):
     from tests.research_workflow.test_plan import plan
 
@@ -175,12 +192,12 @@ def test_actual_root_read_qualifies_blocked_metadata_and_redacts_unknown_reason(
         mode=p.mode,
         current_input_revision_id=uuid4(),
         latest_checkpoint_id=None,
-        blocked_reason="private diagnostic text",
+        blocked_reason=reason,
     )
     monkeypatch.setattr(service, "require_schema", lambda s: None)
     result = service.read_workflow(Session([row]), p.owner_id, row.id, NS())
     assert result.current_stage is None
-    assert result.blocked_reason == "workflow_blocked"
+    assert result.blocked_reason == expected
     assert result.controls.resume is False
     assert result.controls.cancel is True
 

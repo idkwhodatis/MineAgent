@@ -234,6 +234,20 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
             try:
                 dispatch_oe_stage(factory, settings, owner_id=owner_id, command=command)
             except DomainError as exc:
+                if exc.code in {
+                    "workflow_input_capacity_exceeded",
+                    "resolved_input_limit",
+                }:
+                    _record_wait(
+                        factory,
+                        settings,
+                        owner_id,
+                        workflow_id,
+                        stage_id,
+                        revision,
+                        "workflow_structured_input_capacity_exceeded",
+                    )
+                    return TickOutcome(workflow_id, "blocked")
                 if exc.code != "workflow_structured_release_required":
                     raise
                 _record_wait(
@@ -277,7 +291,10 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
                     factory, settings, owner_id=owner_id, command=command
                 )
             except DomainError as exc:
-                if exc.code != "workflow_input_capacity_exceeded":
+                if exc.code not in {
+                    "workflow_input_capacity_exceeded",
+                    "resolved_input_limit",
+                }:
                     raise
                 _record_wait(
                     factory,
@@ -300,7 +317,26 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
             input_revision_id=selection,
             idempotency_key=f"auto-rd:{workflow_id}:{selection}:{revision}",
         )
-        dispatch_initial_rd_stage(factory, settings, owner_id=owner_id, command=command)
+        try:
+            dispatch_initial_rd_stage(
+                factory, settings, owner_id=owner_id, command=command
+            )
+        except DomainError as exc:
+            if exc.code not in {
+                "workflow_input_capacity_exceeded",
+                "resolved_input_limit",
+            }:
+                raise
+            _record_wait(
+                factory,
+                settings,
+                owner_id,
+                workflow_id,
+                stage_id,
+                revision,
+                "workflow_initial_input_capacity_exceeded",
+            )
+            return TickOutcome(workflow_id, "blocked")
         return TickOutcome(workflow_id, "child_queued")
     return TickOutcome(workflow_id, "blocked")
 
@@ -380,8 +416,13 @@ def tick_workflows(factory, settings, *, limit=4):
                     # Pending controls must still reach the verified checkpoint.
                     (ResearchWorkflow.blocked_reason.is_(None))
                     | (
-                        ResearchWorkflow.blocked_reason
-                        != "workflow_input_capacity_exceeded"
+                        ResearchWorkflow.blocked_reason.not_in(
+                            (
+                                "workflow_input_capacity_exceeded",
+                                "workflow_initial_input_capacity_exceeded",
+                                "workflow_structured_input_capacity_exceeded",
+                            )
+                        )
                     )
                     | (
                         ResearchWorkflow.status.in_(

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -28,7 +28,7 @@ import {
   strategiesOptions,
 } from "@/lib/api";
 import {
-  forgetSubmission,
+  clearAcceptedSubmission,
   loadSubmission,
   saveSubmission,
   submissionFor,
@@ -95,6 +95,7 @@ export function NewRunPage() {
           </div>
         ) : (
           <RunForm
+            key={`${user.data.id}:${preferred ?? ""}`}
             owner={user.data.id}
             preferred={preferred}
             datasets={
@@ -113,7 +114,7 @@ export function NewRunPage() {
   );
 }
 
-function RunForm({
+export function RunForm({
   owner,
   preferred,
   datasets,
@@ -126,6 +127,13 @@ function RunForm({
 }) {
   const navigate = useNavigate();
   const saved = useRef(preferred ? null : loadSubmission(owner));
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const first =
     datasets.find((dataset) => dataset.id === preferred) ||
     datasets.find(
@@ -250,11 +258,13 @@ function RunForm({
       saved.current = submission;
       saveSubmission(owner, submission);
       const run = await createRun(body, submission.key);
-      forgetSubmission(owner);
+      clearAcceptedSubmission(owner, submission);
       await queryClient.invalidateQueries({ queryKey: ["runs"] });
+      // Back/Cancel or a newer dataset route must not be undone by this response.
+      if (!active.current) return;
       await navigate({ to: "/runs/$runId", params: { runId: run.id } });
     } catch (error) {
-      setFailure(error);
+      if (active.current) setFailure(error);
     } finally {
       submitting.current = false;
     }

@@ -356,6 +356,9 @@ def read_workflow(session, owner_id, workflow_id, settings):
                 "workflow_checkpoint_adapter_unavailable",
                 "workflow_budget_exhausted",
                 "workflow_stage_failed",
+                "workflow_input_capacity_exceeded",
+                "workflow_initial_input_capacity_exceeded",
+                "workflow_structured_input_capacity_exceeded",
             }
             else "workflow_blocked"
         ),

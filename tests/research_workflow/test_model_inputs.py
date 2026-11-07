@@ -80,3 +80,24 @@ def test_bound_model_inputs_reject_swapped_or_partial_stage_context(mutation):
         raw["binding"]["input_sha256"] = "c" * 64
     with pytest.raises(ValueError):
         ModelStageInputSnapshot.model_validate(raw)
+
+
+def test_host_capacity_check_preserves_exact_valid_snapshot():
+    from backend.app.research_workflow_input_capacity import bounded_model_inputs
+    from packages.factors.contracts import canonical_bytes
+
+    value = snapshot()
+    actual = bounded_model_inputs(
+        binding=value.binding, selection=value.selection, inputs=value.inputs
+    )
+    assert canonical_bytes(actual) == canonical_bytes(value)
+
+
+def test_host_capacity_check_does_not_hide_unrelated_contract_failures():
+    from backend.app.research_workflow_input_capacity import bounded_model_inputs
+
+    value = snapshot()
+    with pytest.raises(ValueError, match="preserve every selected version"):
+        bounded_model_inputs(
+            binding=value.binding, selection=value.selection, inputs=()
+        )

@@ -11,6 +11,10 @@ from packages.rdagent_adapter.seed_prompt_budget import (
 from packages.rdagent_adapter.workflow_config import WorkflowFactorResearchConfig
 
 
+class WorkflowPromptLimit(ValueError):
+    """Valid selected data exceeds the fixed SDK message size."""
+
+
 def workflow_generation_scenario(config, seed=None):
     config = WorkflowFactorResearchConfig.model_validate(config)
     if (seed is None) != (config.workflow_parent is None):
@@ -118,7 +122,7 @@ def first_workflow_messages(config, seed=None):
             + workflow_generation_user_data(config),
         )
     if any(len(message) > 8192 for message in messages):
-        raise ValueError(
+        raise WorkflowPromptLimit(
             "Workflow inputs/parent/task exceed actual fixed message bound"
         )
     return messages

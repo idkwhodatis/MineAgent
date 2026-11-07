@@ -21,13 +21,16 @@ from backend.app.rdagent_submission_services import (
     resolve_research_declaration,
 )
 from backend.app.rdagent_workflow_models import FactorWorkflowSubmission
+from backend.app.research_workflow_input_capacity import bounded_model_inputs
 from backend.app.research_workflow_native_guard import native_guard_from_publication
 from backend.app.services import DomainError
 from packages.factors.contracts import canonical_bytes, digest
 from packages.rdagent_adapter.workflow_config import WorkflowFactorResearchConfig
-from packages.rdagent_adapter.workflow_prompt import first_workflow_messages
+from packages.rdagent_adapter.workflow_prompt import (
+    WorkflowPromptLimit,
+    first_workflow_messages,
+)
 from packages.research_workflow.contracts import StageExecutionBinding
-from packages.research_workflow.model_inputs import ModelStageInputSnapshot
 
 
 def fail():
@@ -113,7 +116,7 @@ def _submit_workflow_child_under_native_guard(
     ):
         fail()
     resolved = verify_model_input_versions(session, owner_id, selection.refs, settings)
-    inputs = ModelStageInputSnapshot(
+    inputs = bounded_model_inputs(
         binding=StageExecutionBinding(
             owner_id=owner_id,
             workflow_id=workflow_id,
@@ -155,7 +158,14 @@ def _submit_workflow_child_under_native_guard(
             "workflow_parent": None if seed is None else seed.reference,
         }
     )
-    first_workflow_messages(config, seed)  # Full actual prompt bound, never truncate.
+    try:
+        first_workflow_messages(config, seed)  # Full actual bound, never truncate.
+    except WorkflowPromptLimit:
+        raise DomainError(
+            "workflow_input_capacity_exceeded",
+            "Workflow model prompt exceeds its bound",
+            409,
+        ) from None
     # Reread retained input bytes before writing any run. A detached prepared DTO
     # is neither source authority nor permission to bypass source/label admission.
     fresh_config, source = resolve_research_declaration(

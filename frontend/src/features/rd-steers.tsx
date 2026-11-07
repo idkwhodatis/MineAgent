@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorState, Loading, Panel } from "@/components/common";
 import { factorRequest } from "@/lib/factor-api";
@@ -37,7 +37,7 @@ function VersionHistory({ id }: { id: string }) {
   );
 }
 
-function SteerEditor({
+export function SteerEditor({
   value,
   close,
 }: {
@@ -52,9 +52,11 @@ function SteerEditor({
   );
   const [text, setText] = useState(base?.current.text ?? "");
   const [pending, setPending] = useState(false);
+  const lock = useRef(false);
   const [error, setError] = useState<unknown>();
   async function save() {
-    if (pending) return;
+    if (lock.current) return;
+    lock.current = true;
     setPending(true);
     setError(undefined);
     try {
@@ -74,6 +76,7 @@ function SteerEditor({
     } catch (err) {
       setError(err);
     } finally {
+      lock.current = false;
       setPending(false);
     }
   }
@@ -130,9 +133,11 @@ function SteerRow({ value }: { value: SteerView }) {
   const [editing, setEditing] = useState(false);
   const [history, setHistory] = useState(false);
   const [pending, setPending] = useState(false);
+  const lock = useRef(false);
   const [error, setError] = useState<unknown>();
   async function changeState() {
-    if (pending) return;
+    if (lock.current) return;
+    lock.current = true;
     setPending(true);
     setError(undefined);
     try {
@@ -144,6 +149,7 @@ function SteerRow({ value }: { value: SteerView }) {
     } catch (err) {
       setError(err);
     } finally {
+      lock.current = false;
       setPending(false);
     }
   }

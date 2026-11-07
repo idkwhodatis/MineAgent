@@ -39,3 +39,18 @@ export function saveSubmission(owner: string, value: Submission) {
 export function forgetSubmission(owner: string) {
   sessionStorage.removeItem(`tradegrad.submission.${owner}`);
 }
+
+/** An old response may only remove its own retry record, never a newer visit's. */
+export function clearAcceptedSubmission(owner: string, completed: Submission) {
+  try {
+    const current = loadSubmission(owner);
+    if (
+      current?.key !== completed.key ||
+      fingerprint(current.body) !== fingerprint(completed.body)
+    )
+      return;
+    forgetSubmission(owner);
+  } catch {
+    // Acceptance is still successful if storage cleanup is unavailable.
+  }
+}

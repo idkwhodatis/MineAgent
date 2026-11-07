@@ -27,6 +27,7 @@ from backend.app.research_input_storage import require_publication_admission
 from backend.app.research_lifecycle import _try_neutral_lock
 from backend.app.research_services import TERMINAL, quota_limit
 from backend.app.research_workflow_history import read_selected_inputs
+from backend.app.research_workflow_input_capacity import bounded_model_inputs
 from backend.app.research_workflow_models import (
     ResearchWorkflow,
     ResearchWorkflowCommand,
@@ -43,7 +44,6 @@ from packages.factors.contracts import canonical_bytes, digest
 from packages.openevolve_structured.workflow_run import WorkflowOEContext
 from packages.research_runtime.budget_contracts import BudgetVector
 from packages.research_workflow.contracts import StageExecutionBinding
-from packages.research_workflow.model_inputs import ModelStageInputSnapshot
 from packages.research_workflow.oe_stage import (
     OEStageDefinition,
     WorkflowOEClaim,
@@ -207,7 +207,7 @@ def claim_oe_stage(session, owner_id, command, settings, *, admission):
             release_provenance_sha256=digest(release.provenance),
         )
         stage_id, child_id = uuid4(), uuid4()
-        inputs = ModelStageInputSnapshot(
+        inputs = bounded_model_inputs(
             binding=StageExecutionBinding(
                 owner_id=owner_id,
                 workflow_id=root.id,

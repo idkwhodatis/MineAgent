@@ -283,6 +283,10 @@ def select_workflow_inputs(session, owner_id, request, settings):
         # A validated replacement selection may make room for required feedback.
         # Keep pause/control state and the current stage; only rearm this wait.
         root.blocked_reason = "workflow_next_child_pending"
+    elif root.blocked_reason == "workflow_initial_input_capacity_exceeded":
+        root.blocked_reason = "workflow_child_adapter_unavailable"
+    elif root.blocked_reason == "workflow_structured_input_capacity_exceeded":
+        root.blocked_reason = "workflow_structured_pending"
     revision = ResearchWorkflowRevision(
         id=selection.revision_id,
         owner_id=owner_id,

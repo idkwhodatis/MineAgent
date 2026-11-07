@@ -886,25 +886,67 @@ def _open_file(root: Path, key: str):
 
 
 def _hash_file(root: Path, key: str, maximum: int) -> dict:
-    stream, info = _open_file(root, key)
-    with stream:
-        if info.st_size > maximum:
-            raise BackupError("File exceeds backup byte limit")
-        digest = hashlib.sha256()
-        size = 0
-        while chunk := stream.read(min(CHUNK, maximum - size + 1)):
-            size += len(chunk)
-            if size > maximum:
+    # Keep the containing directory pinned until both the open inode and the
+    # directory entry have been checked. Timestamps alone cannot distinguish
+    # equal-size updates within one filesystem timestamp tick.
+    path = _path(root) / _key(key)
+    directory = _open_directory(path.parent)
+    try:
+        stream, info = _open_file(root, key)
+        with stream:
+            if info.st_size > maximum:
                 raise BackupError("File exceeds backup byte limit")
-            digest.update(chunk)
-        final = os.fstat(stream.fileno())
-        if size != info.st_size or (
-            final.st_size,
-            final.st_mtime_ns,
-            final.st_ctime_ns,
-        ) != (info.st_size, info.st_mtime_ns, info.st_ctime_ns):
-            raise BackupError("Source changed while reading; keep all writers stopped")
-        return {"path": key, "size_bytes": size, "sha256": digest.hexdigest()}
+            digest = hashlib.sha256()
+            size = 0
+            while chunk := stream.read(min(CHUNK, maximum - size + 1)):
+                size += len(chunk)
+                if size > maximum:
+                    raise BackupError("File exceeds backup byte limit")
+                digest.update(chunk)
+            # Reobserve the bytes with bounded memory, without the buffered
+            # stream's read-ahead cache. This is an observation, not a writer lock.
+            observed = hashlib.sha256()
+            offset = 0
+            while offset < size:
+                chunk = os.pread(stream.fileno(), min(CHUNK, size - offset), offset)
+                if not chunk:
+                    break
+                observed.update(chunk)
+                offset += len(chunk)
+            extra = os.pread(stream.fileno(), 1, offset)
+            final = os.fstat(stream.fileno())
+            try:
+                current = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+            except FileNotFoundError:
+                raise BackupError(
+                    "Source changed while reading; keep all writers stopped"
+                ) from None
+
+            def identity(value):
+                return (
+                    value.st_dev,
+                    value.st_ino,
+                    value.st_mode,
+                    value.st_nlink,
+                    value.st_size,
+                    value.st_mtime_ns,
+                    value.st_ctime_ns,
+                )
+
+            if (
+                size != info.st_size
+                or offset != size
+                or extra
+                or observed.digest() != digest.digest()
+                or identity(final) != identity(info)
+                or identity(current) != identity(info)
+            ):
+                raise BackupError(
+                    "Source changed while reading; keep all writers stopped"
+                )
+            return {"path": key, "size_bytes": size, "sha256": digest.hexdigest()}
+    finally:
+        os.close(directory)
 
 
 def _inventory(

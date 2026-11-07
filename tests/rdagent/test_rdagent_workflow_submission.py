@@ -1283,3 +1283,40 @@ def test_public_workflow_input_body_requires_fresh_source_proof(
     )
     with pytest.raises(DomainError):
         routes.workflow_submission_item(v.q.session, run, receipt, v.q.source.settings)
+
+
+@pytest.mark.parametrize("boundary", ["rendered_prompt", "snapshot_envelope"])
+def test_selected_input_limit_is_domain_failure_before_child_write(
+    actual_graph, monkeypatch, boundary
+):
+    """Individually valid inputs can exceed the final child/prompt envelope."""
+    from hashlib import sha256
+
+    from packages.research_inputs.resolved import ResolvedInputVersion
+
+    v = actual_graph
+    text = "x" * 2048 if boundary == "rendered_prompt" else "界" * 1700
+    resolved = tuple(
+        ResolvedInputVersion(
+            ref=ref,
+            kind="hypothesis",
+            title="Hypothesis",
+            text=text,
+            text_sha256=sha256(text.encode()).hexdigest(),
+        )
+        for ref in v.context.selection.refs
+    )
+    # The existing fresh resolver permits this selection. The child snapshot
+    # duplicates its references, and the real SDK message adds another envelope.
+    assert (
+        len(canonical_bytes([item.model_dump(mode="json") for item in resolved]))
+        <= 32768
+    )
+    monkeypatch.setattr(
+        inputs_reader, "verify_model_input_versions", lambda *a: resolved
+    )
+    before = len(v.q.session.rows)
+    with pytest.raises(DomainError) as error:
+        submit(v)
+    assert error.value.code == "workflow_input_capacity_exceeded"
+    assert len(v.q.session.rows) == before
