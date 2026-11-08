@@ -403,3 +403,89 @@ def test_only_fixed_failure_function_stages_are_rendered(module_name, function, 
         "sqlstate": "none",
     }
     assert "private" not in json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (TimeoutError("private-payload"), "deadline"),
+        (OSError("private-payload"), "daemon_top"),
+    ],
+)
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_shared_top_transport_failure_has_closed_diagnostic(
+    monkeypatch, error, expected, wrapped
+):
+    from unittest.mock import MagicMock, Mock
+
+    from packages.research_runtime.process_contracts import ProcessError
+    from runtimes.rdagent_operational import daemon_identity as observer
+    from runtimes.research_supervisor import daemon_top
+
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.connect.side_effect = error
+    factory = Mock(return_value=connection)
+    monkeypatch.setattr(daemon_top.socket, "socket", factory)
+    monkeypatch.setattr(daemon_top, "time", SimpleNamespace(monotonic=lambda: 10))
+    monkeypatch.setattr(observer, "time", SimpleNamespace(monotonic=lambda: 10))
+    cli = SimpleNamespace(_command=Mock(side_effect=AssertionError("no fallback")))
+    monkeypatch.setattr(observer, "DockerSupervisor", lambda _: cli)
+    monkeypatch.setattr(observer, "_inspect", lambda *_: None)
+    monkeypatch.setattr(observer, "_host_snapshot", lambda _: object())
+    with pytest.raises(ProcessError if wrapped else type(error)) as caught:
+        if wrapped:
+            observer._observe(
+                container_id="d" * 64,
+                image_id="sha256:" + "b" * 64,
+                leader_pid=100,
+                pid=101,
+                deadline=60,
+            )
+        else:
+            daemon_top.read_top("d" * 64, deadline=60)
+    report = _diagnostic()._queue_failure(caught.value)
+    assert report["observer_failure"] == expected
+    assert report["family"] == (
+        "process" if wrapped else "timeout" if expected == "deadline" else "other"
+    )
+    assert "private" not in json.dumps(report) and "d" * 64 not in json.dumps(report)
+    assert factory.call_count == 1
+    connection.__exit__.assert_called_once()
+    cli._command.assert_not_called()
+
+
+def test_untrusted_transport_name_and_timeout_context_are_not_deadline(monkeypatch):
+    from types import FunctionType
+
+    from packages.research_runtime.process_contracts import ProcessError
+    from runtimes.rdagent_operational import daemon_identity as observer
+    from runtimes.research_supervisor import daemon_top
+
+    def spoof():
+        raise TimeoutError("private-payload")
+
+    fake = FunctionType(
+        spoof.__code__.replace(co_name="read_top"),
+        {"__name__": daemon_top.__name__},
+    )
+    with pytest.raises(TimeoutError) as caught:
+        fake()
+    assert "observer_failure" not in _diagnostic()._queue_failure(caught.value)
+
+    monkeypatch.setattr(observer, "time", SimpleNamespace(monotonic=lambda: 10))
+    monkeypatch.setattr(observer, "DockerSupervisor", lambda _: object())
+    monkeypatch.setattr(observer, "_inspect", lambda *_: None)
+    monkeypatch.setattr(observer, "_host_snapshot", lambda _: object())
+    monkeypatch.setattr(observer, "read_top", lambda *_, **__: fake())
+    with pytest.raises(ProcessError) as caught:
+        observer._observe(
+            container_id="d" * 64,
+            image_id="sha256:" + "b" * 64,
+            leader_pid=100,
+            pid=101,
+            deadline=60,
+        )
+    report = _diagnostic()._queue_failure(caught.value)
+    assert report["observer_failure"] == "unknown"
+    assert "private" not in json.dumps(report)

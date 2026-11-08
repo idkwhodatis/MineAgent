@@ -8,6 +8,10 @@ on:
       - "runtimes/factor_execution/**"
       - "runtimes/factor_normalizer/**"
       - "runtimes/hostile_deadline/**"
+      - "runtimes/research_supervisor/daemon_top.py"
+      - "tests/research_runtime/test_daemon_top_transport.py"
+      - "tests/integration/rd_rpc_diagnostic.py"
+      - "runtimes/openevolve_operational/daemon_identity.py"
       - "packages/rdagent_adapter/**"
       - "packages/research_workflow/**"
       - "packages/research_inputs/**"
@@ -109,6 +113,20 @@ jobs:
         run: python script/bootstrap_tradegrad_compat.py
       - name: Install unchanged host test closure
         run: python -m pip install --require-hashes -r backend/requirements.lock
+      - name: Require RD host identity and shared top transport regressions
+        run: |
+          mkdir -p var/numeric-private var/numeric-proof
+          python -m pytest tests/research_runtime/test_daemon_top_transport.py tests/rdagent/test_rdagent_daemon_identity.py tests/rdagent/test_rdagent_daemon_peer.py tests/rdagent/test_rdagent_operational_admission.py tests/rdagent/test_rdagent_callback_authentication.py tests/rdagent/test_rpc_stage_diagnostic.py -q --junitxml=var/numeric-private/host-identity.xml
+          python - <<'PYIDENTITY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/host-identity.xml')
+          summarize(source,Path('var/numeric-proof/host-identity-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==341
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYIDENTITY
       - name: Install isolated host SDK from the exact existing RD dependency pins
         shell: bash
         run: |

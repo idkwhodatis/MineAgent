@@ -51,9 +51,12 @@ def observer(monkeypatch):
         "State": {"Running": True, "Status": "running", "Pid": 100},
     }
     cli = SimpleNamespace(
-        _inspect=Mock(return_value=document), _command=Mock(return_value=(0, RAW))
+        _inspect=Mock(return_value=document),
+        _command=Mock(side_effect=AssertionError("CLI top must not run")),
     )
     monkeypatch.setattr(module, "DockerSupervisor", lambda _: cli)
+    top = Mock(return_value=RAW)
+    monkeypatch.setattr(module, "read_top", top)
     hosts = {
         100: (100, 500, "0::/unit\n", 1, (0,) * 4, (0,) * 4),
         101: (101, 501, "0::/unit\n", 100, (65533,) * 4, (65533,) * 4),
@@ -64,19 +67,19 @@ def observer(monkeypatch):
     return SimpleNamespace(
         value=module.DockerKernelObserver(cid, image, 100, 60),
         cli=cli,
+        top=top,
         host=host,
         hosts=hosts,
         document=document,
     )
 
 
-def test_observe_pair_real_inode_semantics_and_fixed_argv(observer):
+def test_observe_pair_real_inode_semantics_and_fixed_request(observer):
     leader, child = observer.value.observe_pair(101)
     assert leader.pid_namespace == child.pid_namespace == "pid:[4026532777]"
     assert child.ppid == leader.host_pid and child.start_ticks == 501
-    observer.cli._command.assert_called_once_with(
-        ["top", "d" * 64, "-eo", "pid,uid,ppid,pidns,comm"]
-    )
+    observer.top.assert_called_once_with("d" * 64, deadline=60)
+    observer.cli._command.assert_not_called()
     assert observer.cli._inspect.call_count == 2
     assert observer.host.call_count == 4
     assert observer.value.observe(100) == leader
@@ -96,6 +99,7 @@ def test_changed_unit_rejected(observer, change):
         observer.document["State"]["Status"] = "restarting"
     with pytest.raises(ProcessError):
         observer.value.observe(101)
+    observer.top.assert_not_called()
     observer.cli._command.assert_not_called()
 
 
@@ -129,7 +133,7 @@ def test_pid_reuse_or_host_metadata_drift_rejected(observer):
     ],
 )
 def test_daemon_membership_uid_parent_crosschecked(observer, raw):
-    observer.cli._command.return_value = (0, raw)
+    observer.top.return_value = raw
     with pytest.raises(ProcessError):
         observer.value.observe(101)
 
@@ -221,6 +225,7 @@ def test_profile_bound_observation_uses_original_deadline(
         profile,
     )
     assert context.observe_pair(101)[1].host_pid == 101
+    observer.top.assert_called_once_with(context.container_id, deadline=10.0 + seconds)
     # Expiry of the same absolute monotonic deadline never grants a fresh window.
     monkeypatch.setattr(module.time, "monotonic", lambda: 11.0 + seconds)
     with pytest.raises(ProcessError):
@@ -245,3 +250,81 @@ def test_profile_excess_rejected_before_daemon_read(observer, profile, seconds):
     with pytest.raises(ProcessError):
         context.observe_pair(101)
     observer.cli._inspect.assert_not_called()
+
+
+@pytest.mark.parametrize("controller_pid", [None, 101])
+def test_direct_top_preserves_chronological_host_and_inspect_brackets(
+    observer, controller_pid
+):
+    events = []
+
+    def inspect(cid):
+        assert cid == observer.value.container_id
+        events.append("inspect")
+        return observer.document
+
+    def host(pid):
+        events.append(pid)
+        return observer.hosts[pid]
+
+    def top(cid, *, deadline):
+        assert (
+            cid == observer.value.container_id and deadline == observer.value.deadline
+        )
+        events.append("top")
+        return RAW
+
+    observer.cli._inspect.side_effect = inspect
+    observer.host.side_effect = host
+    observer.top.side_effect = top
+    observer.value.observe_pair(controller_pid)
+    targets = [100] if controller_pid is None else [100, 101]
+    assert events == ["inspect", *targets, "top", *targets, "inspect"]
+    observer.top.assert_called_once_with(observer.value.container_id, deadline=60)
+    observer.cli._command.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError("private"),
+        TimeoutError("private"),
+        OSError("private"),
+        ConnectionResetError("private"),
+    ],
+)
+def test_direct_top_transport_failure_aborts_without_fallback(observer, error):
+    observer.top.side_effect = error
+    with pytest.raises(ProcessError, match="^rd_controller_daemon_identity$") as caught:
+        observer.value.observe_pair(101)
+    assert caught.value.__context__ is error
+    assert observer.cli._inspect.call_count == observer.top.call_count == 1
+    assert observer.host.call_count == 2
+    observer.cli._command.assert_not_called()
+
+
+def test_repeated_observations_read_fresh_top_and_host_values(observer):
+    first = observer.value.observe_pair(101)
+    observer.top.return_value = RAW.replace(b"4026532777", b"4026532999")
+    second = observer.value.observe_pair(101)
+    assert first[0].pid_namespace == first[1].pid_namespace == "pid:[4026532777]"
+    assert second[0].pid_namespace == second[1].pid_namespace == "pid:[4026532999]"
+    assert observer.top.call_count == 2
+    assert observer.cli._inspect.call_count == 4
+    assert observer.host.call_count == 8
+    assert all(
+        call.args == (observer.value.container_id,) and call.kwargs == {"deadline": 60}
+        for call in observer.top.call_args_list
+    )
+    observer.cli._command.assert_not_called()
+
+
+def test_repeated_observation_failure_never_reuses_previous_pair(observer):
+    observer.value.observe_pair(101)
+    observer.top.side_effect = TimeoutError("private")
+    with pytest.raises(ProcessError, match="^rd_controller_daemon_identity$"):
+        observer.value.observe_pair(101)
+    assert observer.top.call_count == 2
+    assert observer.cli._inspect.call_count == 3
+    assert observer.host.call_count == 6
+    observer.cli._command.assert_not_called()

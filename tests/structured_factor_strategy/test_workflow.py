@@ -22,7 +22,15 @@ def test_required_pair_and_cold_restore_are_exact_cases_without_skip_acceptance(
     assert "tests/openevolve/test_structured_peer_members.py" in text
     assert "tests/structured_controller_runtime/test_peer.py" in text
     assert "tests/openevolve/test_operational_daemon_identity.py" in text
-    assert "assert len(cases)==178" in text
+    assert '      - "runtimes/research_supervisor/daemon_top.py"' in text
+    assert '      - "tests/research_runtime/test_daemon_top_transport.py"' in text
+    command = next(
+        line
+        for line in text.splitlines()
+        if "--junitxml=var/numeric-private/peer-identity.xml" in line
+    )
+    assert "tests/research_runtime/test_daemon_top_transport.py" in command
+    assert "assert len(cases)==377" in text
     assert "var/numeric-proof/peer-identity-outcomes.xml" in text
     assert "tests/runner/test_oe_receipt_cost_diagnostic.py" in text
     assert "tests/runner/test_oe_pg_diagnostic.py" in text
