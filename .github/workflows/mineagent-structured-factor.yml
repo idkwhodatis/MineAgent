@@ -8,9 +8,6 @@ on:
       - "runtimes/factor_execution/**"
       - "runtimes/factor_normalizer/**"
       - "runtimes/hostile_deadline/**"
-      - "runtimes/research_supervisor/daemon_top.py"
-      - "tests/research_runtime/test_daemon_top_transport.py"
-      - "tests/integration/rd_rpc_diagnostic.py"
       - "packages/rdagent_adapter/**"
       - "tests/rdagent/**"
       - "runtimes/rdagent_operational/**"
@@ -96,7 +93,7 @@ jobs:
       - name: Require host identity and diagnostic regressions
         run: |
           mkdir -p var/numeric-private var/numeric-proof
-          python -m pytest tests/openevolve/test_structured_daemon_members.py tests/openevolve/test_structured_peer_members.py tests/structured_controller_runtime/test_peer.py tests/openevolve/test_operational_daemon_identity.py tests/runner/test_oe_receipt_cost_diagnostic.py tests/runner/test_oe_pg_diagnostic.py tests/research_runtime/test_daemon_top_transport.py -q --junitxml=var/numeric-private/peer-identity.xml
+          python -m pytest tests/openevolve/test_structured_daemon_members.py tests/openevolve/test_structured_peer_members.py tests/structured_controller_runtime/test_peer.py tests/openevolve/test_operational_daemon_identity.py tests/runner/test_oe_receipt_cost_diagnostic.py tests/runner/test_oe_pg_diagnostic.py -q --junitxml=var/numeric-private/peer-identity.xml
           python - <<'PYPEER'
           from pathlib import Path
           from xml.etree import ElementTree as ET
@@ -104,7 +101,7 @@ jobs:
           source=Path('var/numeric-private/peer-identity.xml')
           summarize(source,Path('var/numeric-proof/peer-identity-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==377
+          assert len(cases)==178
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYPEER
       - name: Install isolated pinned host SDK without changing API dependencies

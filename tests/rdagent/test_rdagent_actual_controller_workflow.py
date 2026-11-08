@@ -109,14 +109,8 @@ def test_controller_gate_requires_complete_contract_and_persistence_inventory():
     )
     assert "tests/structured tests/structured_factor_strategy" in workflow
     assert "tests/openevolve/test_validation_cost_sql.py" in workflow
-    assert "assert len(cases) == 5820" in workflow
+    assert "assert len(cases) == 5612" in workflow
     assert "var/numeric-proof/contracts-outcomes.xml" in workflow
-    for path in (
-        "runtimes/research_supervisor/daemon_top.py",
-        "tests/research_runtime/test_daemon_top_transport.py",
-        "tests/integration/rd_rpc_diagnostic.py",
-    ):
-        assert f'      - "{path}"' in workflow
     for source in (
         "tests/integration/test_rd_controller_persistence.py",
         "tests/integration/test_execution_snapshot_persistence.py",

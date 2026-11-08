@@ -258,7 +258,9 @@ def test_claim_uses_persisted_profile_with_full_fresh_observer(
     }
     cli = SimpleNamespace(
         _inspect=Mock(return_value=document),
-        _command=Mock(side_effect=AssertionError("CLI top must not run")),
+        _command=Mock(
+            return_value=(0, b"PID UID PPID PIDNS COMMAND\n100 0 1 42 python\n")
+        ),
     )
     monkeypatch.setattr(
         module,
@@ -274,8 +276,6 @@ def test_claim_uses_persisted_profile_with_full_fresh_observer(
     monkeypatch.setattr(module, "utcnow", lambda: now + timedelta(seconds=1))
     monkeypatch.setattr(daemon.time, "monotonic", lambda: 10.0)
     monkeypatch.setattr(daemon, "DockerSupervisor", lambda _: cli)
-    top = Mock(return_value=b"PID UID PPID PIDNS COMMAND\n100 0 1 42 python\n")
-    monkeypatch.setattr(daemon, "read_top", top)
     hosts = Mock(return_value=host)
     monkeypatch.setattr(daemon, "_host_snapshot", hosts)
     persist = Mock(return_value=admission)
@@ -299,7 +299,6 @@ def test_claim_uses_persisted_profile_with_full_fresh_observer(
         assert state.status == "running"
         assert cli._inspect.call_count == 2
         assert hosts.call_count == 2
-        top.assert_called_once_with(cid, deadline=10.0 + seconds - 1)
         persist.assert_called_once()
     else:
         with pytest.raises(ProcessError):
@@ -309,4 +308,3 @@ def test_claim_uses_persisted_profile_with_full_fresh_observer(
         assert state.status == "uncertain"
         persist.assert_not_called()
         session.flush.assert_not_called()
-    cli._command.assert_not_called()

@@ -184,35 +184,3 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert len(sdk) == 16 and set(sdk) <= existing
     assert any(line.startswith("openai==2.54.0 ") for line in sdk)
     assert any(line.startswith("httpx==0.28.1 ") for line in sdk)
-
-
-def test_shared_top_and_rd_identity_are_required_before_expensive_work():
-    text = Path(".github/workflows/mineagent-configured-analysis.yml").read_text()
-    gate = text.index("Require RD host identity and shared top transport regressions")
-    assert gate < text.index("Install isolated host SDK")
-    assert gate < text.index("docker build")
-    for path in (
-        "runtimes/research_supervisor/daemon_top.py",
-        "tests/research_runtime/test_daemon_top_transport.py",
-        "tests/integration/rd_rpc_diagnostic.py",
-    ):
-        assert f'      - "{path}"' in text
-    command = next(
-        line
-        for line in text.splitlines()
-        if "--junitxml=var/numeric-private/host-identity.xml" in line
-    )
-    for path in (
-        "tests/research_runtime/test_daemon_top_transport.py",
-        "tests/rdagent/test_rdagent_daemon_identity.py",
-        "tests/rdagent/test_rdagent_daemon_peer.py",
-        "tests/rdagent/test_rdagent_operational_admission.py",
-        "tests/rdagent/test_rdagent_callback_authentication.py",
-        "tests/rdagent/test_rpc_stage_diagnostic.py",
-    ):
-        assert path in command
-    block = text[gate : text.index("Install isolated host SDK")]
-    assert "assert len(cases)==341" in block
-    assert "('failure','error','skipped')" in block
-    assert "var/numeric-proof/host-identity-outcomes.xml" in block
-    assert "continue-on-error" not in block

@@ -19,7 +19,6 @@ from pathlib import Path
 
 from packages.research_runtime.process_contracts import ProcessError
 from runtimes.rdagent_operational.peer import KernelIdentity
-from runtimes.research_supervisor.daemon_top import read_top
 from runtimes.research_supervisor.supervisor import DockerSupervisor
 
 MAX_TOP_BYTES = 16384
@@ -241,7 +240,7 @@ def _observe_members(
         for _ in range(2):
             before = {target: _host_snapshot(target) for target in targets}
             current()
-            raw = read_top(container_id, deadline=deadline)
+            _, raw = cli._command(["top", container_id, "-eo", TOP_FIELDS])
             current()
             rows = parse_top(raw)
             after = {target: _host_snapshot(target) for target in reversed(targets)}

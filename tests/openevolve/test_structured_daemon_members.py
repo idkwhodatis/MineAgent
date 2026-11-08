@@ -14,10 +14,8 @@ def batch(monkeypatch):
     observer = predecessor.observer.__wrapped__(monkeypatch)
     observer.hosts[102] = (102, 502, "0::/unit\n", 101, (65533,) * 4, (65533,) * 4)
     raw = observer.cli._command.return_value[1] + b"102 65533 101 4026532777 python\n"
+    observer.cli._command.return_value = (0, raw)
     observer.raw = raw
-    observer.top = Mock(return_value=raw)
-    monkeypatch.setattr(module, "read_top", observer.top)
-    observer.cli._command.side_effect = AssertionError("CLI top must not run")
     return observer
 
 
@@ -28,7 +26,7 @@ def test_two_complete_snapshots_share_only_outer_inspects(batch):
     assert tuple(i.host_pid for i in identities) == (100, 101, 102)
     assert tuple(i.start_ticks for i in identities) == (500, 501, 502)
     assert {i.pid_namespace for i in identities} == {"pid:[4026532777]"}
-    assert batch.cli._inspect.call_count == batch.top.call_count == 2
+    assert batch.cli._inspect.call_count == batch.cli._command.call_count == 2
     assert [call.args[0] for call in batch.host.call_args_list] == [
         100,
         101,
@@ -37,67 +35,10 @@ def test_two_complete_snapshots_share_only_outer_inspects(batch):
         101,
         100,
     ] * 2
-    for call in batch.top.call_args_list:
-        assert call.args == ("d" * 64,) and call.kwargs == {"deadline": 60}
+    for call in batch.cli._command.call_args_list:
+        assert call.args == (["top", "d" * 64, "-eo", module.TOP_FIELDS],)
     batch.value.observe_members(101, 102)
-    assert batch.top.call_count == 4  # Never reuse a prior call.
-    batch.cli._command.assert_not_called()
-
-
-def test_direct_top_preserves_chronological_host_and_inspect_brackets(
-    batch, monkeypatch
-):
-    events = []
-
-    def inspect(_cid):
-        events.append("inspect")
-        return batch.document
-
-    def host(pid):
-        events.append(pid)
-        return batch.hosts[pid]
-
-    def top(cid, *, deadline):
-        assert cid == batch.value.container_id and deadline == batch.value.deadline
-        events.append("top")
-        return batch.raw
-
-    batch.cli._inspect.side_effect = inspect
-    batch.host.side_effect = host
-    monkeypatch.setattr(module, "read_top", top)
-    batch.value.observe_members(101, 102)
-    assert events == [
-        "inspect",
-        100,
-        101,
-        102,
-        "top",
-        102,
-        101,
-        100,
-        100,
-        101,
-        102,
-        "top",
-        102,
-        101,
-        100,
-        "inspect",
-    ]
-    batch.cli._command.assert_not_called()
-
-
-@pytest.mark.parametrize("error", [ValueError(), TimeoutError(), OSError()])
-def test_direct_top_transport_failure_aborts_without_fallback(
-    batch, monkeypatch, error
-):
-    top = Mock(side_effect=error)
-    monkeypatch.setattr(module, "read_top", top)
-    with pytest.raises(ProcessError, match="oe_controller_daemon_identity"):
-        batch.value.observe_members(101, 102)
-    assert batch.cli._inspect.call_count == top.call_count == 1
-    assert batch.host.call_count == 3
-    batch.cli._command.assert_not_called()
+    assert batch.cli._command.call_count == 4  # Never reuse a prior call.
 
 
 @pytest.mark.parametrize("target", [100, 101, 102])
@@ -167,7 +108,7 @@ def test_namespace_drift_between_daemon_snapshots_rejected(batch, target):
         )
         + b"\n"
     )
-    batch.top.side_effect = [batch.raw, changed]
+    batch.cli._command.side_effect = [(0, batch.raw), (0, changed)]
     with pytest.raises(ProcessError):
         batch.value.observe_members(101, 102)
 
@@ -185,7 +126,7 @@ def test_top_inventory_cannot_substitute_for_exact_members(batch, change):
         "parent": row.replace(b" 101 ", b" 100 "),
         "malformed": row.replace(b"4026532777", b"0"),
     }[change]
-    batch.top.return_value = batch.raw.replace(row, replacement)
+    batch.cli._command.return_value = (0, batch.raw.replace(row, replacement))
     with pytest.raises(ProcessError):
         batch.value.observe_members(101, 102)
 
@@ -240,5 +181,4 @@ def test_invalid_member_inventory_fails_before_io(batch, controller, worker):
     with pytest.raises(ProcessError):
         batch.value.observe_members(controller, worker)
     batch.cli._inspect.assert_not_called()
-    batch.top.assert_not_called()
     batch.cli._command.assert_not_called()

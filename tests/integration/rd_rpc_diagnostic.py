@@ -149,7 +149,6 @@ def _closed_trace_context(error):
     from types import CodeType
 
     from runtimes.rdagent_operational import daemon_identity, rpc
-    from runtimes.research_supervisor import daemon_top
 
     observers = [
         (daemon_identity._observe.__code__, "unknown"),
@@ -180,21 +179,6 @@ def _closed_trace_context(error):
             if frame.f_code is code:
                 result["observer_failure"] = category
         trace = trace.tb_next
-    # _observe closes transport exceptions into ProcessError. Inspect only its
-    # immediate context and trusted reader code identity, never exception text,
-    # request bytes, local values or arbitrary matching module/function names.
-    source = error
-    if result.get("observer_failure") == "unknown":
-        source = error.__context__
-    if result.get("observer_failure") in (None, "unknown") and source is not None:
-        trace = source.__traceback__
-        while trace is not None:
-            if trace.tb_frame.f_code is daemon_top.read_top.__code__:
-                result["observer_failure"] = (
-                    "deadline" if type(source) is TimeoutError else "daemon_top"
-                )
-                break
-            trace = trace.tb_next
     return result
 
 
