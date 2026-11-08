@@ -35,6 +35,7 @@ def dataset_inventory_enabled(session):
         "032b_oe_append_run_state",
         "032c_oe_provider_table_checks",
         "032d_rd_validation_cost",
+        "032e_rd_workflow_cost",
     }
     expected = "mineagent.declared-upload-restore-closure.v1" if enabled else None
     if capability.declared_upload_schema != expected:

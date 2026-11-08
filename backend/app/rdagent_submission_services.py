@@ -93,6 +93,7 @@ def submit_configured_run(session, owner_id, submitted, idempotency_key, setting
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
+        ["032e_rd_workflow_cost"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",
@@ -170,6 +171,7 @@ def _persist_queued(
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
+        ["032e_rd_workflow_cost"],
     ):
         raise DomainError(
             "engine_submission_schema_unavailable",

@@ -129,7 +129,7 @@ jobs:
           source=Path('var/numeric-private/provider.xml')
           summarize(source,Path('var/numeric-proof/provider-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==280
+          assert len(cases)==281
           names={case.get('name') for case in cases}
           assert {'test_actual_sdk_route_and_usage[chat]', 'test_actual_sdk_route_and_usage[embedding]', 'test_actual_identity_callback_precedes_request_and_matches_result', 'test_unconfirmed_group_never_records_stop_or_returns_result'} <= names
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
@@ -337,7 +337,8 @@ jobs:
         timeout-minutes: 5
         run: |
           python -m pytest tests/integration/test_rdagent_validation_performance.py \
-            -k 'not nonconstant_server_loop_probe' -q \
+            tests/integration/test_rdagent_workflow_cost.py \
+            -k 'not nonconstant_server_loop_probe and not text_loop_probe' -q \
             --junitxml=var/numeric-private/validation-semantics.xml
           python - <<'PYVALIDATION'
           from pathlib import Path
@@ -346,7 +347,7 @@ jobs:
           source=Path('var/numeric-private/validation-semantics.xml')
           summarize(source,Path('var/numeric-proof/validation-semantics-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==5
+          assert len(cases)==9
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYVALIDATION
       # Three genuine children across both cases: twelve fixed numeric/controller/

@@ -32,6 +32,7 @@ def seeded_row(session, run, revisions):
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
+        ["032e_rd_workflow_cost"],
     ):
         return None
     return session.scalar(

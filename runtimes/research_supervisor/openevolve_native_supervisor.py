@@ -212,7 +212,8 @@ def kernel_identity_absent(identity):
             .rsplit(")", 1)[1]
             .split()
         )
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # A task can exit after procfs opens stat but before the read (ESRCH).
         return True
     # PID reuse is not the original unit. Zombies retain identity, so do not
     # falsely claim disappearance while the original init still has a task slot.

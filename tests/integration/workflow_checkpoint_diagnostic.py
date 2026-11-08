@@ -90,7 +90,7 @@ PINS = {
         "catalog",
     ),
     "mineagent_oes_controller_check": (
-        "db7436f50a28faaef60a8f631ff64d42958f6adfd6f4f68ecc73482a437bb399",
+        "e0d59e5a41c641d727916d282215322dc34bd7b8d3734fdf099446e83ad79441",
         "v",
         "catalog",
     ),
@@ -155,7 +155,7 @@ PINS = {
         "catalog",
     ),
     "mineagent_oes_provider_check": (
-        "1c22e8f4611b3222bc9158d3a3dcd4ab566fcefcfb1186efd2fe5f060708608f",
+        "cf7c0fe04686b6382e72d02f7a0895caca09dcd9f6020000800677b177136e70",
         "v",
         "schema",
     ),
@@ -220,7 +220,7 @@ PINS = {
         "schema",
     ),
     "mineagent_rd_schema": (
-        "267c260ab57f15eeb7ff21c571017354767d4ab496395a5c6b7b2dbe0be88f30",
+        "a5db1e44bd7615ed2a3bdc5beb1ed6d3dd1db296e6edbfc8c63e5eae0d1ba2c8",
         "i",
         "catalog",
     ),

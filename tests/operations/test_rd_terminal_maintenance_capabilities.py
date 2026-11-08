@@ -11,8 +11,9 @@ from backend.app.services import DomainError
 PREVIOUS = "032_normal_oe_note_pins"
 LEGACY = "032a_rd_terminal_results"
 OLDER = "032b_oe_append_run_state"
-OLD = "032c_oe_provider_table_checks"
-CURRENT = "032d_rd_validation_cost"
+PENULTIMATE = "032c_oe_provider_table_checks"
+OLD = "032d_rd_validation_cost"
+CURRENT = "032e_rd_workflow_cost"
 
 
 def test_maintenance_preserves_every_existing_capability():
@@ -27,7 +28,9 @@ def test_maintenance_preserves_every_existing_capability():
     )
 
 
-@pytest.mark.parametrize("revision", [PREVIOUS, LEGACY, OLDER, OLD, CURRENT])
+@pytest.mark.parametrize(
+    "revision", [PREVIOUS, LEGACY, OLDER, PENULTIMATE, OLD, CURRENT]
+)
 def test_normal_note_gate_accepts_exact_known_maintenance(revision):
     session = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: [revision]))
     assert require_normal_oe_notes(session) is None

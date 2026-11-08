@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from backend.app import rdagent_validation_performance_sql as sql
-from backend.app.core.db import REQUIRED_SCHEMA_REVISION
 from script.generate_rd_validation_cost_migration import TABLES, document
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,10 +21,10 @@ def migration():
     return result
 
 
-def test_frozen_migration_is_reproducible_and_exact_head():
+def test_frozen_migration_is_reproducible_and_exact_revision():
     value = migration()
     assert PATH.read_text() == document()
-    assert value.revision == REQUIRED_SCHEMA_REVISION == "032d_rd_validation_cost"
+    assert value.revision == "032d_rd_validation_cost"
     assert value.down_revision == "032c_oe_provider_table_checks"
     assert value.UPGRADE_SQL == sql.render_upgrade_sql()
     assert value.DOWNGRADE_SQL == sql.render_downgrade_sql()

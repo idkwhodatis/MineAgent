@@ -114,6 +114,7 @@ def require_controller_revision(session, config):
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
+            ["032e_rd_workflow_cost"],
         )
     ):
         raise ProcessError("rd_controller_revision")
@@ -136,6 +137,7 @@ def require_controller_revision(session, config):
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
+        ["032e_rd_workflow_cost"],
     ) or (
         config.controller_profile is not None
         and revisions
@@ -153,6 +155,7 @@ def require_controller_revision(session, config):
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
+            ["032e_rd_workflow_cost"],
         )
     ):
         raise ProcessError("rd_controller_revision")

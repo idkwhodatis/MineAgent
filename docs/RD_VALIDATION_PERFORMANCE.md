@@ -1,4 +1,4 @@
-# RD canonical validation cost (revision 032d)
+# RD validation cost (revisions 032d and 032e)
 
 ## Observed failure and limited remedy
 
@@ -57,6 +57,60 @@ file SHA-256 is `e8e14b0830e7e976711ad60b934fb6aa8814deaafbd9c61f2e8b2e0357a215d
 The optional timing test is excluded from that gate. Test schemas, disposable
 containers and volumes were removed after the probe.
 
+## Follow-up revision 032e
+
+At `7ddf621ec4ce64c8229f7b31c0c2ab8317a8fe6d`, the configured workflow
+[again reached its original controller deadline](https://github.com/idkwhodatis/MineAgent/actions/runs/42425613267/job/128563124900).
+Schema interpretation consumed approximately 20–22 seconds of self time per
+case. Structured OE separately exhausted its eight-second SDK admission budget
+before sending request bytes: its intent receipt took 4.2 seconds and its started
+boundary took 8.2 seconds, including a 4.2-second started receipt, in
+[the normal-flow job](https://github.com/idkwhodatis/MineAgent/actions/runs/42425613262/job/128563124607).
+
+Revision `032e_rd_workflow_cost` replaces the schema interpreter's per-character
+SQL scan with an equivalent C-collated control-character regex and inlines the
+same scalar validation grammar for ordinary object/array children. References,
+unions, containers and special model validators retain recursive validation.
+It also computes identical workflow configuration and input hashes once within
+each invocation, after the original configuration validation. OE request and
+controller receipt canonical text is reused only within the same invocation or
+receipt iteration. No result is cached across calls.
+Every predicate, original deadline, reservation and physical receipt remains in
+place. The additive migration restores the exact predecessor function bodies on
+downgrade and leaves historical migrations unchanged.
+
+New mandatory differential cases cover control characters, DEL, Unicode, long
+text, malformed rules, SQL NULL, real configurations and negative mutations. A
+032e → 032d → 032e roundtrip checks unchanged unrelated functions and constraints.
+These tests do not by themselves establish that either actual runtime now meets
+its deadline.
+
+### PostgreSQL evidence, 2026-11-08
+
+The final composed migration passed all nine mandatory PostgreSQL 18.6 tests in
+12.53 seconds, with zero failures or skips; only the two diagnostic timing tests
+were deselected. Both historical and current migration roundtrips passed. All
+four replaced function bodies and unrelated functions/CHECK constraints were
+verified. Six unit/reversibility tests and an additional 360 independently
+expected scalar cases passed (168 accepted, 192 rejected).
+
+Three nonconstant batches of 12 table-backed values showed consistent reductions
+in schema-dependent work. Median baseline/candidate execution times were
+99.409/59.147 ms for workflow schema checks, 144.766/90.819 ms for complete
+workflow configuration checks, and 42.867/24.453 ms for OE configuration checks:
+37–43% less elapsed time. Schema calls fell from 2,604 to 912, 4,224 to 1,464,
+and 1,488 to 432 respectively. Every input was checked for acceptance before
+timing. Raw commitments and canonical serialization showed no consistent
+improvement and their call counts remained unchanged.
+
+The composed 120,341-byte migration SHA-256 is
+`4b1de91e86edd98dcd8d636bdded1a09c867e55a413fdc97bb22e1afa1dcd14d`.
+The schema body measured before composition is byte-identical to the final
+body. These probes do not measure whole receipt transactions, relational graph
+execution, or the runtime benefit of OE text reuse. The eight-second admission
+deadline and full RD/OE runtime acceptance still require the exact-head CI run.
+Disposable databases/containers were removed after validation.
+
 ## Reproduction and limits
 
 With repository dependencies and compatibility assets materialized, point
@@ -65,10 +119,12 @@ unique schemas; never use a production database for this probe.
 
 ```sh
 python -m pytest tests/integration/test_rdagent_validation_performance.py \
-  -k 'not nonconstant_server_loop_probe' -q
+  tests/integration/test_rdagent_workflow_cost.py \
+  -k 'not nonconstant_server_loop_probe and not text_loop_probe' -q
 ```
 
-The configured-analysis workflow requires exactly five passing mandatory cases.
+The configured-analysis workflow requires exactly nine passing mandatory cases:
+the five original 032d cases and four new 032e cases.
 For a separate nonconstant serializer diagnostic, without timing assertions:
 
 ```sh

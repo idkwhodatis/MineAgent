@@ -430,7 +430,8 @@ def _staged_binding(root, launch, bootstrap_bytes, seed_bytes, ticket):
 def _kernel_gone(identity):
     try:
         text = Path(f"/proc/{identity.host_pid}/stat").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # A task can exit after procfs opens stat but before the read (ESRCH).
         return True
     fields = text.rsplit(")", 1)[1].split()
     return int(fields[19]) != identity.start_ticks or fields[0] in {"Z", "X", "x"}

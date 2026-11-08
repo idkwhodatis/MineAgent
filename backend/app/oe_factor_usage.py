@@ -78,6 +78,7 @@ def factor_usage(session, owner_id, factor_id, version_id, offset=0):
         ["032b_oe_append_run_state"],
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
+        ["032e_rd_workflow_cost"],
     ):
         raise DomainError(
             "oe_structured_history_schema_unavailable",

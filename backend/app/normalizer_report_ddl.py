@@ -64,6 +64,7 @@ def require_report_capability(session):
         "032b_oe_append_run_state": (2, 3, 16),
         "032c_oe_provider_table_checks": (2, 3, 16),
         "032d_rd_validation_cost": (2, 3, 16),
+        "032e_rd_workflow_cost": (2, 3, 16),
     }
     versions = versions_by_revision.get(revisions[0])
     if versions is None:

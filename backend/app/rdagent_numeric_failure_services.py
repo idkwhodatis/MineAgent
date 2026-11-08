@@ -53,6 +53,7 @@ def require_failure_profile(session, fence, peer):
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
+            ["032e_rd_workflow_cost"],
         ):
             raise RPCError("numeric_failure_configured_profile_required")
     elif type(config) is WorkflowFactorResearchConfig:
@@ -65,6 +66,7 @@ def require_failure_profile(session, fence, peer):
             ["032b_oe_append_run_state"],
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
+            ["032e_rd_workflow_cost"],
         ):
             raise RPCError("numeric_failure_configured_profile_required")
         from backend.app.models import ResearchRun
