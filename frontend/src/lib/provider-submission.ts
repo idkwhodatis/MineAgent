@@ -34,11 +34,19 @@ export function providerSubmission<
   return { body, key: dataSubmissionKey(owner, operation, body) };
 }
 
-export function clearProviderSubmission(owner: string, operation: string) {
-  sessionStorage.removeItem(
-    `tradegrad.provider-submission.${owner}.${operation}`,
-  );
-  clearDataSubmission(owner, operation);
+export function clearProviderSubmission(
+  owner: string,
+  operation: string,
+  completedKey: string,
+) {
+  if (!clearDataSubmission(owner, operation, completedKey)) return;
+  try {
+    sessionStorage.removeItem(
+      `tradegrad.provider-submission.${owner}.${operation}`,
+    );
+  } catch {
+    // The accepted job remains successful even when tab storage is unavailable.
+  }
 }
 
 export function connectionAdmissionRejected(error: unknown) {

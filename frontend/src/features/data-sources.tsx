@@ -53,11 +53,11 @@ async function submitProviderJob<
   const frozen = providerSubmission(owner, operation, body);
   try {
     const result = await submit(frozen.body, frozen.key);
-    clearProviderSubmission(owner, operation);
+    clearProviderSubmission(owner, operation, frozen.key);
     return result;
   } catch (error) {
     if (connectionAdmissionRejected(error)) {
-      clearProviderSubmission(owner, operation);
+      clearProviderSubmission(owner, operation, frozen.key);
       await queryClient.invalidateQueries({ queryKey: ["data-providers"] });
     }
     throw error;
@@ -344,6 +344,7 @@ function ProviderConnectionTest({
     );
     await queryClient.invalidateQueries({ queryKey: ["data-imports"] });
     await queryClient.invalidateQueries({ queryKey: ["data-providers"] });
+    if (!action.isCurrent()) return;
     await navigate({
       to: "/imports/$importId",
       params: { importId: result.id },
@@ -656,6 +657,7 @@ function SourceForm({
     );
     await queryClient.invalidateQueries({ queryKey: ["data-imports"] });
     await queryClient.invalidateQueries({ queryKey: ["data-providers"] });
+    if (!create.isCurrent()) return;
     await navigate({
       to: "/imports/$importId",
       params: { importId: result.id },

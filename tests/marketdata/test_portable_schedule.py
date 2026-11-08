@@ -71,6 +71,36 @@ def test_schedule_uses_actual_dst_early_close_holidays_and_next_open():
     )
 
 
+@pytest.mark.parametrize("symbol", ["600000", "000001"])
+def test_schedule_retains_next_open_beyond_week_long_holiday(symbol):
+    # A short import ending before Lunar New Year must have the same final
+    # NextOpen as a longer import that includes the following exchange session.
+    short = session_schedule(request(symbol, "2024-02-08", "2024-02-09"))
+    longer = session_schedule(request(symbol, "2024-02-08", "2024-02-20"))
+    schedule = short["calendars"]["XSHG"]
+    assert schedule["status"] == "complete"
+    assert len(schedule["sessions"]) == 1
+    assert schedule["sessions"][0] == longer["calendars"]["XSHG"]["sessions"][0]
+    assert schedule["sessions"][0]["next_open_time"] == "2024-02-19T01:30:00Z"
+
+
+def test_schedule_keeps_published_calendar_boundary_unavailable():
+    # The pinned XSHG schedule ends on 2026-12-31. More lookahead cannot
+    # invent a next open beyond the published schedule or accept a later range.
+    boundary = session_schedule(request("600000", "2026-12-31", "2027-01-01"))
+    assert boundary["calendars"]["XSHG"] == {
+        "status": "unavailable",
+        "sessions": [],
+        "reason": "next_open_unavailable",
+    }
+    outside = session_schedule(request("600000", "2027-01-01", "2027-01-02"))
+    assert outside["calendars"]["XSHG"] == {
+        "status": "unavailable",
+        "sessions": [],
+        "reason": "calendar_unavailable",
+    }
+
+
 @pytest.mark.parametrize("symbol", ["AAPL", "MSFT", "600000", "000001"])
 def test_raw_synthetic_fixture_bundle_pins_actual_sessions_and_action_evidence(
     tmp_path, symbol

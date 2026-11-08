@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from packages.research_runtime.process_contracts import ProcessError, digest
 from packages.research_runtime.process_declarations_v2 import (
@@ -147,6 +147,13 @@ class NumericExtraction(Closed):
     protected_frame_complete: Literal[True]
     producer_quiesced: Literal[True]
 
+    @field_validator("protected_frame_complete", "producer_quiesced", mode="before")
+    @classmethod
+    def literal_output_flags(cls, value):
+        if value is not True:
+            raise ValueError("Numeric extraction requires literal true flags")
+        return value
+
 
 class NumericReportExtraction(NumericExtraction):
     schema_version: Literal["mineagent.numeric-process-extraction.v3"]
@@ -187,6 +194,13 @@ class NumericStop(Closed):
     kernel_identity_absent: Literal[True]
     observed_at: datetime
     deadline_bound_met: bool
+
+    @field_validator("confirmed_absent", "kernel_identity_absent", mode="before")
+    @classmethod
+    def literal_stop_flags(cls, value):
+        if value is not True:
+            raise ValueError("Numeric stop requires literal true flags")
+        return value
 
     @model_validator(mode="after")
     def aware_observation(self):

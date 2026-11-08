@@ -114,3 +114,48 @@ def test_inventory_file_count_and_deadline_are_bounded(tmp_path):
         inventory(tmp_path, owner, maximum=0)
     with pytest.raises(DomainError):
         check_deadline(time.monotonic() - 1)
+
+
+@pytest.mark.parametrize(
+    ("search", "expected"),
+    [
+        (r"alpha\beta", r"%alpha\\beta%"),
+        ("alpha\\", "%alpha\\\\%"),
+        (r"alpha\%beta", r"%alpha\\\%beta%"),
+        (r"alpha\_beta", r"%alpha\\\_beta%"),
+        ("alpha%_beta", r"%alpha\%\_beta%"),
+    ],
+)
+def test_factor_search_preserves_literal_escape_and_wildcard_characters(
+    search, expected
+):
+    from sqlalchemy.dialects import postgresql
+
+    from backend.app.factor_services import list_factors
+
+    class Session:
+        def __init__(self):
+            self.queries = []
+            self.committed = False
+
+        def scalar(self, query):
+            self.queries.append(query)
+            return 0
+
+        def scalars(self, query):
+            self.queries.append(query)
+            return []
+
+        def commit(self):
+            self.committed = True
+
+    session = Session()
+    assert list_factors(session, uuid4(), search=search) == {"data": [], "count": 0}
+    assert session.committed
+    # Check both the total and page SQL. Backslashes must remain literal even
+    # immediately before a wildcard or the enclosing substring wildcard.
+    assert len(session.queries) == 2
+    for query in session.queries:
+        compiled = query.compile(dialect=postgresql.dialect())
+        assert compiled.params["name_1"] == expected
+        assert "ILIKE" in str(compiled)

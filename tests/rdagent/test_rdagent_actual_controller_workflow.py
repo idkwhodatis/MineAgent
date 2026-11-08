@@ -109,7 +109,7 @@ def test_controller_gate_requires_complete_contract_and_persistence_inventory():
     )
     assert "tests/structured tests/structured_factor_strategy" in workflow
     assert "tests/openevolve/test_validation_cost_sql.py" in workflow
-    assert "assert len(cases) == 5796" in workflow
+    assert "assert len(cases) == 5820" in workflow
     assert "var/numeric-proof/contracts-outcomes.xml" in workflow
     for path in (
         "runtimes/research_supervisor/daemon_top.py",

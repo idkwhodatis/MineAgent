@@ -147,19 +147,19 @@ function SnapshotContent({ dataset }: { dataset: DatasetPublic }) {
   const compatibility = asRecord(dataset.manifest.evaluation_compatibility);
   const refresh = useDataAction(async () => {
     if (!user.data) return;
+    const key = dataSubmissionKey(user.data.id, `refresh:${dataset.id}`, {
+      dataset_id: dataset.id,
+    });
     const result = (
       await sdk.refreshDataSnapshot({
         path: { dataset_id: dataset.id },
         headers: {
-          "Idempotency-Key": dataSubmissionKey(
-            user.data.id,
-            `refresh:${dataset.id}`,
-            { dataset_id: dataset.id },
-          ),
+          "Idempotency-Key": key,
         },
       })
     ).data;
-    clearDataSubmission(user.data.id, `refresh:${dataset.id}`);
+    clearDataSubmission(user.data.id, `refresh:${dataset.id}`, key);
+    if (!refresh.isCurrent()) return;
     await navigate({
       to: "/imports/$importId",
       params: { importId: result.id },
@@ -168,17 +168,19 @@ function SnapshotContent({ dataset }: { dataset: DatasetPublic }) {
   const repair = useDataAction(async () => {
     if (!user.data) return;
     const scope = `yahoo-repair:${dataset.id}`;
+    const key = dataSubmissionKey(user.data.id, scope, {
+      dataset_id: dataset.id,
+    });
     const result = (
       await sdk.repairYahooSnapshot({
         path: { dataset_id: dataset.id },
         headers: {
-          "Idempotency-Key": dataSubmissionKey(user.data.id, scope, {
-            dataset_id: dataset.id,
-          }),
+          "Idempotency-Key": key,
         },
       })
     ).data;
-    clearDataSubmission(user.data.id, scope);
+    clearDataSubmission(user.data.id, scope, key);
+    if (!repair.isCurrent()) return;
     await navigate({
       to: "/imports/$importId",
       params: { importId: result.id },

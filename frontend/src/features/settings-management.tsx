@@ -85,6 +85,7 @@ function ProfileEditor({ user }: { user: UserPublic }) {
       <label>
         Display name
         <Input
+          disabled={action.pending}
           maxLength={255}
           value={name}
           onChange={(e) => {
@@ -139,6 +140,7 @@ function DefaultsEditor({
     <label key={key}>
       {title}
       <Input
+        disabled={action.pending}
         type="number"
         min={min}
         max={max}
@@ -161,6 +163,7 @@ function DefaultsEditor({
         <label>
           Default model profile
           <select
+            disabled={action.pending}
             value={draft.model_profile_id}
             onChange={(e) => {
               setDraft({ ...draft, model_profile_id: e.target.value });
@@ -225,6 +228,7 @@ function QuotaEditor({ id, initial }: { id: string; initial: QuotaPublic }) {
       <label>
         Active run quota
         <Input
+          disabled={action.pending}
           type="number"
           min={0}
           max={initial.deployment_active_runs}
@@ -235,6 +239,7 @@ function QuotaEditor({ id, initial }: { id: string; initial: QuotaPublic }) {
       <label>
         Active import quota
         <Input
+          disabled={action.pending}
           type="number"
           min={0}
           max={initial.deployment_active_imports}
@@ -297,6 +302,7 @@ function ManagedEditor({ target }: { target: UserPublic }) {
       <label>
         Account display name
         <Input
+          disabled={action.pending}
           value={name}
           maxLength={255}
           onChange={(e) => setName(e.target.value)}
@@ -304,6 +310,7 @@ function ManagedEditor({ target }: { target: UserPublic }) {
       </label>
       <label className="flex gap-2">
         <input
+          disabled={action.pending}
           type="checkbox"
           checked={active}
           onChange={(e) => setActive(e.target.checked)}
@@ -312,6 +319,7 @@ function ManagedEditor({ target }: { target: UserPublic }) {
       </label>
       <label className="flex gap-2">
         <input
+          disabled={action.pending}
           type="checkbox"
           checked={admin}
           onChange={(e) => setAdmin(e.target.checked)}
@@ -414,6 +422,7 @@ function CreateUser({ done }: { done: () => void }) {
       <label>
         New account email
         <Input
+          disabled={action.pending}
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -422,6 +431,7 @@ function CreateUser({ done }: { done: () => void }) {
       <label>
         New account display name
         <Input
+          disabled={action.pending}
           maxLength={255}
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -430,6 +440,7 @@ function CreateUser({ done }: { done: () => void }) {
       <label>
         Initial account password
         <Input
+          disabled={action.pending}
           type="password"
           autoComplete="new-password"
           minLength={12}

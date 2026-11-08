@@ -105,8 +105,23 @@ export function dataSubmissionKey(
   sessionStorage.setItem(storageKey, JSON.stringify({ key, fingerprint }));
   return key;
 }
-export function clearDataSubmission(owner: string, operation: string) {
-  sessionStorage.removeItem(`tradegrad.data-submission.${owner}.${operation}`);
+// Delayed responses may only clear their own retry identity. Another mounted
+// visit can already have saved a newer submission for the same operation.
+export function clearDataSubmission(
+  owner: string,
+  operation: string,
+  completedKey: string,
+): boolean {
+  const storageKey = `tradegrad.data-submission.${owner}.${operation}`;
+  try {
+    const current = JSON.parse(sessionStorage.getItem(storageKey) || "null");
+    if (current?.key !== completedKey) return false;
+    sessionStorage.removeItem(storageKey);
+    return true;
+  } catch {
+    // Storage cleanup failure cannot turn an acknowledged job into a failure.
+    return false;
+  }
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {

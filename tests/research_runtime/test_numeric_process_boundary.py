@@ -482,3 +482,29 @@ def test_overdue_observation_is_containment_not_timely_result(tmp_path):
         validate_numeric_journal(launch, identity, containment)[2].deadline_bound_met
         is False
     )
+
+
+@pytest.mark.parametrize("value", [1, 1.0, False, 0, "true"])
+@pytest.mark.parametrize(
+    "kind,flag",
+    [
+        ("stop", "confirmed_absent"),
+        ("stop", "kernel_identity_absent"),
+        ("extraction", "protected_frame_complete"),
+        ("extraction", "producer_quiesced"),
+    ],
+)
+def test_numeric_proof_flags_require_literal_true(tmp_path, kind, flag, value):
+    _, launch, identity, stop, extraction, _, _ = journal(tmp_path)
+    record = stop if kind == "stop" else extraction
+    payload = record.model_dump(mode="json") | {flag: value}
+    with pytest.raises(ValueError, match="literal true"):
+        type(record).model_validate_json(canonical(payload))
+    forged = record.model_copy(update={flag: value})
+    with pytest.raises(ValueError, match="literal true"):
+        validate_numeric_journal(
+            launch,
+            identity,
+            forged if kind == "stop" else stop,
+            forged if kind == "extraction" else extraction,
+        )

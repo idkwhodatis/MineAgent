@@ -549,3 +549,27 @@ def test_report_capability_refuses_other_known_revision_triple(
     )
     with pytest.raises(ProcessError, match="numeric_report_schema_unsupported"):
         require_report_capability(session)
+
+
+@pytest.mark.parametrize("flag", ["protected_frame_complete", "producer_quiesced"])
+@pytest.mark.parametrize("value", [1, 1.0])
+def test_report_extraction_inherits_literal_proof_flags(tmp_path, flag, value):
+    from packages.research_runtime.numeric_process_journal import (
+        parse_numeric_extraction,
+    )
+    from tests.research_runtime.test_numeric_process_boundary import journal
+
+    _, _, _, _, extraction, _, _ = journal(tmp_path, "factor_normalizer")
+    payload = extraction.model_dump(mode="json")
+    payload.update(
+        schema_version="mineagent.numeric-process-extraction.v3",
+        protocol="MANU2-report-v1",
+        report_basename="rows.json",
+        report_sha256="b" * 64,
+        report_size_bytes=10,
+        input_manifest_sha256="a" * 64,
+        listings_sha256="a" * 64,
+    )
+    payload[flag] = value
+    with pytest.raises(ValueError, match="literal true"):
+        parse_numeric_extraction(payload)

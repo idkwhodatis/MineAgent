@@ -137,19 +137,21 @@ export function UploadDatasetPage() {
       .map((value) => value.toString(16).padStart(2, "0"))
       .join("");
     const body = exactMapping;
+    const key = dataSubmissionKey(user.data.id, "upload", {
+      mapping: body,
+      sha,
+      format: file.name.split(".").at(-1)?.toLowerCase(),
+    });
     const result = (
       await sdk.uploadDataFile({
         body: { file, mapping: JSON.stringify(body) },
         headers: {
-          "Idempotency-Key": dataSubmissionKey(user.data.id, "upload", {
-            mapping: body,
-            sha,
-            format: file.name.split(".").at(-1)?.toLowerCase(),
-          }),
+          "Idempotency-Key": key,
         },
       })
     ).data;
-    clearDataSubmission(user.data.id, "upload");
+    clearDataSubmission(user.data.id, "upload", key);
+    if (!upload.isCurrent()) return;
     await navigate({
       to: "/imports/$importId",
       params: { importId: result.id },

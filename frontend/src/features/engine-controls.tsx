@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ErrorState } from "@/components/common";
 import {
   cancelEngineRun,
@@ -17,18 +17,26 @@ export function EngineControls({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [receipt, setReceipt] = useState<EngineControlReceipt | null>(null);
+  const lock = useRef(false);
   async function cancel() {
-    if (busy || !run.actions.cancel) return;
+    if (lock.current || !run.actions.cancel) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
       setReceipt(await cancelEngineRun(run.id));
-      await reload();
     } catch (failure) {
       setError(failure);
-      await reload();
     } finally {
-      setBusy(false);
+      try {
+        await reload();
+      } catch (failure) {
+        // Preserve a lost cancellation response even if reconciliation also fails.
+        setError((previous: unknown) => previous ?? failure);
+      } finally {
+        lock.current = false;
+        setBusy(false);
+      }
     }
   }
   return (

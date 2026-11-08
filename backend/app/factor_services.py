@@ -825,7 +825,10 @@ def list_factors(
     if search:
         query = query.where(
             Factor.name.ilike(
-                "%" + search.replace("%", "\\%").replace("_", "\\_") + "%", escape="\\"
+                "%"
+                + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                + "%",
+                escape="\\",
             )
         )
     if bookmarked is not None:

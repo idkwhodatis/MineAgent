@@ -36,7 +36,7 @@ jobs:
           python - <<'PY'
           from xml.etree import ElementTree as ET
           cases = list(ET.parse('qlib-contracts.xml').getroot().iter('testcase'))
-          assert len(cases) == 260
+          assert len(cases) == 280
           assert sum(
               case.get('classname') == 'tests.qlib.test_configured_analysis_workflow'
               and case.get('name') == 'test_shared_top_and_rd_identity_are_required_before_expensive_work'

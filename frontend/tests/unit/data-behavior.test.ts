@@ -82,7 +82,7 @@ describe("owner-scoped import idempotency", () => {
   });
   it("clears only after acknowledgement, so an intentional new import can fetch revisions", () => {
     const key = dataSubmissionKey("one", "import", body);
-    clearDataSubmission("one", "import");
+    clearDataSubmission("one", "import", key);
     expect(dataSubmissionKey("one", "import", body)).not.toBe(key);
   });
 });
@@ -153,5 +153,25 @@ describe("bounded user-supplied universe evidence", () => {
         "有日期的历史记录",
       ),
     ).toBeNull();
+  });
+});
+
+describe("delayed data submission cleanup", () => {
+  it("keeps a newer upload retry identity when an older upload completes", () => {
+    const first = dataSubmissionKey("owner", "upload", { sha: "old" });
+    const newer = dataSubmissionKey("owner", "upload", { sha: "new" });
+    expect(clearDataSubmission("owner", "upload", first)).toBe(false);
+    expect(dataSubmissionKey("owner", "upload", { sha: "new" })).toBe(newer);
+    expect(clearDataSubmission("owner", "upload", newer)).toBe(true);
+    expect(dataSubmissionKey("owner", "upload", { sha: "new" })).not.toBe(
+      newer,
+    );
+  });
+  it("does not turn accepted jobs into failures when cleanup storage is unavailable", () => {
+    const key = dataSubmissionKey("owner", "upload", { sha: "old" });
+    vi.spyOn(sessionStorage, "removeItem").mockImplementation(() => {
+      throw new Error("Storage unavailable");
+    });
+    expect(clearDataSubmission("owner", "upload", key)).toBe(false);
   });
 });

@@ -23,7 +23,11 @@ def session_calendar(listing: Listing, start: date, end: date):
             raise CalendarUnavailable(
                 "Requested interval exceeds the published calendar"
             )
-        padded_start, padded_end = start - timedelta(days=7), end + timedelta(days=7)
+        # NextOpen can fall well beyond a week during mainland exchange
+        # holidays (for example 2024-02-08 -> 2024-02-19). Keep a bounded
+        # month of forward schedule, clipped to the published calendar below.
+        # This is calendar evidence only, never a weekday/price-row fallback.
+        padded_start, padded_end = start - timedelta(days=7), end + timedelta(days=31)
         if lower is not None:
             padded_start = max(padded_start, lower.date())
         if upper is not None:

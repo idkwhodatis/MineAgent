@@ -133,3 +133,26 @@ def test_result_input_substitution_rejected(field):
         validate_analysis_journal(
             launch, identity, stop, extraction.model_copy(update={field: "f" * 64})
         )
+
+
+@pytest.mark.parametrize("value", [1, 1.0, False, 0, "true"])
+@pytest.mark.parametrize(
+    "index,flag",
+    [
+        (2, "confirmed_absent"),
+        (2, "kernel_identity_absent"),
+        (3, "protected_frame_complete"),
+        (3, "producer_quiesced"),
+    ],
+)
+def test_analysis_proof_flags_require_literal_true(index, flag, value):
+    from packages.research_runtime.process_contracts import canonical
+
+    chain = list(records())
+    record = chain[index]
+    payload = record.model_dump(mode="json") | {flag: value}
+    with pytest.raises(ValueError, match="literal true"):
+        type(record).model_validate_json(canonical(payload))
+    chain[index] = record.model_copy(update={flag: value})
+    with pytest.raises(ValueError, match="literal true"):
+        validate_analysis_journal(*chain)

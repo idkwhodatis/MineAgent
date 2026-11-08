@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from packages.research_runtime.numeric_process_journal import (
     NumericIdentity,
@@ -127,6 +127,13 @@ class AnalysisExtraction(Closed):
     protocol_sha256: SHA
     protected_frame_complete: Literal[True]
     producer_quiesced: Literal[True]
+
+    @field_validator("protected_frame_complete", "producer_quiesced", mode="before")
+    @classmethod
+    def literal_output_flags(cls, value):
+        if value is not True:
+            raise ValueError("Analysis extraction requires literal true flags")
+        return value
 
 
 def validate_analysis_journal(launch, identity, stop, extraction=None):

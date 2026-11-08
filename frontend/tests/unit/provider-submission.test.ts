@@ -45,7 +45,7 @@ it("acknowledged or definitely rejected submissions can adopt the next revision"
   const first = providerSubmission("one", "probe", {
     expected_connection_revision: 0,
   });
-  clearProviderSubmission("one", "probe");
+  clearProviderSubmission("one", "probe", first.key);
   const next = providerSubmission("one", "probe", {
     expected_connection_revision: 1,
   });
@@ -68,7 +68,7 @@ it("acknowledged or definitely rejected submissions can adopt the next revision"
 it("recognizes a matching pending recovery even after a connection revision changes", () => {
   const input = { symbol: "AAPL", expected_connection_revision: 1 };
   expect(hasPendingProviderSubmission("one", "probe", input)).toBe(false);
-  providerSubmission("one", "probe", input);
+  const first = providerSubmission("one", "probe", input);
   expect(
     hasPendingProviderSubmission("one", "probe", {
       ...input,
@@ -78,6 +78,28 @@ it("recognizes a matching pending recovery even after a connection revision chan
   expect(
     hasPendingProviderSubmission("one", "probe", { ...input, symbol: "MSFT" }),
   ).toBe(false);
-  clearProviderSubmission("one", "probe");
+  clearProviderSubmission("one", "probe", first.key);
   expect(hasPendingProviderSubmission("one", "probe", input)).toBe(false);
 });
+
+it.each(["acknowledged", "rejected"])(
+  "a delayed %s response cannot erase a newer visit's retry key or frozen revision",
+  () => {
+    const first = providerSubmission("one", "import", {
+      symbol: "AAPL",
+      expected_connection_revision: 0,
+    });
+    const input = { symbol: "MSFT", expected_connection_revision: 1 };
+    const newer = providerSubmission("one", "import", input);
+    clearProviderSubmission("one", "import", first.key);
+    expect(hasPendingProviderSubmission("one", "import", input)).toBe(true);
+    expect(
+      providerSubmission("one", "import", {
+        ...input,
+        expected_connection_revision: 2,
+      }),
+    ).toEqual(newer);
+    clearProviderSubmission("one", "import", newer.key);
+    expect(hasPendingProviderSubmission("one", "import", input)).toBe(false);
+  },
+);
