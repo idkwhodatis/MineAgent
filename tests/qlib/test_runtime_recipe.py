@@ -142,7 +142,9 @@ def test_profile_verifier_rejects_same_name_modified_wheel(tmp_path):
         verify_profile(tmp_path, expected)
 
 
-def test_docker_build_and_workflow_keep_disabled_fresh_installed_only_scope():
+def test_docker_build_and_workflow_keep_disabled_fresh_installed_only_scope(
+    monkeypatch,
+):
     docker = (ROOT / "runtimes/qlib/Dockerfile").read_text()
     workflow = (ROOT / ".github/workflows/mineagent-qlib-runtime.yml").read_text()
     assert "permissions:\n  contents: read\n" in workflow
@@ -169,6 +171,58 @@ def test_docker_build_and_workflow_keep_disabled_fresh_installed_only_scope():
     assert '"-I", "-m", "runtimes.qlib.probe_container"' in docker
     assert "COPY packages/" not in docker
     assert "pip check && /opt/runner/bin/pip check" in docker
+
+    # The shared-top workflow regression adds one named case to the existing
+    # 259-case selector. Exercise the actual barrier, not just its count literal.
+    import textwrap
+    from xml.etree import ElementTree as ET
+
+    assert "python -m pytest tests/qlib -q --junitxml=qlib-contracts.xml" in workflow
+    assert "assert len(cases) == 260" in workflow
+    verifier = textwrap.dedent(
+        workflow.split("python - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
+    )
+    suite = ET.Element("testsuite")
+    for index in range(259):
+        ET.SubElement(suite, "testcase", name=f"test_existing_{index}")
+    added = ET.SubElement(
+        suite,
+        "testcase",
+        classname="tests.qlib.test_configured_analysis_workflow",
+        name="test_shared_top_and_rd_identity_are_required_before_expensive_work",
+    )
+    monkeypatch.setattr(ET, "parse", lambda path: ET.ElementTree(suite))
+
+    def verify():
+        exec(verifier, {})  # noqa: S102 -- checked-in fixed gate assertions
+
+    verify()
+    suite.remove(added)
+    with pytest.raises(AssertionError):
+        verify()
+    suite.append(added)
+    extra = ET.SubElement(suite, "testcase", name="test_extra")
+    with pytest.raises(AssertionError):
+        verify()
+    suite.remove(extra)
+    original_case = suite[0]
+    suite.remove(original_case)
+    duplicate = ET.SubElement(suite, "testcase", **added.attrib)
+    with pytest.raises(AssertionError):
+        verify()
+    suite.remove(duplicate)
+    suite.insert(0, original_case)
+    for field in ("classname", "name"):
+        original = added.get(field)
+        added.set(field, "different_case")
+        with pytest.raises(AssertionError):
+            verify()
+        added.set(field, original)
+    for tag in ("failure", "error", "skipped"):
+        outcome = ET.SubElement(added, tag)
+        with pytest.raises(AssertionError):
+            verify()
+        added.remove(outcome)
 
 
 def test_locks_are_exact_hashed_and_runner_pandas_is_compatible():
