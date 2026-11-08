@@ -26,12 +26,28 @@ DTO inputs and differential assertions stay unchanged. PostgreSQL statement
 timeout remains 10 seconds. Database collation metadata comes from `pg_catalog.pg_database.datcollate`, not a removed configuration
 setting.
 
+The row corpus uses the real workflow DTO serializers, including the three
+required workflow-context defaults. A separate full-schema control requires
+both legacy and typed workflow OE values to pass the installed contract before
+and after the candidate; untyped and missing-context-field variants must fail.
+The nonconstant benchmark retains all 64 fetches and checksum 4096 in each phase.
+Its prior baseline rejection of half the rows was invalid workflow fixture input,
+not evidence of a candidate speedup.
+
+The queued-row probe submits both legacy v1 and provider v2 declarations through
+the real API. Before installing the candidate it requires the provider queued
+validator to reject v1 and accept v2, then requires identical outcomes after.
+Provider settings are metadata-only synthetic declarations using the existing
+fixture image pins and an unused loopback endpoint. No worker, SDK, model call or
+image is launched; this proves neither provider execution nor native timing.
+
 ## Exact inventory and evidence
 
 The committed `tests/structured/sql_candidate_inventory.json` records all named
-cases: 63 offline contracts, 11 key-set PostgreSQL cases including the enabled
-component benchmark, and 33 row cases consisting of one pristine catalog export
-followed by the 32 independent minimal/expanded probes. CI checks both collection
+cases: 69 offline contracts, 11 key-set PostgreSQL cases including the enabled
+component benchmark, and 34 row cases consisting of one pristine catalog export
+followed by the 32 independent minimal/expanded probes and an installed-contract
+baseline control. CI checks both collection
 and JUnit identities, rejects duplicates or missing cases, and permits no
 failures, errors or skips. Once source contracts and owned PostgreSQL startup
 succeed, the row/catalog step can run even if the key-set step fails, provided

@@ -1,4 +1,4 @@
-"""Offline regression of driver rejection and numeric evidence export only."""
+"""Offline candidate fixture, driver-rejection and numeric-evidence regressions."""
 
 import copy
 import json
@@ -452,3 +452,179 @@ def test_pg18_benchmark_reads_database_collation_without_changing_measurement_qu
         and node.args[0].id == "BENCHMARK_ENVIRONMENT_SQL"
     ]
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("field", ["schema_version", "stage_kind", "qualification"])
+def test_row_workflow_context_serialization_supplies_frozen_required_defaults(
+    field, request
+):
+    request.config.addinivalue_line("markers", "postgres: requires PostgreSQL")
+    from tests.integration.test_row_validation_invariants import row_corpus
+    from tests.integration.test_schema_keyset_candidate import frozen_rule
+    from tests.openevolve.test_workflow_run import config as raw_config
+
+    rule = frozen_rule(
+        "031_workflow_structured_stage.py", "mineagent_oe_workflow_shape", "config"
+    )["$defs"]["WorkflowOEContext"]
+    assert field in rule["required"]
+    assert field not in raw_config()["workflow_context"]
+    config, submission = row_corpus()[2][1]
+    expected = rule["properties"][field]["const"]
+    assert config["workflow_context"][field] == expected
+    assert submission["workflow_context"][field] == expected
+
+
+def test_row_corpus_preserves_typed_producer_values_and_fresh_commitments(
+    monkeypatch, request
+):
+    request.config.addinivalue_line("markers", "postgres: requires PostgreSQL")
+    from hashlib import sha256
+
+    from backend.app.oe_workflow_submission_schemas import (
+        WorkflowStructuredSearchRequest,
+    )
+    from packages.factors.contracts import canonical_bytes
+    from packages.openevolve_structured.workflow_run import WorkflowStructuredRunConfig
+    from tests.integration.test_row_validation_invariants import row_corpus, spec_values
+    from tests.openevolve import test_structured_persisted_identity as producer
+    from tests.openevolve import test_workflow_run as workflow
+
+    graph, raw = producer.graph(), workflow.config()
+    original = copy.deepcopy(raw)
+    monkeypatch.setattr(producer, "graph", lambda: graph)
+    monkeypatch.setattr(workflow, "config", lambda: raw)
+    oe = row_corpus()[2]
+    assert oe[0] == (graph[2].config, graph[2].request)
+    expected = WorkflowStructuredRunConfig.model_validate_json(canonical_bytes(raw))
+    assert oe[1][0] == expected.model_dump(mode="json")
+    assert raw == original
+    assert (
+        WorkflowStructuredSearchRequest.model_validate_json(
+            canonical_bytes(oe[1][1])
+        ).model_dump(mode="json")
+        == oe[1][1]
+    )
+    for index in range(8):
+        config, submission = copy.deepcopy(oe[index % 2])
+        config["budget"]["cost_microunits"] += index
+        values = spec_values(config, submission)
+        for kind, data in (("config", config), ("request", submission)):
+            assert (
+                values[kind]
+                == values[kind + "_canonical"]
+                == canonical_bytes(data).decode()
+            )
+            assert values[kind + "_sha256"] == sha256(canonical_bytes(data)).hexdigest()
+    assert oe[1][0]["search"]["domain"]["seed_program"]["maximum_weight"] == 0.5
+
+
+def test_queued_provider_fixture_uses_typed_protocol_and_metadata_only_setup(
+    monkeypatch, request
+):
+    import socket
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    request.config.addinivalue_line("markers", "postgres: requires PostgreSQL")
+    monkeypatch.syspath_prepend(str(Path("tests/integration").resolve()))
+    from backend.app import row_validation_invariant_sql as candidate
+    from backend.app.rdagent_provider_preflight import provider_budget_floor
+    from backend.app.rdagent_provider_profile import (
+        resolve_provider_declaration,
+        resolve_provider_runtime,
+    )
+    from backend.app.rdagent_provider_submission_contracts import (
+        RDProviderSubmissionRequest,
+    )
+    from tests.integration.test_row_validation_invariants import queued_provider_request
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Metadata-only fixture must not start a process or connect")
+
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    owner_id = uuid4()
+    settings = SimpleNamespace(rdagent_research_enabled=True)
+    value = queued_provider_request(
+        SimpleNamespace(id=uuid4()),
+        {"acknowledged_unverified": True},
+        owner_id,
+        settings,
+        monkeypatch,
+    )
+    assert type(value) is RDProviderSubmissionRequest
+    assert value.schema_version == "mineagent.rdagent-provider-submission.v1"
+    assert (
+        value.research_declaration().schema_version == "mineagent.rdagent-submission.v1"
+    )
+    operator, binding = resolve_provider_declaration(
+        settings, owner_id, value.model_profile_id
+    )
+    assert operator.connection.base_url == "http://127.0.0.1:9/v1"
+    assert binding.synthetic is True and binding.pricing.status == "operator_declared"
+    assert value.budget == provider_budget_floor(binding)
+    assert value.budget.calls == 32 and binding.request_deadline_ms == 8000
+    assert settings.rdagent_provider_python == Path(sys.executable)
+    assert (
+        resolve_provider_runtime(settings).runtime.orchestrator_image
+        == "sha256:" + "1" * 64
+    )
+    # The original frozen queued guard, not a candidate-added restriction.
+    original = candidate.original("mineagent_rd_provider_queued_config")
+    for guard in (
+        "ELSE mineagent_rd_provider_config(v) END) IS NOT TRUE",
+        "OR price->>'status' IS DISTINCT FROM 'operator_declared'",
+        "THEN RAISE EXCEPTION 'Configured provider declaration differs'",
+    ):
+        assert guard in original
+
+
+def test_row_probes_keep_baseline_controls_and_exact_benchmark_counts():
+    import ast
+
+    path = Path("tests/integration/test_row_validation_invariants.py")
+    source = path.read_text()
+    functions = {
+        node.name: node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+    }
+    benchmark = ast.get_source_segment(
+        source, functions["test_component_nonconstant_read_savings_and_write_overhead"]
+    )
+    assert 'for phase in ("before", "after"):' in benchmark
+    assert "for sample in range(3):" in benchmark and "for i in range(8):" in benchmark
+    assert "assert count == 64 and checksum == 4096" in benchmark
+    assert "CROSS JOIN generate_series(1,8)" in benchmark
+    for predicate in (
+        "mineagent_oes_contract('config',s.config)",
+        "mineagent_oes_contract('request',s.request)",
+        "mineagent_structured_raw_commitment(s.config_canonical,s.config,s.config_sha256,1048576)",
+        "mineagent_structured_raw_commitment(s.request_canonical,s.request,s.request_sha256,65536)",
+    ):
+        assert predicate + " IS TRUE" in benchmark
+    queued = ast.get_source_segment(
+        source,
+        functions["test_full_schema_scan_admitted_queued_row_and_state_only_dml"],
+    )
+    assert queued.index("before = {") < queued.index("m.render_candidate_sql()")
+    assert (
+        '"mineagent.factor-research.v1"' in queued
+        and '"mineagent.factor-research.v2"' in queued
+    )
+    assert (
+        '"P0001",' in queued and '"Configured provider declaration differs"' in queued
+    )
+    assert '("ok", None)' in queued and "== before" in queued
+    baseline = ast.get_source_segment(
+        source,
+        functions[
+            "test_full_schema_workflow_corpus_matches_installed_contract_before_candidate"
+        ],
+    )
+    assert 'for phase in ("before", "after"):' in baseline
+    assert 'if phase == "after":' in baseline
+    assert "is True" in baseline and "is False" in baseline
+    assert 'del bad["workflow_context"][field]' in baseline

@@ -62,7 +62,13 @@
     "tests/structured/test_sql_candidate_harness.py::test_real_half_weight_uses_installed_030_not_obsolete_028[candidate-StructuredProgram-program]",
     "tests/structured/test_sql_candidate_harness.py::test_legacy_bootstrap_uses_031_spec_selected_rule_with_real_half_weight",
     "tests/structured/test_sql_candidate_harness.py::test_keyset_rule_selection_preserves_real_producer_dto_projection",
-    "tests/structured/test_sql_candidate_harness.py::test_pg18_benchmark_reads_database_collation_without_changing_measurement_query"
+    "tests/structured/test_sql_candidate_harness.py::test_pg18_benchmark_reads_database_collation_without_changing_measurement_query",
+    "tests/structured/test_sql_candidate_harness.py::test_row_workflow_context_serialization_supplies_frozen_required_defaults[schema_version]",
+    "tests/structured/test_sql_candidate_harness.py::test_row_workflow_context_serialization_supplies_frozen_required_defaults[stage_kind]",
+    "tests/structured/test_sql_candidate_harness.py::test_row_workflow_context_serialization_supplies_frozen_required_defaults[qualification]",
+    "tests/structured/test_sql_candidate_harness.py::test_row_corpus_preserves_typed_producer_values_and_fresh_commitments",
+    "tests/structured/test_sql_candidate_harness.py::test_queued_provider_fixture_uses_typed_protocol_and_metadata_only_setup",
+    "tests/structured/test_sql_candidate_harness.py::test_row_probes_keep_baseline_controls_and_exact_benchmark_counts"
   ],
   "keyset": [
     "tests/integration/test_schema_keyset_candidate.py::test_old_complete_config_corpus",
@@ -87,6 +93,7 @@
     "tests/integration/test_row_validation_invariants.py::test_full_schema_preflight_failure_is_atomic[helper]",
     "tests/integration/test_row_validation_invariants.py::test_full_schema_preflight_failure_is_atomic[default]",
     "tests/integration/test_row_validation_invariants.py::test_full_schema_pending_root_prefix_and_savepoint",
+    "tests/integration/test_row_validation_invariants.py::test_full_schema_workflow_corpus_matches_installed_contract_before_candidate",
     "tests/integration/test_row_validation_invariants.py::test_component_local_corpus_insert_update_copy_and_savepoint",
     "tests/integration/test_row_validation_invariants.py::test_component_stale_validated_helper_rejects_historical_row_atomically[0]",
     "tests/integration/test_row_validation_invariants.py::test_component_stale_validated_helper_rejects_historical_row_atomically[1]",

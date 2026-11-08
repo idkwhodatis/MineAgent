@@ -262,6 +262,10 @@ def component_db(postgres_engine):
 
 
 def row_corpus():
+    from backend.app.oe_workflow_submission_schemas import (
+        WorkflowStructuredSearchRequest,
+    )
+    from packages.openevolve_structured.workflow_run import WorkflowStructuredRunConfig
     from packages.rdagent_provider.contracts import (
         RDProviderChatRequest,
         RDProviderEmbeddingRequest,
@@ -294,14 +298,68 @@ def row_corpus():
     ).model_dump(mode="json")
     _, _, spec, *_ = graph()
     oe = [(spec.config, spec.request)]
-    cfg = oe_workflow()
+    # The producer fixture is pre-validation input: the typed serializer adds
+    # the three required WorkflowOEContext discriminator/qualification fields.
+    cfg = WorkflowStructuredRunConfig.model_validate_json(
+        canonical_bytes(oe_workflow())
+    ).model_dump(mode="json")
     request = copy.deepcopy(spec.request)
     request["schema_version"] = "mineagent.oe-structured-workflow-submission.v1"
     request["profile"] = "workflow_fixed_factor_operator_closed_program_v1"
     request["snapshot_id"] = cfg["fixed_inputs"]["snapshot_id"]
     request["workflow_context"] = cfg["workflow_context"]
+    request = WorkflowStructuredSearchRequest.model_validate_json(
+        canonical_bytes(request)
+    ).model_dump(mode="json")
     oe.append((cfg, request))
     return rd, [chat, embedding], oe
+
+
+def test_full_schema_workflow_corpus_matches_installed_contract_before_candidate(
+    migrated_engine,
+):
+    from tests.openevolve.test_workflow_run import config as raw_workflow_config
+
+    _, _, oe = row_corpus()
+    with migrated_engine.connect() as c, c.begin():
+        for phase in ("before", "after"):
+            if phase == "after":
+                execute_sql(c, m.render_candidate_sql())
+            for config, request in oe:
+                for kind, value in (("config", config), ("request", request)):
+                    assert (
+                        c.execute(
+                            text(
+                                "SELECT mineagent_oes_contract(:kind,CAST(:value AS jsonb))"
+                            ),
+                            {"kind": kind, "value": json.dumps(value)},
+                        ).scalar_one()
+                        is True
+                    )
+            # The old untyped input is invalid under the unchanged031 delegate,
+            # independently of CHECK installation. Never admit it as a valid row.
+            assert (
+                c.execute(
+                    text(
+                        "SELECT mineagent_oes_contract('config',CAST(:value AS jsonb))"
+                    ),
+                    {"value": json.dumps(raw_workflow_config())},
+                ).scalar_one()
+                is False
+            )
+            for field in ("schema_version", "stage_kind", "qualification"):
+                bad = copy.deepcopy(oe[1][0])
+                del bad["workflow_context"][field]
+                assert (
+                    c.execute(
+                        text(
+                            "SELECT mineagent_oes_contract('config',CAST(:value AS jsonb))"
+                        ),
+                        {"value": json.dumps(bad)},
+                    ).scalar_one()
+                    is False
+                )
+        c.rollback()
 
 
 def insert_run(c, identifier, config, purpose="factor_research", engine="rdagent"):
@@ -617,13 +675,75 @@ def test_component_nonconstant_read_savings_and_write_overhead(component_db, cap
         )
 
 
+def queued_provider_request(dataset, policy, owner_id, settings, monkeypatch):
+    """Metadata-only v2 admission declaration; no SDK, socket or worker runs."""
+    import sys
+    from pathlib import Path
+
+    from rd_submission_fixture import body, profile
+
+    from backend.app.rdagent_provider_preflight import provider_budget_floor
+    from backend.app.rdagent_provider_profile import RDProviderServerRuntimeProfile
+    from backend.app.rdagent_provider_submission_contracts import (
+        RDProviderSubmissionRequest,
+    )
+    from packages.rdagent_provider.operator_profiles import RDOperatorModelProfile
+
+    base = profile(actual_images=False)
+    operator = RDOperatorModelProfile(
+        connection={
+            "id": "row-queued-metadata",
+            "label": "Metadata-only admission fixture",
+            "model": "unused-chat",
+            "base_url": "http://127.0.0.1:9/v1",
+            "secret_env": "MINEAGENT_ROW_METADATA_TEST_SECRET",
+            "owner_ids": (owner_id,),
+            "temperature": 0,
+            "max_output_tokens": 4096,
+            "request_timeout_seconds": 8,
+            "max_request_bytes": 262144,
+            "max_response_bytes": 262144,
+            "synthetic": True,
+        },
+        embedding_model="unused-embedding",
+        embedding_dimensions=2,
+        pricing={
+            "chat_input_microusd_per_million": 100,
+            "chat_output_microusd_per_million": 100,
+            "embedding_microusd_per_million": 100,
+        },
+    )
+    monkeypatch.setenv(operator.connection.secret_env, "synthetic-unused-metadata")
+    settings.rdagent_provider_runtime_profile = RDProviderServerRuntimeProfile(
+        runtime=base.runtime,
+        qlib_installed_parent_image_id=base.qlib_installed_parent_image_id,
+    )
+    settings.rdagent_provider_profiles = (operator,)
+    settings.rdagent_synthetic_provider_enabled = True
+    # Admission checks only that this existing interpreter is executable.
+    # It is never invoked and is not represented as installed-SDK evidence.
+    settings.rdagent_provider_python = Path(sys.executable)
+    return RDProviderSubmissionRequest.model_validate(
+        {
+            **body(dataset, policy).model_dump(mode="json"),
+            "schema_version": "mineagent.rdagent-provider-submission.v1",
+            "model_profile_id": operator.connection.id,
+            "selected_steer_version_ids": [],
+            "budget": provider_budget_floor(
+                operator.public_binding(owner_id)
+            ).model_dump(mode="json"),
+        }
+    )
+
+
 def test_full_schema_scan_admitted_queued_row_and_state_only_dml(
-    api, migrated_engine, settings, owner
+    api, migrated_engine, settings, owner, monkeypatch
 ):
     """Actual historical queued declaration, full production triggers, no Docker.
 
-    This exercises a real v2 row plus its original durable submission/budget/
-    outbox graph. It is not a workflow-child/provider-operation/native fixture.
+    This exercises real API-admitted v1 and v2 rows with their original durable
+    submission/budget/outbox graphs. Only v2 is a provider queued declaration.
+    It is not a workflow-child/provider-operation/native fixture.
     """
     from uuid import UUID, uuid4
 
@@ -637,17 +757,46 @@ def test_full_schema_scan_admitted_queued_row_and_state_only_dml(
     )
     settings.rdagent_research_enabled = True
     settings.rdagent_runtime_profile = profile(actual_images=False)
-    receipt, _exact = submit(
-        api, login(api, owner), body(dataset, policy), key="rvi-historical-queued"
+    headers = login(api, owner)
+    legacy, _exact = submit(
+        api, headers, body(dataset, policy), key="rvi-legacy-queued"
     )
-    run_id = UUID(receipt["run_id"])
+    request = queued_provider_request(
+        dataset, policy, owner.user.id, settings, monkeypatch
+    )
+    receipt, _exact = submit(api, headers, request, key="rvi-provider-queued")
+    legacy_id, run_id = UUID(legacy["run_id"]), UUID(receipt["run_id"])
     with migrated_engine.connect() as c, c.begin():
         triggers = catalog(c)[2]
-        execute_sql(c, m.render_candidate_sql())
-        c.execute(
-            text("SELECT mineagent_rd_provider_queued_config(:id)"), {"id": run_id}
+        assert dict(
+            c.execute(
+                text(
+                    "SELECT id,config->>'schema_version' FROM research_runs WHERE id IN (:old,:new)"
+                ),
+                {"old": legacy_id, "new": run_id},
+            ).all()
+        ) == {
+            legacy_id: "mineagent.factor-research.v1",
+            run_id: "mineagent.factor-research.v2",
+        }
+        names = ("mineagent_rd_provider_queued_config", "mineagent_rd_provider_graph")
+        before = {
+            (name, rid): call_outcome(c, name, str(rid))
+            for name in names
+            for rid in (legacy_id, run_id)
+        }
+        assert before[names[0], legacy_id] == (
+            "P0001",
+            "Configured provider declaration differs",
         )
-        c.execute(text("SELECT mineagent_rd_provider_graph(:id)"), {"id": run_id})
+        assert before[names[0], run_id] == ("ok", None)
+        assert before[names[1], legacy_id] == before[names[1], run_id] == ("ok", None)
+        execute_sql(c, m.render_candidate_sql())
+        assert {
+            (name, rid): call_outcome(c, name, str(rid))
+            for name in names
+            for rid in (legacy_id, run_id)
+        } == before
         for _ in range(2):
             with c.begin_nested() as point:
                 c.execute(

@@ -212,8 +212,8 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
     manifest = json.loads(proof.MANIFEST.read_text())
     assert set(manifest) == {"source", "keyset", "rows"}
     assert len(proof.inventory("keyset")) == 11
-    assert len(proof.inventory("rows")) == 33
-    assert len(proof.inventory("source")) == 63
+    assert len(proof.inventory("rows")) == 34
+    assert len(proof.inventory("source")) == 69
     assert (
         "tests/integration/test_schema_keyset_candidate.py::test_opt_in_table_backed_workload_benchmark"
         in manifest["keyset"]
