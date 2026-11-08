@@ -369,8 +369,8 @@ CONTRACT_PINS = {
 }
 
 
-def frozen_rule(filename, name, kind=None):
-    """The exact selected installed grammar, not a current model renderer."""
+def frozen_function(filename, name):
+    """Read a function only from the SHA-pinned frozen migration literal."""
     path = Path(__file__).parents[2] / "backend/alembic/versions" / filename
     sql = next(
         ast.literal_eval(node.value)
@@ -379,7 +379,12 @@ def frozen_rule(filename, name, kind=None):
         and any(isinstance(t, ast.Name) and t.id == "UPGRADE_SQL" for t in node.targets)
     )
     assert hashlib.sha256(sql.encode()).hexdigest() == CONTRACT_PINS[filename]
-    body = function(sql, name)
+    return function(sql, name)
+
+
+def frozen_rule(filename, name, kind=None):
+    """The exact selected installed grammar, not a current model renderer."""
+    body = frozen_function(filename, name)
     prefix = (
         r"rule jsonb" if kind is None else r"WHEN '" + re.escape(kind) + r"' THEN rule"
     )
@@ -441,8 +446,9 @@ def workloads():
         combined_score=4.625,
         reason="eligible",
     )
-    # 030 replaced the installed config grammar, including positive weights <=1.
-    # Other retained v1 DTO kinds still use their identical frozen 028 grammar.
+    # 031 routes these retained v1 DTOs through the installed 030 shape helper.
+    # Its config/request/candidate weights are positive and <=1. The older 028
+    # rules incorrectly require >=1 and do not describe the installed grammar.
     for kind, value in (
         ("config", spec.config),
         ("request", spec.request),
@@ -456,10 +462,6 @@ def workloads():
                 "030_declared_upload_basket.py",
                 "mineagent_oes_contract_v030_shape",
                 kind,
-            )
-            if kind == "config"
-            else frozen_rule(
-                "028_oe_structured_search.py", "mineagent_oes_contract", kind
             ),
         )
     now = datetime(2026, 1, 1, tzinfo=UTC)
@@ -479,7 +481,7 @@ def workloads():
     yield (
         "oe_bootstrap",
         bootstrap.model_dump(mode="json"),
-        frozen_rule("028_oe_structured_search.py", "mineagent_oes_epoch_check"),
+        frozen_rule("031_workflow_structured_stage.py", "mineagent_oes_epoch_check"),
     )
     yield (
         "oe_workflow_bootstrap",
@@ -558,6 +560,14 @@ def function_counts(connection):
     }
 
 
+BENCHMARK_ENVIRONMENT_SQL = (
+    "SELECT version() AS version,d.datcollate AS lc_collate,"
+    "current_setting('server_encoding') AS encoding,"
+    "current_setting('track_functions') AS tracking "
+    "FROM pg_catalog.pg_database AS d WHERE d.datname=current_database()"
+)
+
+
 def test_opt_in_table_backed_workload_benchmark(validation_db, capsys):
     if os.environ.get("MINEAGENT_SQL_COST_BENCHMARK") != "1":
         pytest.skip("Explicit real PostgreSQL microbenchmark opt-in required")
@@ -567,11 +577,7 @@ def test_opt_in_table_backed_workload_benchmark(validation_db, capsys):
             "CREATE TEMP TABLE candidate_workloads (ordinal integer,value jsonb,rule jsonb,defs jsonb) ON COMMIT DROP"
         )
         environment = (
-            connection.exec_driver_sql(
-                "SELECT version() AS version,current_setting('lc_collate') AS lc_collate,current_setting('server_encoding') AS encoding,current_setting('track_functions') AS tracking"
-            )
-            .mappings()
-            .one()
+            connection.exec_driver_sql(BENCHMARK_ENVIRONMENT_SQL).mappings().one()
         )
         for label, value, rule in workloads():
             defs = rule.get("$defs", {})

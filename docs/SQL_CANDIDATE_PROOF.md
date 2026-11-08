@@ -19,19 +19,25 @@ runtime admission, process budget, or production validator changes.
   receipts, measurement matching and physical evidence obligations remain.
 
 The key-set harness binds JSON parameters instead of exposing JSON colons to
-SQLAlchemy text parsing, selects the installed 030 configuration grammar with
-positive weights at most one, and applies the frozen 027a input-rule projection
-that omits portable authoring. Real DTO inputs and differential assertions stay
-unchanged. PostgreSQL statement timeout remains 10 seconds.
+SQLAlchemy text parsing, selects the installed 030 configuration/request/candidate
+grammars and 031 legacy-bootstrap rule with positive weights at most one, and
+applies the frozen 027a input-rule projection that omits portable authoring. Real
+DTO inputs and differential assertions stay unchanged. PostgreSQL statement
+timeout remains 10 seconds. Database collation metadata comes from `pg_catalog.pg_database.datcollate`, not a removed configuration
+setting.
 
 ## Exact inventory and evidence
 
 The committed `tests/structured/sql_candidate_inventory.json` records all named
-cases: 56 offline contracts, 11 key-set PostgreSQL cases including the enabled
+cases: 63 offline contracts, 11 key-set PostgreSQL cases including the enabled
 component benchmark, and 33 row cases consisting of one pristine catalog export
 followed by the 32 independent minimal/expanded probes. CI checks both collection
 and JUnit identities, rejects duplicates or missing cases, and permits no
-failures, errors or skips. The minimal and expanded component benchmarks each export six fixed numeric
+failures, errors or skips. Once source contracts and owned PostgreSQL startup
+succeed, the row/catalog step can run even if the key-set step fails, provided
+the job is not cancelled. A failed key-set result still fails the job.
+
+The minimal and expanded component benchmarks each export six fixed numeric
 samples into separate JSON files in the dedicated proof directory. The exporter
 rejects unknown fields, nonfinite values and arbitrary text, caps each report at
 16 KiB, and never overwrites an existing report. Their uncaptured console

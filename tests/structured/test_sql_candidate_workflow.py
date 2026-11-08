@@ -213,7 +213,7 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
     assert set(manifest) == {"source", "keyset", "rows"}
     assert len(proof.inventory("keyset")) == 11
     assert len(proof.inventory("rows")) == 33
-    assert len(proof.inventory("source")) == 56
+    assert len(proof.inventory("source")) == 63
     assert (
         "tests/integration/test_schema_keyset_candidate.py::test_opt_in_table_backed_workload_benchmark"
         in manifest["keyset"]
@@ -252,3 +252,37 @@ def test_catalog_normalization_only_removes_documented_oids_and_generated_schema
         "files=(tests/integration/test_sql_candidate_catalog.py tests/integration/test_row_validation_invariants.py tests/integration/test_row_validation_content.py)"
         in source
     )
+
+
+def test_row_catalog_gate_survives_keyset_failure_only_after_safe_setup():
+    source = WORKFLOW.read_text()
+    source_step = source.split(
+        "      - name: Require exact source-only candidate contracts\n", 1
+    )[1].split("      - name:", 1)[0]
+    postgres_step = source.split(
+        "      - name: Start only an owned disposable PostgreSQL 18.6 service\n", 1
+    )[1].split("      - name:", 1)[0]
+    keyset_step = source.split(
+        "      - name: Require 11 key-set PostgreSQL cases including the bounded component benchmark\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    row_step = source.split(
+        "      - name: Require pristine catalog and 32 independent row-CHECK PostgreSQL cases\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    assert "        id: source_contracts\n" in source_step
+    assert "        id: candidate_postgres\n" in postgres_step
+    assert (
+        source.count("        id: source_contracts\n")
+        == source.count("        id: candidate_postgres\n")
+        == 1
+    )
+    assert [
+        line.strip() for line in row_step.splitlines() if line.strip().startswith("if:")
+    ] == [
+        "if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}"
+    ]
+    assert "set -euo pipefail" in keyset_step and "--group keyset" in keyset_step
+    assert "continue-on-error" not in source and "||" not in keyset_step
+    assert "--group rows" in row_step and "--junitxml=" in row_step
+    assert source.index(keyset_step) < source.index(row_step)

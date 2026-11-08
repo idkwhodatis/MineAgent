@@ -35,6 +35,7 @@
     "tests/structured/test_sql_candidate_workflow.py::test_success_evidence_is_named_outcome_only_and_duration_matches_case",
     "tests/structured/test_sql_candidate_workflow.py::test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate",
     "tests/structured/test_sql_candidate_workflow.py::test_catalog_normalization_only_removes_documented_oids_and_generated_schema",
+    "tests/structured/test_sql_candidate_workflow.py::test_row_catalog_gate_survives_keyset_failure_only_after_safe_setup",
     "tests/structured/test_sql_candidate_harness.py::test_rejection_preserves_raw_and_wrapped_driver_assertions[matching-raw-copy]",
     "tests/structured/test_sql_candidate_harness.py::test_rejection_preserves_raw_and_wrapped_driver_assertions[matching-sqlalchemy]",
     "tests/structured/test_sql_candidate_harness.py::test_rejection_preserves_raw_and_wrapped_driver_assertions[wrong-state-raw-copy]",
@@ -55,7 +56,13 @@
     "tests/structured/test_sql_candidate_harness.py::test_measurements_reject_arbitrary_text_nonfinite_or_unknown_fields[fetches]",
     "tests/structured/test_sql_candidate_harness.py::test_measurements_reject_an_unapproved_artifact_directory",
     "tests/structured/test_sql_candidate_harness.py::test_benchmarks_export_validated_measurements_and_keep_uncaptured_output[minimal-test_row_validation_invariants.py-test_component_nonconstant_read_savings_and_write_overhead]",
-    "tests/structured/test_sql_candidate_harness.py::test_benchmarks_export_validated_measurements_and_keep_uncaptured_output[expanded-test_row_validation_content.py-test_component_extended_nonconstant_cost_and_write_overhead]"
+    "tests/structured/test_sql_candidate_harness.py::test_benchmarks_export_validated_measurements_and_keep_uncaptured_output[expanded-test_row_validation_content.py-test_component_extended_nonconstant_cost_and_write_overhead]",
+    "tests/structured/test_sql_candidate_harness.py::test_every_keyset_workload_uses_its_exact_installed_frozen_rule",
+    "tests/structured/test_sql_candidate_harness.py::test_real_half_weight_uses_installed_030_not_obsolete_028[request-StructuredSeedParameters-seed_parameters]",
+    "tests/structured/test_sql_candidate_harness.py::test_real_half_weight_uses_installed_030_not_obsolete_028[candidate-StructuredProgram-program]",
+    "tests/structured/test_sql_candidate_harness.py::test_legacy_bootstrap_uses_031_spec_selected_rule_with_real_half_weight",
+    "tests/structured/test_sql_candidate_harness.py::test_keyset_rule_selection_preserves_real_producer_dto_projection",
+    "tests/structured/test_sql_candidate_harness.py::test_pg18_benchmark_reads_database_collation_without_changing_measurement_query"
   ],
   "keyset": [
     "tests/integration/test_schema_keyset_candidate.py::test_old_complete_config_corpus",
