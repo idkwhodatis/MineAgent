@@ -1,11 +1,13 @@
 """Exact additive SQL recipe and immutable predecessor contracts."""
 
 import ast
+import re
 from pathlib import Path
 
 import pytest
 
 from backend.app import research_workflow_terminal_repair_sql as repair
+from backend.app.openevolve_revision_ddl import _function, historical
 
 
 def literals():
@@ -28,6 +30,7 @@ def test_frozen_maintenance_recipe_exact_and_not_historical_rewrite():
     assert values["DOWNGRADE_SQL"] == repair.render_downgrade_sql()
     assert "JOIN factor_evaluation_outcomes eo" in repair.previous_function()
     assert "JOIN factor_evaluation_outcomes eo" not in values["UPGRADE_SQL"]
+    assert_predicate_fixture_copies_complete_frozen_schema_validator_closure()
 
 
 @pytest.mark.parametrize("revision", ("031", "032"))
@@ -58,3 +61,35 @@ def test_non_rd_paths_and_all_existing_stop_settlement_guards_preserved():
     )
     assert "Retained RD terminal checkpoint is not representable after032a" in new
     assert repair.render_downgrade_sql().endswith(old)
+
+
+def assert_predicate_fixture_copies_complete_frozen_schema_validator_closure():
+    from tests.integration.workflow_terminal_repair_fixture import SCHEMA, dependencies
+
+    definitions = {
+        re.search(r"CREATE OR REPLACE FUNCTION \w+\.(\w+)\(", sql)[1]: sql
+        for sql in dependencies()
+    }
+    pending = {"mineagent_rd_schema"}
+    reached = set()
+    while pending:
+        name = pending.pop()
+        if name in reached:
+            continue
+        assert name in definitions, f"Missing isolated predicate dependency: {name}"
+        reached.add(name)
+        body = definitions[name].split("AS $$", 1)[1]
+        pending.update(re.findall(r"\b(mineagent_\w+)\s*\(", body))
+    assert reached == {
+        "mineagent_rd_schema",
+        "mineagent_rd_schema_recursive_032e",
+        "mineagent_structured_json_value",
+    }
+    for revision, name in (
+        ("032f", "mineagent_rd_schema"),
+        ("032f", "mineagent_rd_schema_recursive_032e"),
+        ("025", "mineagent_structured_json_value"),
+    ):
+        assert definitions[name] == _function(
+            historical(revision, "UPGRADE_SQL"), name
+        ).replace("@SCHEMA@", SCHEMA)

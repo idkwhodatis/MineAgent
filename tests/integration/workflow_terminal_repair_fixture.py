@@ -31,6 +31,10 @@ SCHEMA = "terminal032a_predicate_probe"
 
 def dependencies():
     names = (
+        # Copy the complete schema-validator closure. PostgreSQL resolves both
+        # CASE arms in032f, even for ordinary nonnegative-depth checkpoints.
+        "mineagent_structured_json_value",
+        "mineagent_rd_schema_recursive_032e",
         "mineagent_rd_schema",
         "mineagent_rd_canonical_json",
         "mineagent_workflow_payload",
