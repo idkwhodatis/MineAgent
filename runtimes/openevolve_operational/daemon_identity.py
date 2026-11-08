@@ -185,6 +185,97 @@ def _observe(*, container_id, image_id, leader_pid, pid, deadline):
 
 
 @dataclass(frozen=True)
+class DaemonMemberObservation:
+    """One full observed triple, never an execution or socket authority."""
+
+    leader: KernelIdentity
+    controller: KernelIdentity
+    worker: KernelIdentity
+
+    def __post_init__(self):
+        members = (self.leader, self.controller, self.worker)
+        if (
+            any(type(member) is not KernelIdentity for member in members)
+            or len({member.host_pid for member in members}) != 3
+        ):
+            _fail()
+
+
+def _observe_members(
+    *, container_id, image_id, leader_pid, controller_pid, worker_pid, deadline
+):
+    """Two fresh complete snapshots of one persisted leader/controller/worker.
+
+    Share only the surrounding container inspections, never a result between
+    calls. Each top inventory is bracketed by all three host snapshots. Reverse
+    after-order rechecks the controller and leader after reading the worker.
+    Both daemon namespace observations and every host identity must agree.
+    """
+    if (
+        type(container_id) is not str
+        or re.fullmatch(r"[a-f0-9]{64}", container_id) is None
+        or type(image_id) is not str
+        or re.fullmatch(r"sha256:[a-f0-9]{64}", image_id) is None
+        or any(
+            type(pid) is not int or pid <= 0
+            for pid in (leader_pid, controller_pid, worker_pid)
+        )
+        or len({leader_pid, controller_pid, worker_pid}) != 3
+        or type(deadline) not in (int, float)
+        or not math.isfinite(deadline)
+    ):
+        _fail()
+
+    def current():
+        if not 0 < deadline - time.monotonic() <= 600:
+            _fail()
+
+    targets = (leader_pid, controller_pid, worker_pid)
+    try:
+        cli = DockerSupervisor(image_id)
+        current()
+        _inspect(cli, container_id, image_id, leader_pid)
+        current()
+        snapshots = []
+        for _ in range(2):
+            before = {target: _host_snapshot(target) for target in targets}
+            current()
+            _, raw = cli._command(["top", container_id, "-eo", TOP_FIELDS])
+            current()
+            rows = parse_top(raw)
+            after = {target: _host_snapshot(target) for target in reversed(targets)}
+            current()
+            if before != after:
+                _fail()
+            for target, host in after.items():
+                if target not in rows or rows[target][:2] != (host[4][1], host[3]):
+                    _fail()
+            snapshots.append(
+                DaemonMemberObservation(
+                    *(
+                        KernelIdentity(
+                            host_pid=target,
+                            start_ticks=after[target][1],
+                            cgroup=after[target][2],
+                            ppid=after[target][3],
+                            uids=after[target][4],
+                            gids=after[target][5],
+                            pid_namespace=f"pid:[{rows[target][2]}]",
+                        )
+                        for target in targets
+                    )
+                )
+            )
+        _inspect(cli, container_id, image_id, leader_pid)
+        current()
+        if snapshots[0] != snapshots[1]:
+            _fail()
+        return snapshots[1]
+    except (OSError, ValueError, KeyError, TypeError, IndexError):
+        _fail()
+
+
+@dataclass(frozen=True)
 class DaemonIdentityContext:
     """Immutable host context, not serializable peer/execution authority."""
 
@@ -219,6 +310,16 @@ class DaemonIdentityContext:
         return values[self.leader_pid], None if controller_pid is None else values[
             target
         ]
+
+    def observe_members(self, controller_pid, worker_pid) -> DaemonMemberObservation:
+        return _observe_members(
+            container_id=self.container_id,
+            image_id=self.image_id,
+            leader_pid=self.leader_pid,
+            controller_pid=controller_pid,
+            worker_pid=worker_pid,
+            deadline=self.deadline,
+        )
 
     def observe(self, pid):
         values = _observe(

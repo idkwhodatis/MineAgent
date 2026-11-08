@@ -16,7 +16,10 @@ from packages.research_runtime.process_declarations_v2 import (
     ProcessDeclarationV2,
     declaration_bytes,
 )
-from runtimes.openevolve_operational.daemon_identity import DaemonIdentityContext
+from runtimes.openevolve_operational.daemon_identity import (
+    DaemonIdentityContext,
+    DaemonMemberObservation,
+)
 from runtimes.openevolve_structured_host import peer as module
 from runtimes.rdagent_operational.peer import KernelIdentity
 
@@ -73,8 +76,11 @@ def case(monkeypatch):
     )
     monkeypatch.setattr(
         DaemonIdentityContext,
-        "observe",
-        lambda self, pid: calls.append(("worker", pid)) or worker,
+        "observe_members",
+        lambda self, controller_pid, worker_pid: (
+            calls.append(("members", controller_pid, worker_pid))
+            or DaemonMemberObservation(leader, controller, worker)
+        ),
     )
     monkeypatch.setattr(module, "_credentials", lambda channel: (101, 65533, 65533))
     fence = SimpleNamespace(
@@ -120,7 +126,7 @@ def test_worker_exact_assignment_not_descendant_membership(case, monkeypatch):
         epoch_id=case.worker_binding.epoch_id,
         intent_id=case.worker_binding.intent_id,
     )
-    assert case.calls == [("pair", 101), ("worker", 102), ("pair", 101)] * 2
+    assert case.calls == [("members", 101, 102)] * 2
     with pytest.raises(ProcessError):
         module.require_peer(
             peer,
@@ -173,8 +179,12 @@ def test_reused_worker_pid_fails_fresh_check(case, monkeypatch):
     peer = auth(case, binding=case.worker_binding, worker_ticket=case.worker_ticket)
     monkeypatch.setattr(
         DaemonIdentityContext,
-        "observe",
-        lambda self, pid: replace(case.worker_binding.worker, start_ticks=99),
+        "observe_members",
+        lambda self, controller_pid, worker_pid: DaemonMemberObservation(
+            case.binding.leader,
+            case.binding.controller,
+            replace(case.worker_binding.worker, start_ticks=99),
+        ),
     )
     with pytest.raises(ProcessError):
         module.require_peer(
@@ -188,14 +198,16 @@ def test_reused_worker_pid_fails_fresh_check(case, monkeypatch):
 
 def test_controller_drift_after_worker_observation(case, monkeypatch):
     monkeypatch.setattr(module, "_credentials", lambda channel: (102, 65533, 65533))
-    pairs = iter(
-        (
-            (case.binding.leader, case.binding.controller),
-            (case.binding.leader, replace(case.binding.controller, start_ticks=999)),
-        )
-    )
+    # The concrete observer's intra-batch drift rejection is covered in
+    # test_structured_daemon_members; this boundary must reject changed identities.
     monkeypatch.setattr(
-        DaemonIdentityContext, "observe_pair", lambda self, pid: next(pairs)
+        DaemonIdentityContext,
+        "observe_members",
+        lambda self, controller_pid, worker_pid: DaemonMemberObservation(
+            case.binding.leader,
+            replace(case.binding.controller, start_ticks=999),
+            case.worker_binding.worker,
+        ),
     )
     with pytest.raises(ProcessError):
         auth(case, binding=case.worker_binding, worker_ticket=case.worker_ticket)

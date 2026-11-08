@@ -172,6 +172,13 @@ def test_actual_child_checkpoint_precedes_feedback_or_terminal(
         ]
     )
     calls = []
+
+    # A feedback_allocated tick must return at the committed allocation boundary,
+    # never start the release-qualified derivation in that same tick.
+    def forbidden_feedback(*args, **kwargs):
+        pytest.fail("Feedback allocation must not execute or disclose feedback")
+
+    monkeypatch.setattr(tick, "run_feedback_stage", forbidden_feedback)
     monkeypatch.setattr(tick, "_read", lambda *a: next(reads))
     monkeypatch.setattr(
         tick, "checkpoint_rd_stage", lambda *a, **k: calls.append("actual_boundary")

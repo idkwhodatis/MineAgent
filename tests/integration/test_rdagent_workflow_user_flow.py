@@ -69,6 +69,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
         ResearchModelOperation,
         ResearchModelTransport,
     )
+    from backend.app.research_input_models import ResearchInputDerivation
     from backend.app.research_process_models import (
         ResearchProcessAdmission,
         ResearchProcessState,
@@ -728,8 +729,45 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                         checkpoint.terminal_canonical
                     )
                     assert root.status == (
-                        "paused" if allow_feedback_release else "running"
+                        "paused" if allow_feedback_release else "ready"
                     )
+                    assert root.blocked_reason is None
+                    if not allow_feedback_release:
+                        # Allocation is not execution or disclosure. The next tick
+                        # must still encounter the release gate before deriving.
+                        feedback = session.get(
+                            ResearchWorkflowStage, root.current_stage_id
+                        )
+                        assert feedback.kind == "experiment_feedback_projection"
+                        assert feedback.child_run_id is None
+                        assert feedback.id != checkpoint.stage_id
+                        assert checkpoint.stage_id == stage.id
+                        assert [
+                            row.id
+                            for row in session.scalars(
+                                select(FactorWorkflowSubmission).filter_by(
+                                    workflow_id=wid
+                                )
+                            )
+                        ] == [submission.id]
+                        assert not session.scalars(
+                            select(DataUsageExposure).where(
+                                DataUsageExposure.owner_id == user.id,
+                                DataUsageExposure.source_key.like(
+                                    f"engine-result:direct_analysis:{measured.analysis_id}:%"
+                                ),
+                            )
+                        ).all()
+                        assert (
+                            session.scalar(
+                                select(ResearchInputDerivation).filter_by(
+                                    owner_id=user.id,
+                                    workflow_id=wid,
+                                    stage_id=feedback.id,
+                                )
+                            )
+                            is None
+                        )
                     assert terminal.child_run_id == rid
                     assert terminal.source_id == source.id
                     assert terminal.factor_version_id == source.factor_version_id

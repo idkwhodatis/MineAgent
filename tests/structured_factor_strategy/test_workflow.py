@@ -16,6 +16,17 @@ def test_required_pair_and_cold_restore_are_exact_cases_without_skip_acceptance(
     )
     assert "('failure','error','skipped')" in text
     assert "twenty actual units across live and independent cold restore cases" in text
+    peer = text.index("Require host identity and diagnostic regressions")
+    assert peer < text.index("Build locked frontend")
+    assert "tests/openevolve/test_structured_daemon_members.py" in text
+    assert "tests/openevolve/test_structured_peer_members.py" in text
+    assert "tests/structured_controller_runtime/test_peer.py" in text
+    assert "tests/openevolve/test_operational_daemon_identity.py" in text
+    assert "assert len(cases)==178" in text
+    assert "var/numeric-proof/peer-identity-outcomes.xml" in text
+    assert "tests/runner/test_oe_receipt_cost_diagnostic.py" in text
+    assert "tests/runner/test_oe_pg_diagnostic.py" in text
+    assert "postgres:18.6 -c track_functions=pl" in text
 
 
 def test_measured_unchanged_parent_and_no_network_derivative():
@@ -168,7 +179,7 @@ def test_normal_027_requires_exact_browser_and_rejection_cases():
         in text
     )
     assert text.count("assert len(cases)==2") == 3
-    assert text.count("('failure','error','skipped')") == 6
+    assert text.count("('failure','error','skipped')") == 7
     assert "var/numeric-private/normal-027.xml" in text
     assert "normal-027-outcomes.xml" in text
     assert "io.mineagent.managed=mineagent-oe-structured-orchestrator-v1" in text

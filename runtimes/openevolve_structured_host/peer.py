@@ -20,7 +20,10 @@ from packages.research_runtime.process_declarations_v2 import (
     ProcessDeclarationV2,
     declaration_bytes,
 )
-from runtimes.openevolve_operational.daemon_identity import DaemonIdentityContext
+from runtimes.openevolve_operational.daemon_identity import (
+    DaemonIdentityContext,
+    DaemonMemberObservation,
+)
 from runtimes.openevolve_structured.profile import PROFILE
 from runtimes.rdagent_operational.peer import KernelIdentity
 
@@ -141,17 +144,23 @@ def _revalidate(peer):
             or context.leader_pid != binding.leader.host_pid
         ):
             _fail()
-        pair = context.observe_pair(binding.controller.host_pid)
-        if pair != (binding.leader, binding.controller):
-            _fail()
         expected = binding.controller
         if worker:
             expected = worker.worker
-            if (
-                context.observe(expected.host_pid) != expected
-                or context.observe_pair(binding.controller.host_pid) != pair
+            observed = context.observe_members(
+                binding.controller.host_pid, expected.host_pid
+            )
+            if type(
+                observed
+            ) is not DaemonMemberObservation or observed != DaemonMemberObservation(
+                binding.leader, binding.controller, expected
             ):
                 _fail()
+        elif context.observe_pair(binding.controller.host_pid) != (
+            binding.leader,
+            binding.controller,
+        ):
+            _fail()
         if _credentials(peer._socket) != (expected.host_pid, 65533, 65533):
             _fail()
     except (OSError, ValueError, TypeError, KeyError, AttributeError):

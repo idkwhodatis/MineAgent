@@ -83,3 +83,7 @@ def test_feedback_stage_only_from_own_committed_rd_boundary(
             and b.root.status == "ready"
             and len(written) == 1
         )
+        assert b.root.blocked_reason is None
+        assert b.root.latest_checkpoint_id == checkpoint.id
+        assert b.root.revision == 2
+        assert written == [stage]  # No derivation, disclosure, or new RD child.

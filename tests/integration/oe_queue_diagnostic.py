@@ -446,7 +446,9 @@ def emit(marker, value):
 
 @contextmanager
 def diagnose_oe_queue(factory, run_id):
+    from oe_pg_diagnostic import diagnose_oe_functions
     from oe_provider_diagnostic import diagnose_provider
+    from oe_receipt_cost_diagnostic import diagnose_receipt_cost
     from oe_serve_diagnostic import diagnose_serve
 
     from workers.research import oe_structured_queue
@@ -468,7 +470,13 @@ def diagnose_oe_queue(factory, run_id):
             raise
 
     try:
+        engine = factory.kw["bind"]
+    except Exception:  # noqa: BLE001 -- unavailable stats must not block execution
+        engine = None
+    try:
         with (
+            diagnose_oe_functions(engine, emit),
+            diagnose_receipt_cost(emit),
             patch.object(oe_structured_queue, "execute", execute),
             diagnose_serve(factory, run_id, emit),
             diagnose_provider(emit, failure),

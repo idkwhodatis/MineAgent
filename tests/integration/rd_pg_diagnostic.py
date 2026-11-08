@@ -43,18 +43,18 @@ QUERY = text(
 ).bindparams(bindparam("names", expanding=True))
 
 
-def _snapshot(engine):
+def _snapshot(engine, *, functions=FUNCTIONS):
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("SET TRANSACTION READ ONLY")
             if connection.exec_driver_sql("SHOW track_functions").scalar_one() != "pl":
                 return None
-            rows = connection.execute(QUERY, {"names": FUNCTIONS}).all()
+            rows = connection.execute(QUERY, {"names": functions}).all()
         result = {}
         for name, calls, total, own in rows:
             if (
                 type(name) is not str
-                or name not in FUNCTIONS
+                or name not in functions
                 or name in result
                 or type(calls) is not int
                 or not 0 <= calls <= 10**12
@@ -73,11 +73,11 @@ def _snapshot(engine):
         return None
 
 
-def _difference(before, after):
+def _difference(before, after, *, functions=FUNCTIONS):
     if before is None or after is None:
         return {"status": "unavailable"}
     values = []
-    for name in FUNCTIONS:
+    for name in functions:
         if name not in after:
             values.append({"function": name, "status": "missing_or_untracked"})
             continue

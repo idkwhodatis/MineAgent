@@ -28,6 +28,10 @@ class NativeStorageError(ValueError):
     pass
 
 
+class NativeStorageBusy(BlockingIOError):
+    """Only native-fence contention; not an I/O or retained-integrity failure."""
+
+
 @contextmanager
 def native_storage_guard(root):
     """Same nonblocking flock as legacy factor publication, retained across SQL."""
@@ -35,7 +39,12 @@ def native_storage_guard(root):
     with storage_guard(root):
         fd = _open_directory(root / "factors")
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise NativeStorageBusy(
+                    exc.errno, "Native storage is busy; retry later"
+                ) from None
             before = os.fstat(fd)
             current = os.stat(root / "factors", follow_symlinks=False)
             if (before.st_dev, before.st_ino) != (current.st_dev, current.st_ino):

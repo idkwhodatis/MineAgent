@@ -10,6 +10,7 @@ an engine child has started or that guidance was consumed. Reads retain existing
 source integrity and release boundaries.
 """
 
+import time
 from uuid import UUID
 
 from fastapi import APIRouter, Query, Request
@@ -20,6 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from backend.app import rdagent_steer_services as steer_service
 from backend.app.api.deps import CurrentUser
 from backend.app.core.maintenance import shared_lifecycle
+from backend.app.factor_native_io import NativeStorageBusy
 from backend.app.rdagent_steer_models import RDSteer, RDSteerVersion
 from backend.app.research_workflow_admission import select_workflow_inputs
 from backend.app.research_workflow_control import request_control, require_schema
@@ -132,6 +134,31 @@ def _transaction(request, owner, action, *, write):
     return frozen
 
 
+def _history_transaction(request, owner, action):
+    """Retry only history reads, after releasing the failed transaction/fences.
+
+    Parallel browser reads compete with each other and publishers for the same
+    nonblocking native fence. Never wait while holding DB/lifecycle authority,
+    retry a write, or treat retained-byte/namespace corruption as contention.
+    The budget limits retry starts, not the duration of an in-flight read.
+    """
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            return _transaction(request, owner, action, write=False)
+        except NativeStorageBusy:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(0.05, remaining))
+                if time.monotonic() < deadline:
+                    continue
+            raise DomainError(
+                "workflow_history_busy",
+                "Workflow history is busy; retry later",
+                503,
+            ) from None
+
+
 class WorkflowAvailability(BaseModel):
     can_read: bool
     preflight_available: bool
@@ -216,13 +243,12 @@ async def create_workflow(request: Request, user: CurrentUser):
 )
 async def workflow_detail(workflow_id: UUID, request: Request, user: CurrentUser):
     return await run_in_threadpool(
-        _transaction,
+        _history_transaction,
         request,
         user.id,
         lambda session, owner, settings: read_workflow(
             session, owner, workflow_id, settings
         ),
-        write=False,
     )
 
 
@@ -234,13 +260,12 @@ async def workflow_stage(
     workflow_id: UUID, stage_id: UUID, request: Request, user: CurrentUser
 ):
     return await run_in_threadpool(
-        _transaction,
+        _history_transaction,
         request,
         user.id,
         lambda session, owner, settings: read_stage_history(
             session, owner, workflow_id, stage_id, settings
         ),
-        write=False,
     )
 
 

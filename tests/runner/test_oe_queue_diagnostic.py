@@ -118,7 +118,9 @@ def test_observer_rethrows_identical_error_bounds_reports_and_restores(
             assert caught.value is error
     assert oe_structured_queue.execute is original and len(calls) == 10
     lines = capsys.readouterr().out.splitlines()
-    assert len(lines) == 9
+    assert len(lines) == 11
+    assert sum(line.startswith("OE_RECEIPT_COST_V1:") for line in lines) == 1
+    assert sum(line.startswith("OE_PG_FUNCTIONS_V1:") for line in lines) == 1
     assert sum(line.startswith("OE_QUEUE_FAILURE_V1:") for line in lines) == 8
     assert lines[-1] == 'OE_QUEUE_STATE_V1:{"status": "running"}'
     assert "synthetic_private" not in "".join(lines)
