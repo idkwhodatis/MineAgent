@@ -7,6 +7,7 @@ import socket
 import tempfile
 import threading
 import time
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -267,6 +268,52 @@ def test_http_failures_close_without_retry_or_cli_fallback(monkeypatch, payload)
     fallback.assert_not_called()
 
 
+def field_body(column, value):
+    row = ["1", "2", "3", "4", "python"]
+    row[column] = value
+    return json.dumps({**DOCUMENT, "Processes": [row]}).encode()
+
+
+# Keep the existing six malformed-field fixtures and collection IDs. Each pure
+# case also exercises its closed category across every column without sockets.
+FIELD_FAILURES = {
+    field_body(0, 1): (
+        0,
+        "type",
+        [1, None, [], {"private-field-content": "private-field-value"}],
+    ),
+    field_body(0, True): (0, "type", [True, False]),
+    field_body(4, "two words"): (
+        4,
+        "ascii_space",
+        [
+            "private-field content",
+            " private-field-content ",
+            " ",
+            "private-field-content <defunct>",
+            "private-field-content <defunct> ",
+        ],
+    ),
+    field_body(4, ""): (4, "empty", [""]),
+    field_body(4, "\n"): (
+        4,
+        "control",
+        [
+            "private-field-content" + char + " <defunct>"
+            for char in ("\0", "\t", "\n", "\r", "\v", "\f", "\x1f", "\x7f")
+        ],
+    ),
+    field_body(4, "é"): (
+        4,
+        "non_ascii",
+        [
+            "private-field-content" + char + "\t <defunct>"
+            for char in ("é", "\u00a0", "\u2003", "\ud800", "\U0001f600")
+        ],
+    ),
+}
+
+
 JSON_FAILURES = [
     b"",
     b"{}",
@@ -293,12 +340,7 @@ JSON_FAILURES = [
     json.dumps({**DOCUMENT, "Processes": ["not a row"]}).encode(),
     json.dumps({**DOCUMENT, "Processes": [["1"] * 4]}).encode(),
     json.dumps({**DOCUMENT, "Processes": [["1"] * 6]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [[1, "2", "3", "4", "python"]]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [[True, "2", "3", "4", "python"]]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [["1", "2", "3", "4", "two words"]]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [["1", "2", "3", "4", ""]]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [["1", "2", "3", "4", "\n"]]}).encode(),
-    json.dumps({**DOCUMENT, "Processes": [["1", "2", "3", "4", "é"]]}).encode(),
+    *FIELD_FAILURES,
 ]
 
 
@@ -465,8 +507,33 @@ def test_memory_http_protocol_faults(memory_wire, payload):
     "body", JSON_FAILURES, ids=[f"json-{n}" for n in range(len(JSON_FAILURES))]
 )
 def test_memory_json_projection_faults(body):
-    with pytest.raises(module.DaemonTopError):
+    with pytest.raises(module.DaemonTopError) as caught:
         module._cli_text(body)
+    if body not in FIELD_FAILURES:
+        assert caught.value.args == ("host_daemon_top",)
+        return
+    original_column, category, variants = FIELD_FAILURES[body]
+    assert caught.value.args == (f"host_daemon_top_field:{original_column}:{category}",)
+    for column in range(5):
+        for value in variants:
+            expected = category
+            if (
+                category == "ascii_space"
+                and column == 4
+                and value.endswith(" <defunct>")
+            ):
+                expected = "defunct_suffix"
+            with pytest.raises(module.DaemonTopError) as classified:
+                module._cli_text(field_body(column, value))
+            code = f"host_daemon_top_field:{column}:{expected}"
+            assert classified.value.args == (code,)
+            assert str(classified.value) == code
+            assert repr(classified.value) == f"DaemonTopError({code!r})"
+            assert classified.value.__dict__ == {}
+            assert classified.value.__context__ is None
+            assert "private-field" not in "".join(
+                traceback.format_exception(classified.value)
+            )
 
 
 @pytest.mark.parametrize("framing", ["length", "chunked", "eof"])

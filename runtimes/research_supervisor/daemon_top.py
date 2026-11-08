@@ -239,13 +239,28 @@ def _cli_text(raw):
     for row in rows:
         if type(row) is not list or len(row) != 5:
             _fail()
-        for field in row:
+        for column, field in enumerate(row):
             if (
                 type(field) is not str
                 or not field
                 or any(not 33 <= ord(c) <= 126 for c in field)
             ):
-                _fail()
+                # Closed shape diagnostics only, never field/row contents.
+                # Mixed shapes prefer non-ASCII, then controls, then spaces.
+                if type(field) is not str:
+                    category = "type"
+                elif not field:
+                    category = "empty"
+                elif any(ord(c) > 127 for c in field):
+                    category = "non_ascii"
+                elif any(ord(c) < 32 or ord(c) == 127 for c in field):
+                    category = "control"
+                elif column == 4 and field.endswith(" <defunct>"):
+                    # procps spelling only, not proof of process state.
+                    category = "defunct_suffix"
+                else:
+                    category = "ascii_space"
+                raise DaemonTopError(f"host_daemon_top_field:{column}:{category}")
     # All cells are now single ASCII tokens, so tabwriter's rune display width
     # is byte length. The last column has no trailing tab and receives no pad.
     widths = [max(20, max(len(row[i]) + 3 for row in rows)) for i in range(4)]
