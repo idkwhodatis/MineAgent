@@ -42,6 +42,7 @@ def record_controller_containment(session, admission_id, *, storage_root):
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     ):
         raise ProcessError("oe_structured_controller_recovery_revision")
     row = session.get(ResearchProcessAdmission, admission_id)

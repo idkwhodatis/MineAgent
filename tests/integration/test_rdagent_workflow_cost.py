@@ -220,6 +220,7 @@ def test_frozen_workflow_migration_roundtrip_preserves_other_contracts(
                 + '"'
             )
             config.attributes["connection"] = connection
+            command.downgrade(config, "032e_rd_workflow_cost")
             before = state(connection)
             assert_bodies(connection, module.render_upgrade_sql(), schema)
             command.downgrade(config, "032d_rd_validation_cost")

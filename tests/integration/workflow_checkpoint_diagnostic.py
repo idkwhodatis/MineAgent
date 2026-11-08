@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-# Exact57-function transitive read-only closure, including immutable validators.
+# Exact58-function transitive read-only closure, including immutable validators.
 PINS = {
     "mineagent_analysis_raw_commitment": (
         "4dd030f0db0bf1ad611a302c5447a13cb731db14dbd2cbd04352a66abd7b99f5",
@@ -220,7 +220,12 @@ PINS = {
         "schema",
     ),
     "mineagent_rd_schema": (
-        "a5db1e44bd7615ed2a3bdc5beb1ed6d3dd1db296e6edbfc8c63e5eae0d1ba2c8",
+        "fbb1e9e697d26ad5314816eb676226265061d5c82724a045cb66be09ff430208",
+        "i",
+        "catalog",
+    ),
+    "mineagent_rd_schema_recursive_032e": (
+        "04ed4f9d9203803ede3f97959e8c01c738f3290ecb81ea943c22c221c773eff0",
         "i",
         "catalog",
     ),
@@ -245,7 +250,7 @@ PINS = {
         "catalog",
     ),
     "mineagent_structured_raw_json": (
-        "511b5a75a3e5ffb3a0fd02c558623c157bfef933cddc23b5b99a304c6186ccf4",
+        "e9b352169c8e0c2ad68440fd3c9e3d41ffaeaf5682cbd98958579c4366db1ed0",
         "i",
         "catalog",
     ),

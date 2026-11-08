@@ -276,6 +276,7 @@ def combined_holds(session, settings):
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     ):
         return ()
     from backend.app.openevolve_upload_quota import upload_holds

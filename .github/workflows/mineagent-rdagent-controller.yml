@@ -10,6 +10,9 @@ on:
       - "runtimes/hostile_deadline/**"
       - "packages/rdagent_adapter/**"
       - "tests/rdagent/**"
+      - "tests/openevolve/test_outbox_guard_sql.py"
+      - "tests/structured/test_raw_cost_sql.py"
+      - "script/generate_shared_validation_cost_migration.py"
       - "runtimes/rdagent_operational/**"
       - "runtimes/rdagent/**"
       - "workers/research/rdagent_operational.py"
@@ -52,7 +55,7 @@ jobs:
       - name: Require complete local factor RD runtime and operations contracts
         run: |
           mkdir -p var/numeric-private var/numeric-proof
-          python -m pytest tests/factors tests/rdagent tests/research_runtime tests/operations tests/structured tests/structured_factor_strategy tests/declared_upload tests/openevolve/test_validation_cost_sql.py -q --junitxml=var/numeric-private/contracts.xml
+          python -m pytest tests/factors tests/rdagent tests/research_runtime tests/operations tests/structured tests/structured_factor_strategy tests/declared_upload tests/openevolve/test_validation_cost_sql.py tests/openevolve/test_outbox_guard_sql.py -q --junitxml=var/numeric-private/contracts.xml
           python - <<'PYCONTRACTS'
           from pathlib import Path
           from xml.etree import ElementTree as ET
@@ -60,7 +63,7 @@ jobs:
           source=Path('var/numeric-private/contracts.xml')
           summarize(source,Path('var/numeric-proof/contracts-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases) == 5556
+          assert len(cases) == 5588
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYCONTRACTS
       - name: Fetch only exact existing numeric wheels

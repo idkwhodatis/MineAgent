@@ -88,6 +88,7 @@ def assert_normal_restore(
         "032c_oe_provider_table_checks",
         "032d_rd_validation_cost",
         "032e_rd_workflow_cost",
+        "032f_shared_validation_cost",
     }
     ids = tuple(execution_ids)
     assert ids and len(ids) == len(set(ids))
@@ -130,6 +131,7 @@ def assert_normal_restore(
             "032c_oe_provider_table_checks",
             "032d_rd_validation_cost",
             "032e_rd_workflow_cost",
+            "032f_shared_validation_cost",
         }:
             assert "declared_upload_closure" in keys
         assert keys == {key for key in after if key.endswith("_closure")}

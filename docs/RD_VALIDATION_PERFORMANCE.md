@@ -111,6 +111,41 @@ execution, or the runtime benefit of OE text reuse. The eight-second admission
 deadline and full RD/OE runtime acceptance still require the exact-head CI run.
 Disposable databases/containers were removed after validation.
 
+## Follow-up revision 032f
+
+Revision `032f_shared_validation_cost` adds exact ASCII scalar fast paths to
+lossless raw-JSON serialization and bounded schema-reference resolution. Complex
+strings, numeric forms and legacy NULL/negative-depth recursion preserve the
+frozen predecessor behavior. No acceptance result is cached across calls.
+The same quiescent maintenance locking inventory protects installation and
+rollback, and all predecessor migrations remain unchanged.
+
+The revision also closes a separate integrity gap: two deferred outbox triggers
+recheck the existing OE consistency predicate after deletion or changes to an
+outbox row's run/generation identity. Dispatch-metadata-only updates do not fire
+these triggers. Installation first audits the same retained generation-one
+outbox invariant for historical workflow submissions under the maintenance locks.
+Existing RD guards and all graph predicates remain intact;
+this is not graph-check deduplication. Downgrade removes only the two new
+triggers and recursive helper, and restores the exact predecessor function bodies.
+
+### Component evidence and remaining acceptance
+
+Independent PostgreSQL 18.6 probes passed 5,153 expected cases plus 36 LATIN1
+checks. The two helper suites passed nine real-PostgreSQL cases and six offline
+cases, with no skips. Coverage includes Unicode, SQL NULL, malformed references,
+cycles, depth limits, exact string/input/output byte limits, negative mutations
+and helper-level upgrade/downgrade roundtrips. Follow-up probes additionally
+passed all three aggregate 16 MiB output boundaries and 75 referenced-exception
+recovery cases without increasing the 10-second SQL statement timeout.
+
+Table-backed full RD configuration measurements showed approximately 10–15%
+median component savings; parameterized microbenchmarks were smaller and noisy.
+These results do not establish native receipt latency, application throughput or
+end-to-end deadline success. The eight-second SDK, 120-second RD and 600-second
+OE deadlines remain unchanged. The final composed migration, outbox guard and
+native runtime/browser acceptance require their separate exact-head gates.
+
 ## Reproduction and limits
 
 With repository dependencies and compatibility assets materialized, point
@@ -120,11 +155,18 @@ unique schemas; never use a production database for this probe.
 ```sh
 python -m pytest tests/integration/test_rdagent_validation_performance.py \
   tests/integration/test_rdagent_workflow_cost.py \
-  -k 'not nonconstant_server_loop_probe and not text_loop_probe' -q
+  tests/integration/test_structured_raw_cost.py \
+  tests/integration/test_schema_reference_cost.py \
+  tests/integration/test_shared_validation_cost_migration.py \
+  tests/integration/test_oe_outbox_guard.py \
+  -k 'not nonconstant_server_loop_probe and not text_loop_probe and not opt_in' -q
 ```
 
-The configured-analysis workflow requires exactly nine passing mandatory cases:
-the five original 032d cases and four new 032e cases.
+The configured-analysis workflow requires exactly 38 passing mandatory cases:
+the nine 032d/032e cases, seven shared-helper cases, four composed migration/
+maintenance cases, and eighteen outbox-guard cases. The guard tests distinguish
+the actual installed catalog from isolated routing doubles and historical audit
+fixtures. The exact inventory rejects failures, errors and skips.
 For a separate nonconstant serializer diagnostic, without timing assertions:
 
 ```sh

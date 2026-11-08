@@ -19,9 +19,11 @@ spec.loader.exec_module(diag)
 PRIVATE = "private_id_sql_parameters_and_error"
 
 
-def catalog():
+def frozen_definitions(last_revision=None):
     definitions = {}
     for path in sorted(Path("backend/alembic/versions").glob("*.py")):
+        if last_revision is not None and path.stem > last_revision:
+            continue
         for node in ast.parse(path.read_text()).body:
             if not (
                 isinstance(node, ast.Assign)
@@ -40,6 +42,11 @@ def catalog():
                 re.DOTALL,
             ):
                 definitions[match[1]] = match[0], match[2]
+    return definitions
+
+
+def catalog():
+    definitions = frozen_definitions()
     rows = []
     for name, (digest, volatility, setting) in diag.PINS.items():
         definition, body = definitions[name]
@@ -66,7 +73,22 @@ def catalog():
             else "none"
         )
         rows.append((name, body, False, volatility, setting))
-    assert len(rows) == 57
+    assert len(rows) == 58
+    # Verify the exact reachable closure, not merely a closed superset of pins.
+    pending = {"mineagent_workflow_checkpoint", "mineagent_workflow_consistent"}
+    pending.update(
+        re.findall(
+            r"\b(mineagent_\w+)\s*\(", diag.PREFIX + "\n".join(diag.CHECKS.values())
+        )
+    )
+    reached = set()
+    while pending:
+        name = pending.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        pending.update(re.findall(r"\b(mineagent_\w+)\s*\(", definitions[name][1]))
+    assert reached == diag.PINS.keys()
     return rows
 
 
@@ -111,6 +133,32 @@ def test_exact_pins_and_every_fixed_probe_rolls_back_without_committing():
     assert all(row["value"] is True for row in result["checks"])
     assert conn.opened == conn.rolled_back == conn.calls == 12
 
+    # The new helper is part of the immutable catalog-only closure. Neither old
+    # schema/raw bodies nor an unknown helper alias may be treated as current.
+    rows = catalog()
+    helper = "mineagent_rd_schema_recursive_032e"
+    assert diag.PINS[helper][1:] == ("i", "catalog")
+    predecessor = frozen_definitions("032e_rd_workflow_cost")
+    assert helper not in predecessor
+    for name in ("mineagent_rd_schema", "mineagent_structured_raw_json"):
+        stale = [
+            (row[0], predecessor[name][1], *row[2:]) if row[0] == name else row
+            for row in rows
+        ]
+        old = Connection(rows=stale)
+        assert diag.probe(old, uuid4(), uuid4(), uuid4()) == {
+            "category": "installed_body_mismatch"
+        }
+        assert old.calls == old.rolled_back == 1
+    unknown = [
+        (row[0] + "_future", *row[1:]) if row[0] == helper else row for row in rows
+    ]
+    changed = Connection(rows=unknown)
+    assert diag.probe(changed, uuid4(), uuid4(), uuid4()) == {
+        "category": "installed_body_mismatch"
+    }
+    assert changed.calls == changed.rolled_back == 1
+
 
 @pytest.mark.parametrize("failure", range(1, 13))
 def test_every_query_error_is_sanitized_and_savepoint_rolled_back(failure):
@@ -126,25 +174,34 @@ def test_every_query_error_is_sanitized_and_savepoint_rolled_back(failure):
     "change", ["body", "security", "volatility", "setting", "duplicate", "missing"]
 )
 def test_unknown_or_changed_installed_bodies_are_not_executed(change):
-    rows = catalog()
-    if change == "missing":
-        rows.pop()
-    elif change == "duplicate":
-        rows.append(rows[0])
-    else:
-        row = list(rows[0])
-        row[{"body": 1, "security": 2, "volatility": 3, "setting": 4}[change]] = {
-            "body": PRIVATE,
-            "security": True,
-            "volatility": "s",
-            "setting": "other",
-        }[change]
-        rows[0] = tuple(row)
-    conn = Connection(rows=rows)
-    assert diag.probe(conn, uuid4(), uuid4(), uuid4()) == {
-        "category": "installed_body_mismatch"
+    source = catalog()
+    targets = {
+        source[0][0],
+        "mineagent_rd_schema",
+        "mineagent_structured_raw_json",
+        "mineagent_rd_schema_recursive_032e",
     }
-    assert conn.calls == conn.rolled_back == 1
+    for target in targets:
+        rows = list(source)
+        index = next(i for i, row in enumerate(rows) if row[0] == target)
+        if change == "missing":
+            rows.pop(index)
+        elif change == "duplicate":
+            rows.append(rows[index])
+        else:
+            row = list(rows[index])
+            row[{"body": 1, "security": 2, "volatility": 3, "setting": 4}[change]] = {
+                "body": PRIVATE,
+                "security": True,
+                "volatility": "s",
+                "setting": "other",
+            }[change]
+            rows[index] = tuple(row)
+        conn = Connection(rows=rows)
+        assert diag.probe(conn, uuid4(), uuid4(), uuid4()) == {
+            "category": "installed_body_mismatch"
+        }
+        assert conn.calls == conn.rolled_back == 1
 
 
 @pytest.mark.parametrize("value", [None, PRIVATE, 0, 1, {}, []])

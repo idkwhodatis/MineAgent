@@ -42,6 +42,7 @@ on:
       - "tests/runner/test_oe_receipt_cost_diagnostic.py"
       - "tests/runner/test_oe_pg_diagnostic.py"
       - "tests/integration/oe_*diagnostic.py"
+      - "tests/integration/oe_outbox_guard_native.py"
       - "tests/integration/rd_pg_diagnostic.py"
       - "tests/integration/*structured*"
       - "tests/integration/*provider*"

@@ -93,5 +93,12 @@ def test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore(
                 notes,
             )
             assert (len(env.rd_calls), len(env.oe_calls)) == call_counts
+            # Keep both historical runtime/restore proofs unchanged. Reuse their
+            # genuine v2 success for the new retained-outbox reverse regression.
+            from oe_outbox_guard_native import assert_native_workflow_outbox_retained
+
+            legacy._upgrade(source, "032f_shared_validation_cost")
+            assert_native_workflow_outbox_retained(source, completed.oe_run_id)
+            assert (len(env.rd_calls), len(env.oe_calls)) == call_counts
     finally:
         source.dispose()

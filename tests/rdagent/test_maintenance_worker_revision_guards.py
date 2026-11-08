@@ -15,14 +15,20 @@ PREVIOUS = "032_normal_oe_note_pins"
 LEGACY = "032a_rd_terminal_results"
 OLDER = "032b_oe_append_run_state"
 PENULTIMATE = "032c_oe_provider_table_checks"
-OLD = "032d_rd_validation_cost"
-CURRENT = "032e_rd_workflow_cost"
+EARLIER = "032d_rd_validation_cost"
+OLD = "032e_rd_workflow_cost"
+CURRENT = "032f_shared_validation_cost"
 INVALID = (
     [],
     ["032b_future"],
     ["033_safe_workflow_branches"],
     [PREVIOUS, LEGACY],
     [LEGACY, LEGACY],
+    [LEGACY, EARLIER],
+    [PREVIOUS, EARLIER],
+    [EARLIER, EARLIER],
+    [EARLIER, OLD],
+    [EARLIER, CURRENT],
     [LEGACY, OLD],
     [PREVIOUS, OLD],
     [OLD, OLD],
@@ -42,7 +48,7 @@ def test_configured_profiles_inherit_exact_maintenance_and_reject_unknown_heads(
         "mineagent.rdagent-orchestrator.v4",
     ):
         config = SimpleNamespace(controller_profile=profile)
-        for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, OLD, CURRENT):
+        for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, CURRENT):
             require_controller_revision(session([revision]), config)
         for versions in INVALID:
             with pytest.raises(ProcessError, match="rd_controller_revision"):
@@ -50,7 +56,7 @@ def test_configured_profiles_inherit_exact_maintenance_and_reject_unknown_heads(
 
 
 def test_maintained_controller_inherits_exact_maintenance_only():
-    for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, OLD, CURRENT):
+    for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, CURRENT):
         require_maintained_revision(session([revision]))
     for versions in INVALID:
         with pytest.raises(ProcessError, match="rd_controller_revision"):
@@ -100,7 +106,7 @@ def test_every_worker_predecessor_gate_preserves_closed_maintenance_membership()
 def test_oe_dispatch_maintenance_reaches_existing_binding_check():
     from workers.research.oe_structured_queue import require_dispatch_binding
 
-    for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, OLD, CURRENT):
+    for revision in (PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, CURRENT):
         with pytest.raises(DomainError) as caught:
             require_dispatch_binding(session([revision]), None, None, None)
         assert caught.value.code == "oe_structured_queue_binding"

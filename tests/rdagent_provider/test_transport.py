@@ -557,3 +557,73 @@ def test_no_implicit_interpreter_fallback(monkeypatch, interpreter):
         )
     assert error.value.code == "provider_input_rejected"
     assert error.value.contained and not error.value.outcome_unknown
+
+
+@pytest.mark.parametrize("kind", ["chat", "embedding"])
+def test_sdk_dispatch_does_not_initialize_unrelated_resource_models(kind):
+    """Cold-child regression: keep startup work within the real call's budget.
+
+    Mock transport makes this an offline SDK-body check; the real loopback tests
+    separately enforce process containment and the unchanged slow-call deadline.
+    """
+    from pathlib import Path
+
+    import packages.rdagent_provider.sdk_process as module
+
+    req = request(kind, json_object=kind == "chat").model_dump(mode="json")
+    payload = {
+        "request": req,
+        "secret": SECRET,
+        "base_url": "http://127.0.0.1:1/v1",
+        "timeout_seconds": 1.5,
+        "max_request_bytes": binding().max_request_bytes,
+        "max_response_bytes": binding().max_response_bytes,
+        "synthetic": True,
+    }
+    script = """
+import importlib.util, json, sys
+import httpx
+spec = importlib.util.spec_from_file_location("sdk_process", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+value = json.load(sys.stdin)
+calls = []
+def respond(request):
+    calls.append({"path": request.url.path, "body": json.loads(request.content)})
+    return httpx.Response(200, json=value["response"])
+result = module.sdk_call(value["payload"], transport=httpx.MockTransport(respond))
+print(json.dumps({"calls": calls, "result": result,
+    "resource_modules": [name for name in sys.modules
+        if name == "openai.resources" or name.startswith("openai.resources.")]}))
+"""
+    completed = subprocess.run(
+        [SDK_PYTHON, "-I", "-c", script, str(Path(module.__file__).resolve())],
+        input=json.dumps({"payload": payload, "response": document(kind)}),
+        capture_output=True,
+        text=True,
+        timeout=8,
+        check=True,
+    )
+    result = json.loads(completed.stdout)
+    assert result["resource_modules"] == []
+    if kind == "chat":
+        expected = {
+            "model": req["model"],
+            "messages": req["messages"],
+            "max_tokens": req["max_output_tokens"],
+            "temperature": 0,
+            "stream": False,
+            "response_format": req["response_format"],
+        }
+        endpoint = "/v1/chat/completions"
+        assert result["result"]["content"] == '{"ok":true}'
+    else:
+        expected = {
+            "model": req["model"],
+            "input": req["inputs"],
+            "dimensions": req["dimensions"],
+            "encoding_format": "float",
+        }
+        endpoint = "/v1/embeddings"
+        assert result["result"]["vectors"] == [[0.25, -0.5], [1.0, 0.0]]
+    assert result["calls"] == [{"path": endpoint, "body": expected}]

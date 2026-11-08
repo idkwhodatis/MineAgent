@@ -29,6 +29,7 @@ def session(revisions):
         ("032c_oe_provider_table_checks", True),
         ("032d_rd_validation_cost", True),
         ("032e_rd_workflow_cost", True),
+        ("032f_shared_validation_cost", True),
     ],
 )
 def test_exact_capability(revision, expected):
@@ -60,11 +61,13 @@ def test_unknown_or_multiple_revision_rejected(revisions):
         ("032c_oe_provider_table_checks", None),
         ("032d_rd_validation_cost", None),
         ("032e_rd_workflow_cost", None),
+        ("032f_shared_validation_cost", None),
         ("032a_rd_terminal_results", "future"),
         ("032b_oe_append_run_state", "future"),
         ("032c_oe_provider_table_checks", "future"),
         ("032d_rd_validation_cost", "future"),
         ("032e_rd_workflow_cost", "future"),
+        ("032f_shared_validation_cost", "future"),
     ],
 )
 def test_capability_disagreement_rejected(monkeypatch, revision, value):

@@ -159,6 +159,7 @@ def test_configured_fixture_initializer_preserves_versioned_revision_gate():
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     )
     assert ["026_seeded_factor"] not in allowed
     assert ["027_future"] not in allowed

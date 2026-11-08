@@ -40,6 +40,7 @@ def dispatch_workflow_tick(factory, settings):
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     ):
         return ()
     from workers.research.workflow_tick import tick_workflows

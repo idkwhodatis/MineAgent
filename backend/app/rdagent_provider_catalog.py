@@ -56,6 +56,7 @@ def provider_options(settings, owner_id, revision):
                 "032c_oe_provider_table_checks",
                 "032d_rd_validation_cost",
                 "032e_rd_workflow_cost",
+                "032f_shared_validation_cost",
             ) or (
                 runtime.controller_profile is not None
                 and revision
@@ -74,6 +75,7 @@ def provider_options(settings, owner_id, revision):
                     "032c_oe_provider_table_checks",
                     "032d_rd_validation_cost",
                     "032e_rd_workflow_cost",
+                    "032f_shared_validation_cost",
                 )
             ):
                 reason, enabled = "runtime_schema_unavailable", False
@@ -98,6 +100,7 @@ def provider_options(settings, owner_id, revision):
                     "032c_oe_provider_table_checks",
                     "032d_rd_validation_cost",
                     "032e_rd_workflow_cost",
+                    "032f_shared_validation_cost",
                 ):
                     seeded_enabled = False
                     seeded_reason = "runtime_schema_unavailable"

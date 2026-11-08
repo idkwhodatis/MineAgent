@@ -129,19 +129,29 @@ def sdk_call(payload, *, transport=None):
                 "max_tokens": request["max_output_tokens"],
                 "temperature": 0,
                 "stream": False,
-                "timeout": payload["timeout_seconds"],
             }
             if request["response_format"] is not None:
                 options["response_format"] = request["response_format"]
-            client.chat.completions.create(**options)
+            endpoint = "/chat/completions"
         else:
-            client.embeddings.create(
-                model=request["model"],
-                input=request["inputs"],
-                dimensions=request["dimensions"],
-                encoding_format="float",
-                timeout=payload["timeout_seconds"],
-            )
+            options = {
+                "model": request["model"],
+                "input": request["inputs"],
+                "dimensions": request["dimensions"],
+                "encoding_format": "float",
+            }
+            endpoint = "/embeddings"
+        # Public low-level SDK transport preserves auth/status/no-retry handling
+        # without importing every unrelated resource's Pydantic models on the
+        # first call. Those eager imports can exhaust the whole process deadline
+        # before HTTP dispatch. Request primitives are already validated; only
+        # our bounded original JSON below may authorize a provider result.
+        client.post(
+            endpoint,
+            body=options,
+            cast_to=httpx.Response,
+            options={"timeout": payload["timeout_seconds"]},
+        )
     # Inspect original JSON primitives, not SDK-coerced bool/string token counts.
     return validate_document(bounded.document, request, payload["synthetic"])
 

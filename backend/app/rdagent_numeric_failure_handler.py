@@ -131,6 +131,7 @@ def select_provider_result_handler(config, revisions):
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
             ["032e_rd_workflow_cost"],
+            ["032f_shared_validation_cost"],
         ):
             return ProviderRejectionHandler
     elif type(config) is WorkflowFactorResearchConfig and revisions in (
@@ -143,6 +144,7 @@ def select_provider_result_handler(config, revisions):
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     ):
         return ProviderRejectionHandler
     raise RPCError("numeric_failure_configured_profile_required")

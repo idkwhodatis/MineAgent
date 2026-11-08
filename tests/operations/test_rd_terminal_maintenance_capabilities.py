@@ -12,8 +12,9 @@ PREVIOUS = "032_normal_oe_note_pins"
 LEGACY = "032a_rd_terminal_results"
 OLDER = "032b_oe_append_run_state"
 PENULTIMATE = "032c_oe_provider_table_checks"
-OLD = "032d_rd_validation_cost"
-CURRENT = "032e_rd_workflow_cost"
+EARLIER = "032d_rd_validation_cost"
+OLD = "032e_rd_workflow_cost"
+CURRENT = "032f_shared_validation_cost"
 
 
 def test_maintenance_preserves_every_existing_capability():
@@ -29,7 +30,7 @@ def test_maintenance_preserves_every_existing_capability():
 
 
 @pytest.mark.parametrize(
-    "revision", [PREVIOUS, LEGACY, OLDER, PENULTIMATE, OLD, CURRENT]
+    "revision", [PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, CURRENT]
 )
 def test_normal_note_gate_accepts_exact_known_maintenance(revision):
     session = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: [revision]))
@@ -44,6 +45,11 @@ def test_normal_note_gate_accepts_exact_known_maintenance(revision):
         ["033_safe_workflow_branches"],
         [PREVIOUS, LEGACY],
         [LEGACY, LEGACY],
+        [LEGACY, EARLIER],
+        [PREVIOUS, EARLIER],
+        [EARLIER, EARLIER],
+        [EARLIER, OLD],
+        [EARLIER, CURRENT],
         [LEGACY, OLD],
         [PREVIOUS, OLD],
         [OLD, OLD],

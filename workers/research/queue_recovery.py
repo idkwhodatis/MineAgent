@@ -21,6 +21,7 @@ OE_REVISIONS = (
     "032c_oe_provider_table_checks",
     "032d_rd_validation_cost",
     "032e_rd_workflow_cost",
+    "032f_shared_validation_cost",
 )
 RD_REVISIONS = (
     "023_rd_submissions",

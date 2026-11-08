@@ -23,9 +23,16 @@ def test_configured_analysis_gate_is_distinct_exact_and_bounded():
     assert "workflow-contract-outcomes.xml" in text
     assert "workflow-runtime-outcomes.xml" in text
     assert "tests/integration/test_rdagent_validation_performance.py" in text
-    assert "-k 'not nonconstant_server_loop_probe and not text_loop_probe'" in text
-    assert "assert len(cases)==9" in text
+    assert (
+        "-k 'not nonconstant_server_loop_probe and not text_loop_probe and not opt_in'"
+        in text
+    )
+    assert "assert len(cases)==38" in text
     assert "tests/integration/test_rdagent_workflow_cost.py" in text
+    assert "tests/integration/test_structured_raw_cost.py" in text
+    assert "tests/integration/test_schema_reference_cost.py" in text
+    assert "tests/integration/test_shared_validation_cost_migration.py" in text
+    assert "tests/integration/test_oe_outbox_guard.py" in text
     assert "validation-semantics-outcomes.xml" in text
     assert "test_actual_configured_source_snapshot_direct_analysis_generation" in text
     assert "('failure','error','skipped')" in text
@@ -153,7 +160,7 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
     assert "MINEAGENT_PROVIDER_SDK_PYTHON" in workflow
     assert '"tests/rdagent_provider/**"' in workflow
     assert "python -m pytest tests/rdagent_provider -q -p no:cacheprovider" in workflow
-    assert "assert len(cases)==281" in workflow
+    assert "assert len(cases)==284" in workflow
     assert "var/numeric-proof/provider-outcomes.xml" in workflow
     assert (
         workflow.index("Install isolated host SDK")

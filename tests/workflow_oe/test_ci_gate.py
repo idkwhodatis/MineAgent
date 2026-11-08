@@ -46,6 +46,8 @@ def test_installed_workflow_and_note_gate_requires_all_six_real_pg_cases():
 
 
 def test_actual_finite_stage_and_restore_gate_cannot_skip_or_use_missing_images():
+    filters = WORKFLOW.read_text().split("  workflow_dispatch:", 1)[0]
+    assert '      - "tests/integration/oe_outbox_guard_native.py"' in filters
     gate = step("Require actual finite workflow RD to OE stage and complete restore")
     names = assert_required_case_names(
         "tests/integration/test_workflow_structured_stage_flow.py", gate

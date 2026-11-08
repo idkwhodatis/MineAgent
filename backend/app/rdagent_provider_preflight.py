@@ -207,6 +207,7 @@ def _provider_preflight(
         ["032c_oe_provider_table_checks"],
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
+        ["032f_shared_validation_cost"],
     ) or (
         runtime is not None
         and runtime.controller_profile is not None
@@ -226,6 +227,7 @@ def _provider_preflight(
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
             ["032e_rd_workflow_cost"],
+            ["032f_shared_validation_cost"],
         )
     ):
         reasons.append(
@@ -251,6 +253,7 @@ def _provider_preflight(
             ["032c_oe_provider_table_checks"],
             ["032d_rd_validation_cost"],
             ["032e_rd_workflow_cost"],
+            ["032f_shared_validation_cost"],
         )
     ):
         reasons.append(
