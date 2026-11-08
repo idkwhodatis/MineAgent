@@ -29,6 +29,7 @@ def diagnose_rd_rpc():
         rpc.send,
     )
     tail = deque(maxlen=64)
+    failures = []
     totals = {}
     current = {"method": "unknown", "sequence": 0, "deadline": None}
     commits = WeakKeyDictionary()
@@ -68,6 +69,23 @@ def diagnose_rd_rpc():
                 )
             ok = True
             return result
+        except BaseException as error:
+            if stage == "handle" and len(failures) < 8:
+                # Observe the same handler exception before controller cleanup
+                # replaces it with a whole-attempt containment failure. Snapshot
+                # only closed metadata, never retain/render frames or payloads.
+                try:
+                    failure = _rpc_failure_chain(error)
+                except BaseException:  # noqa: BLE001 - diagnostics cannot mask failure
+                    failure = {"status": "diagnostic_unavailable"}
+                failures.append(
+                    {
+                        "method": current["method"],
+                        "boundary": "handle_exception",
+                        **failure,
+                    }
+                )
+            raise
         finally:
             record(stage, start, ok)
 
@@ -133,15 +151,153 @@ def diagnose_rd_rpc():
                 }
                 for (method, stage), (count, total, maximum) in sorted(totals.items())
             ]
-            print(
-                "RD_RPC_TIMING:"
-                + json.dumps(
-                    {"summary": summary, "tail": list(tail)},
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-                flush=True,
-            )
+            report = {"summary": summary, "tail": list(tail)}
+            if failures:
+                report["failures"] = failures
+            try:
+                print(
+                    "RD_RPC_TIMING:"
+                    + json.dumps(report, sort_keys=True, separators=(",", ":")),
+                    flush=True,
+                )
+            except BaseException:  # noqa: BLE001, S110 - do not mask the original failure
+                pass
+
+
+def _analysis_trace_context(error):
+    """Exact code identities and primitive breadcrumbs, no extra physical probes.
+
+    Constructed objects are not persistence or containment evidence. In
+    particular, constructing an identity precedes writing its journal and
+    calling the database callback. Missing keys mean the frame was not observed.
+    """
+    from backend.app import analysis_launch_services
+    from packages.research_runtime.analysis_process_journal import (
+        AnalysisExtraction,
+        AnalysisIdentity,
+        AnalysisLaunch,
+    )
+    from runtimes.factor_execution.attach_stream import AttachStream
+    from runtimes.qlib import analysis_transport, daemon_identity, runtime_contract
+    from runtimes.research_supervisor import analysis_journal, analysis_supervisor
+    from runtimes.research_supervisor.numeric_journal import read_numeric_record
+    from runtimes.research_supervisor.numeric_supervisor import NumericDockerClient
+    from workers.research import analysis_process
+
+    supervisor = analysis_supervisor.AnalysisSupervisor
+    stages = (
+        (analysis_process.execute_analysis_acceptance_unit.__code__, "worker"),
+        (analysis_launch_services.record_analysis_identity.__code__, "record_identity"),
+        (
+            analysis_launch_services.record_analysis_containment.__code__,
+            "record_containment",
+        ),
+        (supervisor.execute.__code__, "execute"),
+        (supervisor._verify_staged_launch.__code__, "verify_launch"),
+        (supervisor._verify.__code__, "verify_runtime"),
+        (supervisor._observe_identity.__code__, "observe_identity"),
+        (supervisor.stop_and_verify.__code__, "stop"),
+        (supervisor._cleanup_unobserved.__code__, "cleanup_unobserved"),
+        (daemon_identity.observe_leader.__code__, "observe_leader"),
+        (runtime_contract.verify_inspect.__code__, "verify_inspect"),
+        (analysis_transport.read_analysis_frame.__code__, "read_frame"),
+        (analysis_transport.require_live_analysis_frame.__code__, "live_frame"),
+        (
+            analysis_transport.require_complete_analysis_stream.__code__,
+            "complete_stream",
+        ),
+        (analysis_journal.read_analysis_journal.__code__, "read_journal"),
+        (read_numeric_record.__code__, "read_record"),
+        (NumericDockerClient._command.__code__, "docker_command"),
+        (NumericDockerClient._inspect.__code__, "docker_inspect"),
+    )
+    operations = {
+        ("image", "inspect"): "image_inspect",
+        ("container", "inspect"): "container_inspect",
+        ("create",): "create",
+        ("start",): "start",
+        ("top",): "top",
+        ("rm", "--force"): "remove_force",
+    }
+    result, analysis_seen = {}, False
+    shared_codes = (
+        read_numeric_record.__code__,
+        NumericDockerClient._command.__code__,
+        NumericDockerClient._inspect.__code__,
+    )
+    trace = error.__traceback__
+    for _ in range(64):
+        if trace is None:
+            break
+        frame = trace.tb_frame
+        for code, label in stages:
+            if frame.f_code is code:
+                result["analysis_stage"] = label
+                analysis_seen = analysis_seen or not any(
+                    frame.f_code is shared for shared in shared_codes
+                )
+                break
+        if frame.f_code is supervisor.execute.__code__:
+            for name, expected in (
+                ("launch", AnalysisLaunch),
+                ("reader", AttachStream),
+                ("identity", AnalysisIdentity),
+                ("extraction", AnalysisExtraction),
+            ):
+                result["analysis_" + name + "_constructed"] = (
+                    type(frame.f_locals.get(name)) is expected
+                )
+        if frame.f_code is NumericDockerClient._command.__code__:
+            args = frame.f_locals.get("args")
+            operation = "unknown"
+            if type(args) is list:
+                for prefix, label in operations.items():
+                    head = args[: len(prefix)]
+                    if (
+                        all(type(value) is str for value in head)
+                        and tuple(head) == prefix
+                    ):
+                        operation = label
+                        break
+            result["docker_operation"] = operation
+        trace = trace.tb_next
+    if trace is not None:
+        result["trace_overflow"] = True
+    if not analysis_seen:
+        result.pop("analysis_stage", None)
+    return result
+
+
+def _rpc_failure_chain(error):
+    """Bounded cause/context graph, including suppressed cleanup context.
+
+    Python keeps the initiating exception in __context__ even when a cleanup
+    raises from None. Neither that suppression nor a new explicit cause is
+    permission to discard the original failure from this private test probe.
+    """
+    pending, seen, errors = deque([(error, "raised", None)]), set(), []
+    while pending and len(errors) < 8:
+        current, relation, parent = pending.popleft()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        index = len(errors)
+        errors.append(
+            {
+                "relation": relation,
+                "parent": parent,
+                **_queue_failure(current),
+                **_analysis_trace_context(current),
+            }
+        )
+        for name, relation in (("__cause__", "cause"), ("__context__", "context")):
+            child = getattr(current, name)
+            if isinstance(child, BaseException) and id(child) not in seen:
+                pending.append((child, relation, index))
+    return {
+        "errors": errors,
+        "error_overflow": any(id(item[0]) not in seen for item in pending),
+    }
 
 
 def _closed_trace_context(error):
@@ -167,7 +323,9 @@ def _closed_trace_context(error):
         observers.append((current[0], "deadline"))
     result = {}
     trace = error.__traceback__
-    while trace is not None:
+    for _ in range(64):
+        if trace is None:
+            break
         frame = trace.tb_frame
         if frame.f_code is rpc.serve_one.__code__:
             request = frame.f_locals.get("request")
@@ -203,6 +361,9 @@ def _queue_failure(error):
         TypeError: "type",
         KeyError: "key",
         TimeoutError: "timeout",
+        FileNotFoundError: "file_missing",
+        PermissionError: "permission",
+        OSError: "os",
     }.get(type(error), "other")
     code = getattr(error, "code", None)
     if type(error) is RPCError:
@@ -235,6 +396,22 @@ def _queue_failure(error):
         "neutral_busy",
         "numeric_process_command_deadline",
         "numeric_process_command_cleanup",
+        "numeric_process_command_failed",
+        "numeric_process_command_output",
+        "numeric_process_uncertain",
+        "analysis_process_authority",
+        "analysis_process_deadline",
+        "analysis_process_original_deadline",
+        "analysis_process_runtime_identity",
+        "analysis_process_kernel_identity",
+        "analysis_process_identity_unobserved",
+        "analysis_process_created_cleanup_uncertain",
+        "analysis_process_journal_identity",
+        "analysis_process_root_identity",
+        "analysis_process_uncertain",
+        "analysis_process_output_rejected",
+        "analysis_process_claim",
+        "analysis_process_retained_input_drift",
     }
     code = code if type(code) is str and code in allowed else "unknown"
     sqlstate = "none"
@@ -292,7 +469,9 @@ def _queue_failure(error):
         ("backend.app.research_lifecycle", "neutral_transaction"): "transaction",
     }
     stage, trace = "unknown", error.__traceback__
-    while trace is not None:
+    for _ in range(64):
+        if trace is None:
+            break
         key = (trace.tb_frame.f_globals.get("__name__"), trace.tb_frame.f_code.co_name)
         stage = stages.get(key, stage)
         trace = trace.tb_next
