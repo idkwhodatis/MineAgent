@@ -81,7 +81,7 @@ export function AppLayout() {
           <span className="workspace-avatar">R</span>
           <div>
             <div className="text-xs font-semibold">Research workspace</div>
-            <div className="mt-1 text-[10px] text-[#8a967d]">
+            <div className="mt-1 text-xs text-muted-foreground">
               Private · Data & research
             </div>
           </div>
@@ -111,7 +111,7 @@ export function AppLayout() {
           </div>
         </nav>
         <div className="sidebar-foot">
-          <div className="flex items-center gap-2 text-[#60754e]">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <CircleHelp size={15} />
             <strong className="font-medium">Built for reproducibility</strong>
           </div>
@@ -134,7 +134,7 @@ export function AppLayout() {
       <div className="main">
         <div className="topbar">
           <div className="topbar-title">
-            Workspace <span className="mx-3 text-[#c0c9b6]">/</span>{" "}
+            Workspace <span className="mx-3 text-muted-foreground">/</span>{" "}
             <strong>{activeTitle}</strong>
           </div>
           <div className="user-chip">
