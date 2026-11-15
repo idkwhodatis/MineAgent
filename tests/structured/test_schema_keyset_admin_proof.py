@@ -481,6 +481,18 @@ def test_latin1_lifecycle_only_cleans_confirmed_owned_creation(monkeypatch, fail
 
     if failure == "none":
         run()
+        queries = [str(call.args[0]) for call in db_connection.scalar.call_args_list]
+        assert queries == [
+            "SHOW server_encoding",
+            (
+                "SELECT datcollate FROM pg_catalog.pg_database "
+                "WHERE datname=pg_catalog.current_database()"
+            ),
+            (
+                "SELECT datctype FROM pg_catalog.pg_database "
+                "WHERE datname=pg_catalog.current_database()"
+            ),
+        ]
     else:
         with pytest.raises((proof.ProofGuardError, RuntimeError)):
             run()
@@ -537,6 +549,17 @@ def test_integration_collection_has_no_admin_calls_and_uses_full_latin1_chain():
     for statement in tree.body:
         if isinstance(statement, ast.Expr):
             assert isinstance(statement.value, ast.Constant)
+    from tests.integration.test_schema_keyset_admin_proof import role_schema_probe
+
+    statement = role_schema_probe("proof_schema")
+    assert set(statement.compile().params) == {"value", "rule", "defs", "depth"}
+    supplied = {
+        "value": '{"café":"ÿ"}',
+        "rule": '{"additionalProperties":false}',
+        "defs": "{}",
+        "depth": 0,
+    }
+    assert statement.compile().construct_params(supplied) == supplied
     assert "full_chain=True" in source
     assert "command.upgrade(config, module.down_revision)" in source
     assert "WITH INHERIT {inherit}, SET FALSE" in source

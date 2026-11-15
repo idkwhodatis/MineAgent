@@ -319,11 +319,23 @@ def latin1_database(admin):
                 "Real LATIN1 server encoding required",
             )
             require(
-                connection.scalar(text("SHOW lc_collate")) == "C",
+                connection.scalar(
+                    text(
+                        "SELECT datcollate FROM pg_catalog.pg_database "
+                        "WHERE datname=pg_catalog.current_database()"
+                    )
+                )
+                == "C",
                 "LATIN1 C collation required",
             )
             require(
-                connection.scalar(text("SHOW lc_ctype")) == "C",
+                connection.scalar(
+                    text(
+                        "SELECT datctype FROM pg_catalog.pg_database "
+                        "WHERE datname=pg_catalog.current_database()"
+                    )
+                )
+                == "C",
                 "LATIN1 C character classification required",
             )
         yield engine

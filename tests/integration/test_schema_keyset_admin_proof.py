@@ -234,6 +234,14 @@ def setup_actor(connection, schema, mode):
     return actor
 
 
+def role_schema_probe(schema):
+    return text(f'''
+        SELECT "{schema}".mineagent_rd_schema(
+            CAST(:value AS jsonb), CAST(:rule AS jsonb),
+            CAST(:defs AS jsonb), :depth)
+    ''')
+
+
 @pytest.mark.parametrize("direction", ["upgrade", "downgrade"])
 @pytest.mark.parametrize(
     "mode", ["direct", "inherit", "noninherit", "foreign_helpers", "noninherit_helpers"]
@@ -262,13 +270,20 @@ def test_non_superuser_actual_owner_membership_and_helper_independence(
             for depth in (0, -1, None):
                 assert (
                     connection.scalar(
-                        text(f"""
-                    SELECT "{schema}".mineagent_rd_schema(
-                        '{{"café":"ÿ"}}'::jsonb,
-                        '{{"type":"object","properties":{{"café":{{"type":"string"}}}},"additionalProperties":false}}'::jsonb,
-                        '{{}}'::jsonb,:depth)
-                """),
-                        {"depth": depth},
+                        role_schema_probe(schema),
+                        {
+                            "value": json.dumps({"café": "ÿ"}, ensure_ascii=False),
+                            "rule": json.dumps(
+                                {
+                                    "type": "object",
+                                    "properties": {"café": {"type": "string"}},
+                                    "additionalProperties": False,
+                                },
+                                ensure_ascii=False,
+                            ),
+                            "defs": "{}",
+                            "depth": depth,
+                        },
                     )
                     is True
                 )
