@@ -25,7 +25,7 @@ def test_historical_gates_precede_same_graph_upgrade_and_third_independent_resto
         "python -m pytest tests/research_workflow tests/research_inputs tests/workflow_oe -q -p no:cacheprovider"
         in step
     )
-    assert "assert len(cases)==972" in step
+    assert "assert len(cases)==986" in step
     assert "('failure','error','skipped')" in step
     assert 'test "$status" = 0' in step
     source = (
