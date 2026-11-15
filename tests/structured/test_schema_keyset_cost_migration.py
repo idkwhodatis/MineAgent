@@ -234,14 +234,20 @@ class Platform:
             "types": ["bool", "int4", "jsonb"],
         } | changes
         self.shadows = []
+        self.queries = []
 
     def exec_driver_sql(self, sql, params=None):
+        self.queries.append(sql)
         return Result(self.shadows if "pg_my_temp_schema" in sql else self.row)
 
 
 @pytest.mark.parametrize("encoding", ["UTF8", "LATIN1", "WIN1252", "SQL_ASCII"])
 def test_no_unjustified_database_encoding_restriction(encoding):
-    migration()._platform(Platform(encoding=encoding))
+    connection = Platform(encoding=encoding)
+    migration()._platform(connection)
+    # Qualified names must use the real catalog type, not the SQL alias.
+    assert "::pg_catalog.int4 AS version" in connection.queries[0]
+    assert "pg_catalog.integer" not in connection.queries[0]
 
 
 @pytest.mark.parametrize(

@@ -113,7 +113,7 @@ def _validate_functions(rows, schema, main_sql):
 def _platform(connection):
     row = (
         connection.exec_driver_sql("""SELECT
-        pg_catalog.current_setting('server_version_num')::pg_catalog.integer AS version,
+        pg_catalog.current_setting('server_version_num')::pg_catalog.int4 AS version,
         pg_catalog.current_setting('server_encoding') AS encoding,
         (SELECT collisdeterministic FROM pg_catalog.pg_collation
          WHERE oid=100 AND collname='default' AND collnamespace=11) AS deterministic,
