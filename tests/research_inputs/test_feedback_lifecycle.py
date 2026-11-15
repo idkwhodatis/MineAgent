@@ -365,3 +365,44 @@ def test_historical_terminal_cannot_invent_native_guard(tmp_path):
         service.validate_feedback_terminal_under_native_guard(
             NS(), uuid4(), uuid4(), uuid4(), NS(storage_root=tmp_path)
         )
+
+
+@pytest.mark.parametrize(
+    "status,reason,accepted",
+    [
+        ("blocked", "workflow_feedback_release_required", True),
+        ("blocked", "workflow_next_child_pending", False),
+        ("blocked", None, False),
+        ("paused", "workflow_feedback_release_required", False),
+        ("cancelled", "workflow_feedback_release_required", False),
+        ("pause_requested", "workflow_feedback_release_required", True),
+        ("cancel_requested", "workflow_feedback_release_required", True),
+    ],
+)
+def test_feedback_release_wait_rechecks_binding_without_admitting_other_blocks(
+    monkeypatch, status, reason, accepted
+):
+    owner, workflow, stage_id = uuid4(), uuid4(), uuid4()
+    root = NS(current_stage_id=stage_id, status=status, blocked_reason=reason)
+    session = NS(scalar=lambda statement: root)
+    stage, definition = object(), object()
+    checked = []
+    monkeypatch.setattr(service, "require_input_capability", lambda session: None)
+    monkeypatch.setattr(service, "_try_neutral_lock", lambda *args: None)
+
+    def binding(*args):
+        checked.append(args)
+        return root, stage, None, definition, None, None
+
+    monkeypatch.setattr(service, "_binding", binding)
+    if accepted:
+        assert service.current_feedback_stage(session, owner, workflow, stage_id) == (
+            root,
+            stage,
+            definition,
+        )
+        assert checked == [(session, owner, workflow, stage_id)]
+    else:
+        with pytest.raises(DomainError):
+            service.current_feedback_stage(session, owner, workflow, stage_id)
+        assert not checked

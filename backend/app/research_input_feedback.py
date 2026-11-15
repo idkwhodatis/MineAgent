@@ -61,8 +61,13 @@ def current_feedback_stage(session, owner_id, workflow_id, stage_id):
     if (
         root is None
         or root.current_stage_id != stage_id
-        or root.status
-        not in {"ready", "running", "pause_requested", "cancel_requested"}
+        or not (
+            root.status in {"ready", "running", "pause_requested", "cancel_requested"}
+            or (
+                root.status == "blocked"
+                and root.blocked_reason == "workflow_feedback_release_required"
+            )
+        )
     ):
         fail()
     # Exact immutable adjacent engine-stage/checkpoint metadata only; no values

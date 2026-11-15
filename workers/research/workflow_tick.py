@@ -106,12 +106,10 @@ def drive_one(factory, settings, *, owner_id, workflow_id):
         revision, status, reason, selection, stage_id, kind = _read(
             factory, settings, owner_id, workflow_id
         )
-    if kind == "experiment_feedback_projection" and status in {
-        "ready",
-        "running",
-        "pause_requested",
-        "cancel_requested",
-    }:
+    if kind == "experiment_feedback_projection" and (
+        status in {"ready", "running", "pause_requested", "cancel_requested"}
+        or (status == "blocked" and reason == "workflow_feedback_release_required")
+    ):
         try:
             run_feedback_stage(
                 factory,
@@ -542,7 +540,13 @@ def _record_wait(factory, settings, owner_id, workflow_id, stage_id, revision, r
             and root.revision == revision
             and root.status
             in {"ready", "running", "blocked", "pause_requested", "cancel_requested"}
-            and root.blocked_reason != reason
+            and (
+                root.blocked_reason != reason
+                or (
+                    reason == "workflow_feedback_release_required"
+                    and root.status in {"ready", "running"}
+                )
+            )
         ):
             # Diagnostic only: preserve control requests and the actual child.
             # The installed root trigger requires a CAS revision for *every*
@@ -550,6 +554,14 @@ def _record_wait(factory, settings, owner_id, workflow_id, stage_id, revision, r
             # read-only, so it neither invalidates controls nor churns revisions.
             root.revision += 1
             root.blocked_reason = reason
+            # A release wait is a real metadata block, not permission to run.
+            # Keep pending pause/cancel requests intact; the next tick rechecks
+            # the actual release before preparing any started feedback event.
+            if reason == "workflow_feedback_release_required" and root.status in {
+                "ready",
+                "running",
+            }:
+                root.status = "blocked"
             session.flush()
 
 

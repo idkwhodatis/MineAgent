@@ -240,7 +240,10 @@ def test_missing_sdk_stop_has_distinct_waiting_not_release(monkeypatch, kind):
 
 
 @pytest.mark.parametrize("state", ["success", "missing_release", "cancelled"])
-def test_actual_feedback_then_checkpoint_never_invents_next_child(monkeypatch, state):
+@pytest.mark.parametrize("initial_status", ["ready", "blocked"])
+def test_actual_feedback_then_checkpoint_never_invents_next_child(
+    monkeypatch, state, initial_status
+):
     from backend.app.services import DomainError
 
     owner, workflow, stage, selection = uuid4(), uuid4(), uuid4(), uuid4()
@@ -248,16 +251,20 @@ def test_actual_feedback_then_checkpoint_never_invents_next_child(monkeypatch, s
         [
             (
                 5,
-                "cancel_requested" if state == "cancelled" else "ready",
-                None,
+                "cancel_requested" if state == "cancelled" else initial_status,
+                "workflow_feedback_release_required"
+                if initial_status == "blocked"
+                else None,
                 selection,
                 stage,
                 "experiment_feedback_projection",
             ),
             (
                 5,
-                "cancel_requested" if state == "cancelled" else "ready",
-                None,
+                "cancel_requested" if state == "cancelled" else initial_status,
+                "workflow_feedback_release_required"
+                if initial_status == "blocked"
+                else None,
                 selection,
                 stage,
                 "experiment_feedback_projection",
@@ -402,7 +409,9 @@ def test_four_waiting_roots_cannot_starve_new_actionable_root(
         engine.dispose()
 
 
-@pytest.mark.parametrize("scenario", ["new", "identical", "stale", "cancel"])
+@pytest.mark.parametrize(
+    "scenario", ["new", "identical", "stale", "cancel", "pause", "legacy_ready"]
+)
 @pytest.mark.parametrize(
     "reason", ["workflow_feedback_release_required", "workflow_input_capacity_exceeded"]
 )
@@ -418,16 +427,36 @@ def test_wait_diagnostic_uses_root_cas_without_repeated_mutation(
     root = NS(
         current_stage_id=stage,
         revision=7,
-        status="cancel_requested" if scenario == "cancel" else "running",
-        blocked_reason=reason if scenario == "identical" else None,
+        status=(
+            "cancel_requested"
+            if scenario == "cancel"
+            else "pause_requested"
+            if scenario == "pause"
+            else "blocked"
+            if scenario == "identical"
+            else "ready"
+            if scenario == "legacy_ready"
+            else "running"
+        ),
+        blocked_reason=reason if scenario in {"identical", "legacy_ready"} else None,
     )
     original_status = root.status
+    changes = scenario in {"new", "cancel", "pause"} or (
+        scenario == "legacy_ready" and reason == "workflow_feedback_release_required"
+    )
+    expected_status = (
+        "blocked"
+        if changes
+        and reason == "workflow_feedback_release_required"
+        and original_status in {"ready", "running"}
+        else original_status
+    )
     flushes = []
     locks = []
 
     def flush():
         assert root.revision == 8 and root.blocked_reason == reason
-        assert root.status == original_status
+        assert root.status == expected_status
         flushes.append(root.revision)
 
     @contextmanager
@@ -450,9 +479,9 @@ def test_wait_diagnostic_uses_root_cas_without_repeated_mutation(
         reason,
     )
     assert locks == [f"submit:{owner}"]
-    assert flushes == ([8] if scenario in {"new", "cancel"} else [])
+    assert flushes == ([8] if changes else [])
     assert root.revision == (8 if flushes else 7)
-    assert root.status == original_status
+    assert root.status == expected_status
     if scenario == "stale":
         assert root.blocked_reason is None
 
