@@ -131,6 +131,14 @@ def test_generator_rejects_changed_predecessor(filename, monkeypatch):
 def test_separately_owned_unchanged_helpers_supported():
     module = migration()
     before = rows(module)
+
+    class CatalogConnection:
+        def exec_driver_sql(self, sql, parameters):
+            # regproc text is not its numeric OID: pin explicit wire normalization.
+            assert "p.prosupport::pg_catalog.oid AS prosupport" in sql
+            return Result(before)
+
+    assert module._snapshot(CatalogConnection(), "proof_schema") == before
     module._validate_functions(before, "proof_schema", module.DOWNGRADE_SQL)
     assert [r["owner_usable"] for r in before] == [True, False, False]
     after = rows(module, module.UPGRADE_SQL)

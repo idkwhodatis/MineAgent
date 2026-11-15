@@ -39,7 +39,8 @@ def _snapshot(connection, schema):
         for row in connection.exec_driver_sql(
             """
         SELECT p.oid,p.proname,p.pronamespace,p.proowner,p.prolang,l.lanname,
-          p.procost,p.prorows,p.provariadic,p.prosupport,p.prokind,p.prosecdef,
+          p.procost,p.prorows,p.provariadic,p.prosupport::pg_catalog.oid AS prosupport,
+          p.prokind,p.prosecdef,
           p.proleakproof,p.proisstrict,p.proretset,p.provolatile,p.proparallel,
           p.pronargs,p.pronargdefaults,p.prorettype,p.proargtypes::pg_catalog.text AS proargtypes,
           p.proallargtypes,p.proargmodes,p.proargnames,
