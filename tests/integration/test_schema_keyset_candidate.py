@@ -22,6 +22,7 @@ from sqlalchemy import text
 
 from backend.app.rdagent_provider_revision import function, literal
 from script import schema_keyset_candidate as candidate
+from tests.integration.sql_candidate_predecessor import select_predecessor
 from tests.integration.test_rdagent_validation_performance import (
     config_corpus,
     outcome,
@@ -79,8 +80,9 @@ KEYS = [
 
 
 @pytest.fixture
-def validation_db(postgres_engine):
-    with postgres_engine.begin() as connection:
+def validation_db(migrated_engine):
+    with migrated_engine.begin() as connection:
+        select_predecessor(connection)
         schema = connection.scalar(text("SELECT current_schema()"))
         assert (
             connection.scalar(
@@ -104,7 +106,7 @@ def validation_db(postgres_engine):
         connection.exec_driver_sql(
             sql.replace("@SCHEMA@", schema), execution_options={"no_parameters": True}
         )
-    return postgres_engine
+    return migrated_engine
 
 
 def test_old_complete_config_corpus(validation_db):

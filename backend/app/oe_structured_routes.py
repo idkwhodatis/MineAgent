@@ -66,6 +66,7 @@ def capabilities(user: CurrentUser, session: SessionDep):
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     )
     return StructuredSearchCapabilities(
         routes_available=available,

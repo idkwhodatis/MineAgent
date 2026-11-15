@@ -116,7 +116,7 @@ def test_candidates_are_not_imported_by_runtime_or_migrations_and_timeout_is_unc
         "statement_timeout=10000" in Path("tests/integration/conftest.py").read_text()
     )
     assert (
-        'REQUIRED_SCHEMA_REVISION = "032f_shared_validation_cost"'
+        'REQUIRED_SCHEMA_REVISION = "032g_schema_keyset_cost"'
         in Path("backend/app/core/db.py").read_text()
     )
 

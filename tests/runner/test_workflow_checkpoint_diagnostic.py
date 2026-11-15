@@ -45,17 +45,18 @@ def frozen_definitions(last_revision=None):
     return definitions
 
 
-def catalog():
-    definitions = frozen_definitions()
+def catalog(revision="032g_schema_keyset_cost"):
+    definitions = frozen_definitions(revision)
+    pins = diag.PINS_BY_REVISION[revision]
     rows = []
-    for name, (digest, volatility, setting) in diag.PINS.items():
+    for name, (digest, volatility, setting) in pins.items():
         definition, body = definitions[name]
         assert hashlib.sha256(body.encode()).hexdigest() == digest
         assert not re.search(
             r"\b(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|EXECUTE|CALL)\b", body
         )
         assert "SECURITY DEFINER" not in definition
-        assert set(re.findall(r"\b(mineagent_\w+)\s*\(", body)) <= diag.PINS.keys()
+        assert set(re.findall(r"\b(mineagent_\w+)\s*\(", body)) <= pins.keys()
         actual = (
             "i"
             if "IMMUTABLE" in definition.split("AS $$")[0]
@@ -88,13 +89,16 @@ def catalog():
             continue
         reached.add(name)
         pending.update(re.findall(r"\b(mineagent_\w+)\s*\(", definitions[name][1]))
-    assert reached == diag.PINS.keys()
+    assert reached == pins.keys()
     return rows
 
 
 class Connection:
-    def __init__(self, rows=None, failure=None, value=True):
-        self.rows = catalog() if rows is None else rows
+    def __init__(self, rows=None, failure=None, value=True, revisions=None):
+        self.revisions = (
+            [("032g_schema_keyset_cost",)] if revisions is None else revisions
+        )
+        self.rows = catalog(self.revisions[0][0]) if rows is None else rows
         self.failure, self.value = failure, value
         self.opened = self.rolled_back = self.calls = 0
 
@@ -117,7 +121,12 @@ class Connection:
             error = RuntimeError(PRIVATE)
             error.orig = NS(sqlstate="42703", message_detail=PRIVATE)
             raise error
-        return NS(all=lambda: self.rows, scalar_one=lambda: self.value)
+        return NS(
+            all=lambda: (
+                self.revisions if "FROM alembic_version" in query else self.rows
+            ),
+            scalar_one=lambda: self.value,
+        )
 
 
 def test_exact_pins_and_every_fixed_probe_rolls_back_without_committing():
@@ -131,13 +140,14 @@ def test_exact_pins_and_every_fixed_probe_rolls_back_without_committing():
     }
     assert len(result["checks"]) == 11
     assert all(row["value"] is True for row in result["checks"])
-    assert conn.opened == conn.rolled_back == conn.calls == 12
+    assert conn.opened == conn.rolled_back == 12
+    assert conn.calls == 13
 
     # The new helper is part of the immutable catalog-only closure. Neither old
     # schema/raw bodies nor an unknown helper alias may be treated as current.
     rows = catalog()
     helper = "mineagent_rd_schema_recursive_032e"
-    assert diag.PINS[helper][1:] == ("i", "catalog")
+    assert diag.PINS_032G[helper][1:] == ("i", "catalog")
     predecessor = frozen_definitions("032e_rd_workflow_cost")
     assert helper not in predecessor
     for name in ("mineagent_rd_schema", "mineagent_structured_raw_json"):
@@ -149,7 +159,7 @@ def test_exact_pins_and_every_fixed_probe_rolls_back_without_committing():
         assert diag.probe(old, uuid4(), uuid4(), uuid4()) == {
             "category": "installed_body_mismatch"
         }
-        assert old.calls == old.rolled_back == 1
+        assert old.calls == 2 and old.rolled_back == 1
     unknown = [
         (row[0] + "_future", *row[1:]) if row[0] == helper else row for row in rows
     ]
@@ -157,17 +167,17 @@ def test_exact_pins_and_every_fixed_probe_rolls_back_without_committing():
     assert diag.probe(changed, uuid4(), uuid4(), uuid4()) == {
         "category": "installed_body_mismatch"
     }
-    assert changed.calls == changed.rolled_back == 1
+    assert changed.calls == 2 and changed.rolled_back == 1
 
 
-@pytest.mark.parametrize("failure", range(1, 13))
+@pytest.mark.parametrize("failure", range(1, 14))
 def test_every_query_error_is_sanitized_and_savepoint_rolled_back(failure):
     conn = Connection(failure=failure)
     result = diag.probe(conn, uuid4(), uuid4(), uuid4())
     assert PRIVATE not in str(result)
     assert "42703" in str(result)
-    assert conn.opened == conn.rolled_back == conn.calls
-    assert conn.calls == (1 if failure == 1 else 12)
+    assert conn.opened == conn.rolled_back == (1 if failure <= 2 else 12)
+    assert conn.calls == (failure if failure <= 2 else 13)
 
 
 @pytest.mark.parametrize(
@@ -201,7 +211,7 @@ def test_unknown_or_changed_installed_bodies_are_not_executed(change):
         assert diag.probe(conn, uuid4(), uuid4(), uuid4()) == {
             "category": "installed_body_mismatch"
         }
-        assert conn.calls == conn.rolled_back == 1
+        assert conn.calls == 2 and conn.rolled_back == 1
 
 
 @pytest.mark.parametrize("value", [None, PRIVATE, 0, 1, {}, []])
@@ -252,10 +262,10 @@ def test_observer_preserves_original_return_error_and_restores_wrapper(
             )
     assert service.observe_rd_terminal is original and len(calls) == 1
     assert PRIVATE not in capsys.readouterr().out
-    assert conn.calls == (0 if failure else 12)
+    assert conn.calls == (0 if failure else 13)
 
 
-@pytest.mark.parametrize("failure", [1, 2, 12])
+@pytest.mark.parametrize("failure", [1, 2, 3, 13])
 def test_baseexception_still_rolls_back_open_savepoint(failure):
     conn = Connection()
     original = conn.execute
@@ -269,7 +279,8 @@ def test_baseexception_still_rolls_back_open_savepoint(failure):
     conn.execute = interrupted
     with pytest.raises(KeyboardInterrupt):
         diag.probe(conn, uuid4(), uuid4(), uuid4())
-    assert conn.opened == conn.rolled_back == failure
+    assert conn.opened == conn.rolled_back == max(1, failure - 1)
+    assert conn.calls == failure
 
 
 def test_observer_internal_failure_does_not_mask_original_commit_error(
@@ -295,3 +306,37 @@ def test_observer_internal_failure_does_not_mask_original_commit_error(
     assert caught.value is error and service.observe_rd_terminal is original
     output = capsys.readouterr().out
     assert PRIVATE not in output and "observer_error" in output
+
+
+@pytest.mark.parametrize("revision", sorted(diag.PINS_BY_REVISION))
+def test_revision_first_exact_58_body_closure_and_cross_revision_rejection(revision):
+    rows = catalog(revision)
+    conn = Connection(rows=rows, revisions=[(revision,)])
+    assert diag.probe(conn, uuid4(), uuid4(), uuid4())["category"] == "observed"
+    assert conn.calls == 13 and conn.opened == conn.rolled_back == 12
+    other = next(name for name in diag.PINS_BY_REVISION if name != revision)
+    wrong = Connection(rows=catalog(other), revisions=[(revision,)])
+    assert diag.probe(wrong, uuid4(), uuid4(), uuid4()) == {
+        "category": "installed_body_mismatch"
+    }
+    assert wrong.calls == 2 and wrong.opened == wrong.rolled_back == 1
+    assert len(diag.PINS_032F) == len(diag.PINS_032G) == 58
+    assert {
+        name for name in diag.PINS_032F if diag.PINS_032F[name] != diag.PINS_032G[name]
+    } == {"mineagent_rd_schema"}
+
+
+@pytest.mark.parametrize(
+    "revisions",
+    [
+        [],
+        [("unreviewed",)],
+        [("032f_shared_validation_cost",), ("032g_schema_keyset_cost",)],
+    ],
+)
+def test_unknown_missing_or_multiple_revisions_never_query_function_catalog(revisions):
+    conn = Connection(rows=[], revisions=revisions)
+    assert diag.probe(conn, uuid4(), uuid4(), uuid4()) == {
+        "category": "installed_revision_mismatch"
+    }
+    assert conn.calls == conn.opened == conn.rolled_back == 1

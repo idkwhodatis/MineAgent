@@ -198,7 +198,17 @@ def assert_note_reads(client, headers, foreign, saved):
         assert client.get(path, headers=foreign).status_code == 404
 
 
-def assert_notes_restore(databases, tmp_path, source, env, completed, saved):
+def assert_notes_restore(
+    databases,
+    tmp_path,
+    source,
+    env,
+    completed,
+    saved,
+    *,
+    expected_revision="032_normal_oe_note_pins",
+    restored_check=None,
+):
     """Use a fresh restore database; never overwrite the prior031 restored DB."""
     import test_backup_restore as legacy
     from fastapi.testclient import TestClient
@@ -231,7 +241,7 @@ def assert_notes_restore(databases, tmp_path, source, env, completed, saved):
     manifest = _roundtrip(
         databases, tmp_path, source, env.settings.storage_root, target
     )
-    assert manifest["schema_revision"] == "032_normal_oe_note_pins"
+    assert manifest["schema_revision"] == expected_revision
     assert _files(target) == before_files
     restored = legacy._engine(databases.restored)
     try:
@@ -247,6 +257,8 @@ def assert_notes_restore(databases, tmp_path, source, env, completed, saved):
         with TestClient(create_app(settings=settings, engine=restored)) as client:
             headers, foreign = login(client, env.account), login(client, env.other)
             assert_note_reads(client, headers, foreign, saved)
+            if restored_check is not None:
+                restored_check(factory, settings, client, headers, foreign)
         from oe_structured_browser import assert_normal_oe_notes_in_browser
 
         assert_normal_oe_notes_in_browser(

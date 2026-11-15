@@ -219,8 +219,29 @@ def test_maintenance_and_catalog_preflight_are_fail_closed():
 def test_scope_has_no_head_wiring_and_no_new_function_signature():
     from backend.app.core.db import REQUIRED_SCHEMA_REVISION
 
-    assert REQUIRED_SCHEMA_REVISION == m.PREDECESSOR
+    assert REQUIRED_SCHEMA_REVISION == "032g_schema_keyset_cost"
+    assert m.PREDECESSOR == "032f_shared_validation_cost"
     assert not list(m.VERSIONS.glob("*row_validation_invariant*"))
+    probe = (ROOT / "tests/integration/test_row_validation_invariants.py").read_text()
+    tree = ast.parse(probe)
+    admitted = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "test_full_schema_scan_admitted_queued_row_and_state_only_dml"
+    )
+    assert "owner" not in {arg.arg for arg in admitted.args.args}
+    assert "make_account" in {arg.arg for arg in admitted.args.args}
+    body = ast.get_source_segment(probe, admitted)
+    assert body.count("select_predecessor(c)") == 1
+    assert (
+        body.index("select_predecessor(c)")
+        < body.index('("032f_shared_validation_cost",)')
+        < body.index('owner = make_account("owner")')
+        < body.index("dataset, _source, policy = persist_configured_dataset(")
+        < body.index("legacy, _exact = submit(")
+        < body.index("receipt, _exact = submit(")
+    )
     assert (
         set(
             re.findall(

@@ -40,6 +40,7 @@ def test_analysis_revision_preserves_exact_historical_capabilities():
             "032d_rd_validation_cost",
             "032e_rd_workflow_cost",
             "032f_shared_validation_cost",
+            "032g_schema_keyset_cost",
         }:
             assert historical.direct_analysis_schema is None
     old = capabilities_for("021_execution_snapshots")

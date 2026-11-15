@@ -31,11 +31,14 @@ def test_frozen_shared_migration_reconstructs_only_reviewed_functions():
 
     value = migration()
     assert PATH.read_text() == document()
-    assert value.revision == REQUIRED_SCHEMA_REVISION == "032f_shared_validation_cost"
+    assert value.revision == "032f_shared_validation_cost"
     assert value.down_revision == "032e_rd_workflow_cost"
-    assert ScriptDirectory.from_config(Config("backend/alembic.ini")).get_heads() == [
-        value.revision
-    ]
+    scripts = ScriptDirectory.from_config(Config("backend/alembic.ini"))
+    assert scripts.get_revision(value.revision).down_revision == value.down_revision
+    assert scripts.get_heads() == [REQUIRED_SCHEMA_REVISION]
+    assert (
+        scripts.get_revision(REQUIRED_SCHEMA_REVISION).down_revision == value.revision
+    )
     renderers = (raw_sql, schema_sql, guard_sql)
     assert value.UPGRADE_SQL == "\n".join(
         module.render_upgrade_sql() for module in renderers

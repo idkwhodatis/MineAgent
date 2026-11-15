@@ -67,6 +67,7 @@ def publish_evidence(factory, fence, settings, kind, content, key):
             ["032d_rd_validation_cost"],
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
+            ["032g_schema_keyset_cost"],
         ):
             fail()
         held = reserve_budget(
@@ -117,6 +118,7 @@ def bind_physical_receipt(session, fence, membership_id, object_id, sha256, sett
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     ):
         fail()
     _, config = decode_spec(session, run)

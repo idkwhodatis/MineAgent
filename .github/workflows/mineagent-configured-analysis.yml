@@ -135,7 +135,7 @@ jobs:
           source=Path('var/numeric-private/provider.xml')
           summarize(source,Path('var/numeric-proof/provider-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==284
+          assert len(cases)==285
           names={case.get('name') for case in cases}
           assert {'test_actual_sdk_route_and_usage[chat]', 'test_actual_sdk_route_and_usage[embedding]', 'test_actual_identity_callback_precedes_request_and_matches_result', 'test_unconfirmed_group_never_records_stop_or_returns_result'} <= names
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
@@ -156,7 +156,7 @@ jobs:
           source=Path('var/numeric-private/workflow-contracts.xml')
           summarize(source,Path('var/numeric-proof/workflow-contract-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
-          assert len(cases)==958
+          assert len(cases)==972
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYWORKFLOW
           test "$status" = 0
@@ -304,6 +304,40 @@ jobs:
               with open(os.environ["GITHUB_ENV"], "a") as stream:
                   print(tool.upper() + "_EXECUTABLE=" + str(executable), file=stream)
           PYCLIENT
+      - name: Require exact key-set successor source and PostgreSQL proof
+        timeout-minutes: 5
+        env:
+          MINEAGENT_KEYSET_ADMIN_PROOF: owned-ci-postgres
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p var/numeric-private var/numeric-proof
+          python -m script.schema_keyset_successor_proof --source-evidence \
+            --output var/numeric-proof/keyset-source-provenance.json
+          python -m pytest tests/structured/test_schema_keyset_cost_migration.py \
+            tests/structured/test_schema_keyset_admin_proof.py --collect-only -q \
+            > var/numeric-private/keyset-source-collection.txt
+          source_status=0
+          python -m pytest tests/structured/test_schema_keyset_cost_migration.py \
+            tests/structured/test_schema_keyset_admin_proof.py -q -p no:cacheprovider \
+            --junitxml=var/numeric-private/keyset-source.xml || source_status=$?
+          python -m script.schema_keyset_successor_proof --group source \
+            --collection var/numeric-private/keyset-source-collection.txt \
+            --junit var/numeric-private/keyset-source.xml \
+            --output var/numeric-proof/keyset-source.json
+          test "$source_status" -eq 0
+          python -m pytest tests/integration/test_schema_keyset_cost_migration.py \
+            tests/integration/test_schema_keyset_admin_proof.py --collect-only -q \
+            > var/numeric-private/keyset-postgres-collection.txt
+          postgres_status=0
+          python -m pytest tests/integration/test_schema_keyset_cost_migration.py \
+            tests/integration/test_schema_keyset_admin_proof.py -q -p no:cacheprovider \
+            --junitxml=var/numeric-private/keyset-postgres.xml || postgres_status=$?
+          python -m script.schema_keyset_successor_proof --group postgres \
+            --collection var/numeric-private/keyset-postgres-collection.txt \
+            --junit var/numeric-private/keyset-postgres.xml \
+            --output var/numeric-proof/keyset-postgres.json
+          test "$postgres_status" -eq 0
       # The first existing four-unit case invokes the exact-one Chromium harness
       # before release; its raw JUnit stays private. The second is real cold restore.
       - name: Require actual configured results browser and cold restore

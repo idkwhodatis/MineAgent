@@ -41,6 +41,7 @@ def owned_execution(session, owner_id, run_id, execution_id):
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     ):
         fail()
     run = session.scalar(select(ResearchRun).filter_by(id=run_id, owner_id=owner_id))

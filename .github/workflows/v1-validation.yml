@@ -134,8 +134,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --name tradegrad-ci-postgres \
-            --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
+          mkdir -p var/numeric-private
+          docker run --detach --name tradegrad-ci-postgres --cidfile "$GITHUB_WORKSPACE/var/numeric-private/postgres.cid" \
+            --label io.mineagent.ci=v1-application-postgres --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
             --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
             --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
             --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
@@ -201,6 +202,7 @@ jobs:
         run: python -m pytest backend/tests tests/runner tests/operations tests/system/test_final_workbench_contract.py --ignore=tests/runner/test_research_result_protocol.py -q --junitxml=m1-supervisor-junit.xml
       - name: Validate real PostgreSQL transactions and Procrastinate schema
         env:
+          MINEAGENT_KEYSET_ADMIN_PROOF: owned-v1-postgres
           TRADEGRAD_TRACE_POSTGRES_REQUIRED: "1"
           TRADEGRAD_WORKBENCH_POSTGRES_REQUIRED: "1"
           TRADEGRAD_REPLAY_POSTGRES_REQUIRED: "1"

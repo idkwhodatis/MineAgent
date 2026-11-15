@@ -41,6 +41,7 @@ def recover_controller_unit(factory, settings, admission_id):
                 ["032d_rd_validation_cost"],
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
+                ["032g_schema_keyset_cost"],
             ):
                 raise ProcessError("oe_structured_controller_recovery_revision")
             row = session.get(ResearchProcessAdmission, admission_id)
