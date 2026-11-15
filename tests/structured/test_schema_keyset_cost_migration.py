@@ -175,8 +175,10 @@ def test_main_preflight_rejects_definition_attribute_or_ownership_drift(field, v
     module = migration()
     state = rows(module)
     state[0][field] = value
-    with pytest.raises(RuntimeError, match="required"):
+    with pytest.raises(RuntimeError, match="required") as caught:
         module._validate_functions(state, "proof_schema", module.DOWNGRADE_SQL)
+    if field != "owner_usable":
+        assert field + " (" + type(value).__name__ + ")" in str(caught.value)
 
 
 @pytest.mark.parametrize("name", [candidate.HELPER, "mineagent_structured_json_value"])

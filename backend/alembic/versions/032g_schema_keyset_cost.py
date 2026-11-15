@@ -112,8 +112,19 @@ def _validate_functions(rows, schema, main_sql):
                 schema,
             ),
         }
-        if any(row.get(key) != value for key, value in expected.items()):
-            raise RuntimeError("Exact key-set predecessor definition required: " + name)
+        mismatches = [
+            key + " (" + type(row.get(key)).__name__ + ")"
+            for key, value in expected.items()
+            if row.get(key) != value
+        ]
+        if mismatches:
+            # Report only catalog field names/types, never source bodies or ACLs.
+            raise RuntimeError(
+                "Exact key-set predecessor definition required: "
+                + name
+                + "; mismatched fields: "
+                + ", ".join(mismatches)
+            )
         # CREATE OR REPLACE needs usable ownership only for the replaced main.
         # Helpers may have unrelated owners. Preserve those owners/ACLs/OIDs.
         if name == "mineagent_rd_schema" and row.get("owner_usable") is not True:
