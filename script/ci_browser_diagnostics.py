@@ -135,6 +135,40 @@ def _unique_object(pairs):
     return value
 
 
+TOKEN_DIAGNOSTIC_PREFIX = "TOKEN_DIAGNOSTIC_V1:"
+
+
+def _token_diagnostics(text):
+    """Closed phase/status projection; untrusted sentinel is not authorization."""
+    values = {}
+    for count, match in enumerate(
+        re.finditer(re.escape(TOKEN_DIAGNOSTIC_PREFIX), text)
+    ):
+        if count >= 32:
+            break
+        payload = (
+            text[match.end() : match.end() + 257].split("\n", 1)[0].removesuffix("\r")
+        )
+        if len(payload) > 256:
+            continue
+        try:
+            value = json.loads(payload, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            continue
+        if not isinstance(value, dict) or set(value) != {"phase", "http_status"}:
+            continue
+        phase, status = value["phase"], value["http_status"]
+        if type(phase) is not str or phase not in {"request", "http", "decode"}:
+            continue
+        if phase == "request":
+            if status is not None:
+                continue
+        elif type(status) is not int or not 100 <= status <= 599:
+            continue
+        values[json.dumps(value, sort_keys=True)] = value
+    return [values[key] for key in sorted(values)[:4]]
+
+
 def _note_http_diagnostics(text):
     """An explicit sentinel is not trusted: validate every key and value again."""
     values = {}
@@ -240,7 +274,10 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
     }
     # Explicit public helper sources only. A spec callsite does not identify
     # which navigation assertion failed; never widen this to arbitrary TS files.
-    helper_names = {"engine-results": ("factor-library.ts",)}
+    helper_names = {
+        "engine-results": ("factor-library.ts",),
+        "e2e": ("helpers.ts", "token-diagnostics.ts"),
+    }
     for name in helper_names.get(source_suite, ()):
         path = root / "frontend/tests" / suites[source_suite] / name
         if (
@@ -256,6 +293,7 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
             continue
         frames = set()
         http_diagnostics = {}
+        token_diagnostics = {}
         for failure in failures:
             # Only a known public source basename and bounded numeric line/column
             # escape. Never copy a title, message, argument, URL, body or raw stack.
@@ -276,10 +314,24 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
                 else ()
             ):
                 http_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
+            for diagnostic in (
+                _token_diagnostics(failure.text or "") if source_suite == "e2e" else ()
+            ):
+                token_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
         result.append(
             {
                 "case_index": index,
                 "outcome": "failed",
+                **(
+                    {
+                        "token_diagnostics": [
+                            token_diagnostics[key]
+                            for key in sorted(token_diagnostics)[:4]
+                        ]
+                    }
+                    if token_diagnostics
+                    else {}
+                ),
                 "source_frames": [
                     {"file": name, "line": line, "column": column}
                     for name, line, column in sorted(frames)[:12]
