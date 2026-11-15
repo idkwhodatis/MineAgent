@@ -238,6 +238,17 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
         for path in (root / "frontend/tests" / suites[source_suite]).glob("*.spec.ts")
         if path.is_file() and not path.is_symlink() and path.stat().st_size <= 1_000_000
     }
+    # Explicit public helper sources only. A spec callsite does not identify
+    # which navigation assertion failed; never widen this to arbitrary TS files.
+    helper_names = {"engine-results": ("factor-library.ts",)}
+    for name in helper_names.get(source_suite, ()):
+        path = root / "frontend/tests" / suites[source_suite] / name
+        if (
+            path.is_file()
+            and not path.is_symlink()
+            and path.stat().st_size <= 1_000_000
+        ):
+            allowed[name] = len(path.read_text().splitlines())
     result = []
     for index, case in enumerate(cases):
         failures = [child for child in case if child.tag in {"failure", "error"}]
@@ -249,7 +260,7 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
             # Only a known public source basename and bounded numeric line/column
             # escape. Never copy a title, message, argument, URL, body or raw stack.
             for match in re.finditer(
-                r"(?:^|[\s(/])([A-Za-z0-9_-]+\.spec\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
+                r"(?:^|[\s(/])([A-Za-z0-9_-]+(?:\.spec)?\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
                 failure.text or "",
             ):
                 name, line, column = match[1], int(match[2]), int(match[3])

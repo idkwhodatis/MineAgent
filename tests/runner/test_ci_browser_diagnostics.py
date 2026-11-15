@@ -364,3 +364,47 @@ def test_actual_result_browser_failure_stays_failed_after_safe_projection(
     captured = capsys.readouterr().out
     assert captured == "BROWSER_SOURCE_DIAGNOSTICS_V1:unavailable\n"
     assert secret not in captured
+
+
+@pytest.mark.parametrize("helper_kind", ["public", "missing", "symlink"])
+def test_engine_result_helper_frames_are_explicit_bounded_and_private(
+    tmp_path, helper_kind
+):
+    directory = tmp_path / "frontend/tests/engine-results-acceptance"
+    directory.mkdir(parents=True)
+    helper = directory / "factor-library.ts"
+    if helper_kind == "public":
+        helper.write_text("\n" * 80)
+    elif helper_kind == "symlink":
+        target = tmp_path / "private.ts"
+        target.write_text("\n" * 80)
+        helper.symlink_to(target)
+    (directory / "unlisted.ts").write_text("\n" * 80)
+    private = secrets.token_urlsafe(48)
+    report = ET.Element("testsuites", name=private)
+    case = ET.SubElement(report, "testcase", name=private)
+    failure = ET.SubElement(case, "failure", message=private)
+    failure.text = (
+        private + " https://private.invalid/secret\n"
+        "at factor-library.ts:28:3 at factor-library.ts:81:1\n"
+        "at factor-library.ts:0:1 at factor-library.ts:28:10001\n"
+        "at unlisted.ts:12:3"
+    )
+    source = tmp_path / "report.xml"
+    source.write_bytes(ET.tostring(report))
+    frames = failure_sites(source, tmp_path, source_suite="engine-results")[0][
+        "source_frames"
+    ]
+    assert frames == (
+        [{"file": "factor-library.ts", "line": 28, "column": 3}]
+        if helper_kind == "public"
+        else []
+    )
+    assert (
+        failure_sites(source, tmp_path, source_suite="structured-results")[0][
+            "source_frames"
+        ]
+        == []
+    )
+    projected = failure_diagnostic(source, tmp_path, source_suite="engine-results")
+    assert private not in projected and "https" not in projected
