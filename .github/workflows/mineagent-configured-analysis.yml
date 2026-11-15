@@ -312,6 +312,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p var/numeric-private var/numeric-proof
+          python -m pytest tests/alembic_compat -q -p no:cacheprovider
           python -m script.schema_keyset_successor_proof --source-evidence \
             --output var/numeric-proof/keyset-source-provenance.json
           python -m pytest tests/structured/test_schema_keyset_cost_migration.py \
