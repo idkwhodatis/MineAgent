@@ -163,7 +163,7 @@ def record_source():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--group", choices=("source", "keyset", "rows"))
+    parser.add_argument("--group", choices=("source", "keyset", "rows", "current"))
     parser.add_argument("--collection", type=Path)
     parser.add_argument("--junit", type=Path)
     parser.add_argument("--source-evidence", action="store_true")

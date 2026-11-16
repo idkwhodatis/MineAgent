@@ -65,9 +65,9 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
     ):
         assert forbidden not in source
     assert source.count("docker run ") == 1
-    assert source.count("--group ") == 3
-    assert source.count("--collect-only") == 3
-    assert source.count("--junitxml=") == 3
+    assert source.count("--group ") == 4
+    assert source.count("--collect-only") == 4
+    assert source.count("--junitxml=") == 4
     assert source.count("if: always()") == 2
 
 
@@ -85,7 +85,7 @@ def test_workflow_selects_all_candidates_without_deselection_and_tracks_inputs()
         "tests/integration/test_schema_keyset_candidate.py",
     ):
         assert f'      - "{path}"' in source
-    for group in ("source", "keyset", "rows"):
+    for group in ("source", "keyset", "rows", "current"):
         for node in proof.inventory(group):
             assert node.split("::")[0] in source
 
@@ -95,10 +95,16 @@ def test_candidates_are_not_imported_by_runtime_or_migrations_and_timeout_is_unc
         "row_validation_invariant_sql",
         "row_validation_content_sql",
         "schema_keyset_candidate",
+        "rd_v3_invariant_probe_sql",
+        "row_validation_oe_032g_base_sql",
+        "row_validation_oe_032g_sql",
     )
     permitted = {
         Path("backend/app/row_validation_invariant_sql.py"),
         Path("backend/app/row_validation_content_sql.py"),
+        Path("backend/app/rd_v3_invariant_probe_sql.py"),
+        Path("backend/app/row_validation_oe_032g_base_sql.py"),
+        Path("backend/app/row_validation_oe_032g_sql.py"),
     }
     for base in ("backend", "packages", "runtimes", "workers"):
         for path in Path(base).rglob("*.py"):
@@ -210,9 +216,10 @@ def test_success_evidence_is_named_outcome_only_and_duration_matches_case():
 
 def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
     manifest = json.loads(proof.MANIFEST.read_text())
-    assert set(manifest) == {"source", "keyset", "rows"}
+    assert set(manifest) == {"source", "keyset", "rows", "current"}
     assert len(proof.inventory("keyset")) == 11
     assert len(proof.inventory("rows")) == 34
+    assert len(proof.inventory("current")) == 46
     assert len(proof.inventory("source")) == 69
     assert (
         "tests/integration/test_schema_keyset_candidate.py::test_opt_in_table_backed_workload_benchmark"
