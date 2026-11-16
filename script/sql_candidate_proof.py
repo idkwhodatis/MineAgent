@@ -123,13 +123,18 @@ def export_component_measurements(component, samples):
         json.dumps(report, sort_keys=True, indent=2, allow_nan=False) + "\n"
     ).encode()
     assert len(data) <= 16384, "Measurement report exceeds 16 KiB"
+    group = os.environ.get("MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP", "rows")
+    assert group in {"rows", "current"}, "Unknown measurement group"
+    prefix = "current-" if group == "current" else ""
     directory = os.environ.get("MINEAGENT_SQL_CANDIDATE_MEASUREMENTS_DIR")
     if directory:
         path = Path(directory)
         assert path.resolve() == (Path.cwd() / "var/sql-candidate-proof").resolve()
         path.mkdir(parents=True, exist_ok=True)
         assert not path.is_symlink()
-        with (path / f"{component}-component-measurements.json").open("xb") as stream:
+        with (path / f"{prefix}{component}-component-measurements.json").open(
+            "xb"
+        ) as stream:
             stream.write(data)
     return report
 

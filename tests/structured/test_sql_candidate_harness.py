@@ -117,6 +117,19 @@ def test_successful_measurements_survive_pytest_capture_as_numeric_artifacts(
     assert set(report) == {"scope", "component", "samples"}
     with pytest.raises(FileExistsError):
         export_component_measurements(component, samples)
+    # Reusing the component benchmark under the current-head schema must keep
+    # both artifacts, not overwrite or collide with the preceding row proof.
+    monkeypatch.setenv("MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP", "current")
+    current = export_component_measurements(component, samples)
+    current_path = path.with_name("current-" + path.name)
+    assert json.loads(current_path.read_bytes()) == current
+    assert path.read_bytes() == data
+    with pytest.raises(FileExistsError):
+        export_component_measurements(component, samples)
+    for invalid in ("../escape", "", "other"):
+        monkeypatch.setenv("MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP", invalid)
+        with pytest.raises(AssertionError, match="Unknown measurement group"):
+            export_component_measurements(component, samples)
 
 
 @pytest.mark.parametrize(

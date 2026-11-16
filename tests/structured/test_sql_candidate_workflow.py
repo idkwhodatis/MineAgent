@@ -97,6 +97,12 @@ def test_workflow_selects_all_candidates_without_deselection_and_tracks_inputs()
         "tests/integration/test_schema_keyset_candidate.py",
     ):
         assert f'      - "{path}"' in source
+    current_step = source.split(
+        "      - name: Require current-head isolated RD and OE proofs without runtime promotion\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    assert "MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP: current" in current_step
+    assert source.count("MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP:") == 1
     for group in ("source", "keyset", "rows", "current"):
         for node in proof.inventory(group):
             assert node.split("::")[0] in source

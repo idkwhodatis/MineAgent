@@ -144,6 +144,8 @@ jobs:
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/rows.xml"
           python script/sql_candidate_proof.py --group rows --collection "$RUNNER_TEMP/sql-candidate-private/rows-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/rows.xml" --output var/sql-candidate-proof/rows-outcomes.json
       - name: Require current-head isolated RD and OE proofs without runtime promotion
+        env:
+          MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP: current
         if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
         timeout-minutes: 8
         shell: bash

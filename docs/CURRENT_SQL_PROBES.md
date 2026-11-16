@@ -55,3 +55,8 @@ also records bounded filesystem capacity and container OOM/exit status without
 printing database contents, environment variables or credentials. Statement/lock deadlines,
 proof inventories and exact-container teardown are unchanged. This resource
 change requires a fresh full CI run; it is not evidence of candidate acceptance.
+
+Current-head component measurement artifacts use a `current-` filename prefix.
+The original row proof retains its existing filenames, and both groups retain
+exclusive creation so duplicate evidence in one group still fails. This avoids
+collision when the same reviewed benchmark is invoked against both schemas.
