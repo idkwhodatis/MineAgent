@@ -3,7 +3,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { InputOriginGroups } from "../../src/features/engine-inputs";
-import { groupInputs, groupWorkflowInputs } from "../../src/lib/engine-inputs";
+import { isCancelledError, QueryClient } from "@tanstack/react-query";
+import {
+  engineInputsOptions,
+  groupInputs,
+  groupWorkflowInputs,
+} from "../../src/lib/engine-inputs";
 import type {
   ResearchInputItem,
   ResearchInputs,
@@ -280,4 +285,103 @@ it("renders frozen manual-first workflow provenance across refresh without appro
   expect(html.match(/aria-label="Pinned manual guidance"/g)).toHaveLength(1);
   expect(html).toContain("Selection does not prove model consumption");
   expect(html).not.toContain("<button");
+});
+
+it("retries transient input-fence contention with a fresh verified GET", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: "input_history_busy" }), {
+        status: 503,
+      }),
+    )
+    .mockResolvedValueOnce(new Response(JSON.stringify(data), { status: 200 }));
+  vi.stubGlobal("fetch", fetcher);
+  const client = new QueryClient();
+  try {
+    expect(await client.fetchQuery(engineInputsOptions("run", 25))).toEqual(
+      data,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    for (const [url, options] of fetcher.mock.calls) {
+      expect(url).toBe("/api/v1/engine-runs/run/inputs?offset=25");
+      expect(options.method).toBe("GET");
+    }
+  } finally {
+    client.clear();
+  }
+});
+
+it("stops input-fence retries after three retries and surfaces the error", async () => {
+  const fetcher = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ code: "input_history_busy" }), {
+        status: 503,
+      }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const client = new QueryClient();
+  try {
+    await expect(
+      client.fetchQuery(engineInputsOptions("run")),
+    ).rejects.toMatchObject({ status: 503, code: "input_history_busy" });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(client.getQueryData(["engine-inputs", "run", 0])).toBeUndefined();
+  } finally {
+    client.clear();
+  }
+});
+
+it("does not retry integrity, authorization, unrelated busy or generic server errors", async () => {
+  vi.stubGlobal("sessionStorage", { getItem: () => null, removeItem: vi.fn() });
+  vi.stubGlobal("window", new EventTarget());
+  for (const [status, code] of [
+    [409, "input_history_mismatch"],
+    [401, "unauthorized"],
+    [403, "forbidden"],
+    [503, "workflow_history_busy"],
+    [500, "input_history_busy"],
+  ] as const) {
+    const fetcher = vi.fn(
+      async () => new Response(JSON.stringify({ code }), { status }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    const client = new QueryClient();
+    try {
+      await expect(
+        client.fetchQuery(engineInputsOptions("run")),
+      ).rejects.toMatchObject({ status, code });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      client.clear();
+    }
+  }
+});
+
+it("cancels input-fence backoff without another GET or cached result", async () => {
+  const fetcher = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ code: "input_history_busy" }), {
+        status: 503,
+      }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const client = new QueryClient();
+  try {
+    const pending = client
+      .fetchQuery(engineInputsOptions("run"))
+      .catch((error) => error);
+    await vi.waitFor(() =>
+      expect(
+        client.getQueryState(["engine-inputs", "run", 0])?.fetchFailureCount,
+      ).toBe(1),
+    );
+    await client.cancelQueries({ queryKey: ["engine-inputs", "run", 0] });
+    expect(isCancelledError(await pending)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(["engine-inputs", "run", 0])).toBeUndefined();
+  } finally {
+    client.clear();
+  }
 });

@@ -637,6 +637,36 @@ def test_workflow_input_origin_uses_actual_immutable_receipt_not_manual_approval
     assert item.workflow_inputs_sha256 == receipt.resolved_inputs_sha256
     assert item.workflow_inputs.sha256 == item.content_sha256
     assert item.steer_evidence == "accepted_input_snapshot_not_execution_or_compliance"
+    # Real nonblocking flock contention must be a retryable read failure, not
+    # success without retained-byte verification or an unhandled server error.
+    from backend.app.factor_native_io import native_storage_guard
+
+    with native_storage_guard(v.q.source.settings.storage_root):
+        with pytest.raises(DomainError) as busy:
+            routes.workflow_submission_item(
+                v.q.session, run, receipt, v.q.source.settings
+            )
+        assert busy.value.code == "input_history_busy"
+        assert busy.value.status_code == 503
+    assert (
+        routes.workflow_submission_item(v.q.session, run, receipt, v.q.source.settings)
+        == item
+    )
+    from backend.app import rdagent_workflow_saved as saved
+    from backend.app.factor_native_io import NativeStorageError
+
+    for error in (NativeStorageError("retained bytes invalid"), OSError("I/O failed")):
+
+        def broken(*args, failure=error, **kwargs):
+            raise failure
+
+        with monkeypatch.context() as patch:
+            patch.setattr(saved, "verify_workflow_submission", broken)
+            with pytest.raises(type(error)) as retained:
+                routes.workflow_submission_item(
+                    v.q.session, run, receipt, v.q.source.settings
+                )
+            assert retained.value is error
     receipt.config_sha256 = "f" * 64
     with pytest.raises(DomainError):
         routes.workflow_submission_item(v.q.session, run, receipt, v.q.source.settings)

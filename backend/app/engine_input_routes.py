@@ -152,12 +152,20 @@ def submission_item(session, run, row):
 
 
 def workflow_submission_item(session, run, row, settings):
+    from backend.app.factor_native_io import NativeStorageBusy
     from backend.app.rdagent_workflow_saved import verify_workflow_submission
 
     if os.path.lexists(os.path.join(settings.storage_root, ".restore-incomplete")):
         mismatch()
     config = rd_config(run, session=session)
-    verified = verify_workflow_submission(session, run.owner_id, row.id, settings)
+    try:
+        verified = verify_workflow_submission(session, run.owner_id, row.id, settings)
+    except NativeStorageBusy:
+        # Do not sleep/retry while retaining this request's SQL/lifecycle authority.
+        # A new read must authenticate and verify the full immutable receipt again.
+        raise DomainError(
+            "input_history_busy", "Input history is busy; retry later", 503
+        ) from None
     if verified.run_id != run.id or verified.config_sha256 != config.sha256:
         mismatch()
     return ResearchInputItem(
