@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.main import create_app
 from script.ci_process_owner import OwnedCommandFailed, ProcessOwner
 from script.oe_browser_diagnostic import browser_failure
+from script.workflow_browser_http_diagnostic import WorkflowHTTPDiagnostic
 
 HISTORY_CASE = "actual workflow history preserves frozen stages and provenance without new authority"
 CREATE_CASE = "actual workflow entry creates exactly one retained request"
@@ -182,6 +183,8 @@ def _run_browser(engine, settings, owner, other, tmp_path, case, additions):
     def frontend(path: str):
         return FileResponse(dist / "index.html")
 
+    http_diagnostic = WorkflowHTTPDiagnostic(app)
+
     # Bind the exact socket before starting, avoiding a find-free-port race.
     listener = socket.socket()
     server = thread = process = None
@@ -190,7 +193,7 @@ def _run_browser(engine, settings, owner, other, tmp_path, case, additions):
         listener.listen(128)
         address = f"http://127.0.0.1:{listener.getsockname()[1]}"
         server = uvicorn.Server(
-            uvicorn.Config(app, log_level="error", access_log=False)
+            uvicorn.Config(http_diagnostic, log_level="error", access_log=False)
         )
         thread = threading.Thread(
             target=server.run, kwargs={"sockets": [listener]}, daemon=True
@@ -240,6 +243,7 @@ def _run_browser(engine, settings, owner, other, tmp_path, case, additions):
             diagnostic = browser_failure(
                 tmp_path / "workflow-history-browser.xml", root
             )
+            diagnostic["http_observations"] = http_diagnostic.snapshot()
             raise RuntimeError(
                 "WORKFLOW_BROWSER_FAILURE_V1:" + json.dumps(diagnostic, sort_keys=True)
             ) from None
