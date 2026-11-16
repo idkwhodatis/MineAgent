@@ -3,6 +3,7 @@
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,6 +30,17 @@ class Settings(BaseSettings):
     secret_key: str = Field(min_length=32, repr=False)
     storage_root: Path = Path("/var/lib/tradegrad")
     subpath: str = ""
+    # Public display metadata only: never changes authorization or feature gates.
+    deployment_mode: Literal["self_hosted", "hosted"] = "self_hosted"
+    deployment_name: str = Field(default="MineAgent", min_length=1, max_length=80)
+
+    @field_validator("deployment_name")
+    @classmethod
+    def public_deployment_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise ValueError("DEPLOYMENT_NAME must be nonempty printable text")
+        return value
 
     @field_validator("subpath")
     @classmethod

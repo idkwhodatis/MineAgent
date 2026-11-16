@@ -26906,6 +26906,56 @@
         "title": "SelfProfileUpdate",
         "type": "object"
       },
+      "ServerInfo": {
+        "description": "Public protocol metadata; not a readiness or authorization decision.",
+        "properties": {
+          "authentication_methods": {
+            "items": {
+              "const": "password_bearer",
+              "type": "string"
+            },
+            "title": "Authentication Methods",
+            "type": "array"
+          },
+          "capabilities": {
+            "items": {
+              "enum": [
+                "authenticated_sse",
+                "idempotent_run_submission"
+              ],
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "deployment_mode": {
+            "enum": [
+              "self_hosted",
+              "hosted"
+            ],
+            "title": "Deployment Mode",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": "1",
+            "title": "Protocol Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocol_version",
+          "deployment_mode",
+          "display_name",
+          "authentication_methods",
+          "capabilities"
+        ],
+        "title": "ServerInfo",
+        "type": "object"
+      },
       "SettingsStatus": {
         "properties": {
           "backup_evidence": {
@@ -59806,6 +59856,64 @@
           }
         ],
         "summary": "Resume"
+      }
+    },
+    "/api/v1/server-info": {
+      "get": {
+        "operationId": "read_server_info",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "Server Info"
       }
     },
     "/api/v1/settings/defaults": {

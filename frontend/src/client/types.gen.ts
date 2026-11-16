@@ -14347,6 +14347,34 @@ export type SelfProfileUpdate = {
 };
 
 /**
+ * ServerInfo
+ *
+ * Public protocol metadata; not a readiness or authorization decision.
+ */
+export type ServerInfo = {
+    /**
+     * Authentication Methods
+     */
+    authentication_methods: Array<'password_bearer'>;
+    /**
+     * Capabilities
+     */
+    capabilities: Array<'authenticated_sse' | 'idempotent_run_submission'>;
+    /**
+     * Deployment Mode
+     */
+    deployment_mode: 'self_hosted' | 'hosted';
+    /**
+     * Display Name
+     */
+    display_name: string;
+    /**
+     * Protocol Version
+     */
+    protocol_version: '1';
+};
+
+/**
  * SettingsStatus
  */
 export type SettingsStatus = {
@@ -31083,6 +31111,43 @@ export type ResumeRunResponses = {
 };
 
 export type ResumeRunResponse = ResumeRunResponses[keyof ResumeRunResponses];
+
+export type ReadServerInfoData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/server-info';
+};
+
+export type ReadServerInfoErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ErrorResponse;
+    /**
+     * Conflict
+     */
+    409: ErrorResponse;
+    /**
+     * Unprocessable Entity
+     */
+    422: ErrorResponse;
+};
+
+export type ReadServerInfoError = ReadServerInfoErrors[keyof ReadServerInfoErrors];
+
+export type ReadServerInfoResponses = {
+    /**
+     * Successful Response
+     */
+    200: ServerInfo;
+};
+
+export type ReadServerInfoResponse = ReadServerInfoResponses[keyof ReadServerInfoResponses];
 
 export type ReadWorkspaceDefaultsData = {
     body?: never;

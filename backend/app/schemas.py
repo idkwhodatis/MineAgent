@@ -187,3 +187,13 @@ class HealthResponse(BaseModel):
     database: bool
     queue_pending: int | None = None
     workers: dict[str, str] = {}
+
+
+class ServerInfo(BaseModel):
+    """Public protocol metadata; not a readiness or authorization decision."""
+
+    protocol_version: Literal["1"]
+    deployment_mode: Literal["self_hosted", "hosted"]
+    display_name: str
+    authentication_methods: list[Literal["password_bearer"]]
+    capabilities: list[Literal["authenticated_sse", "idempotent_run_submission"]]

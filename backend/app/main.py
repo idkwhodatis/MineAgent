@@ -60,6 +60,7 @@ from backend.app.schemas import (
     RunCreate,
     RunDetail,
     RunPublic,
+    ServerInfo,
     StrategyDetail,
     StrategyPublic,
     Token,
@@ -192,6 +193,21 @@ def create_app(settings: Settings | None = None, engine=None) -> FastAPI:
                 "X-Content-Type-Options": "nosniff",
                 "X-Correlation-ID": request.state.correlation_id,
             },
+        )
+
+    @app.get(
+        PREFIX + "/server-info",
+        response_model=ServerInfo,
+        operation_id="read_server_info",
+    )
+    def server_info() -> ServerInfo:
+        # Explicit allowlist, never serialize Settings or runtime provider profiles.
+        return ServerInfo(
+            protocol_version="1",
+            deployment_mode=settings.deployment_mode,
+            display_name=settings.deployment_name,
+            authentication_methods=["password_bearer"],
+            capabilities=["authenticated_sse", "idempotent_run_submission"],
         )
 
     @app.get(PREFIX + "/health/live", operation_id="health_live")
