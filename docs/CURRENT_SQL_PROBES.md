@@ -41,3 +41,17 @@ acceptance. Existing component preflights are not a complete production
 migration catalog/security review. Production adoption requires that review,
 seeded/populated graph and concurrent-write adversaries, and unchanged native
 workflow/recovery gates. Do not promote these probes merely because CI passes.
+
+## CI storage envelope
+
+The expanded current-head inventory exhausted the old 1 GiB PostgreSQL tmpfs
+in CI before completing the OE cases (DiskFull followed by recovery errors).
+The isolated job now uses a 2 GiB tmpfs within a 3 GiB memory limit and the
+existing CI checkpoint settings: max_wal_size 256 MB, min_wal_size 80 MB and
+checkpoint_timeout 60 seconds. WAL limits are checkpoint targets, not hard
+storage caps. Normal fsync, synchronous_commit and full_page_writes remain
+enabled and their effective settings are recorded. Identity-checked teardown
+also records bounded filesystem capacity and container OOM/exit status without
+printing database contents, environment variables or credentials. Statement/lock deadlines,
+proof inventories and exact-container teardown are unchanged. This resource
+change requires a fresh full CI run; it is not evidence of candidate acceptance.

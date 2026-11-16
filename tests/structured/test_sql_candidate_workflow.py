@@ -38,12 +38,17 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
         "postgres:18.6",
         "--require-hashes -r backend/requirements.lock",
         "--publish 127.0.0.1::5432",
-        "--memory 2g --memory-swap 2g --cpus 2 --pids-limit 128",
+        "--memory 3g --memory-swap 3g --cpus 2 --pids-limit 128",
         "-c statement_timeout=10000 -c lock_timeout=5000",
         "-c track_functions=pl",
+        "--tmpfs /var/lib/postgresql:rw,size=2g,nosuid",
+        "-c max_wal_size=256MB -c min_wal_size=80MB -c checkpoint_timeout=60s",
+        "SHOW fsync; SHOW synchronous_commit; SHOW full_page_writes;",
         'MINEAGENT_SQL_COST_BENCHMARK: "1"',
         "mineagent-sql-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}",
         "--cidfile",
+        'timeout 10s docker exec "$cid" df -Pk /var/lib/postgresql',
+        "{{.State.OOMKilled}}|{{.State.ExitCode}}",
         "if: always()",
         "{{.Id}}|{{.Name}}|",
         'docker rm --force --volumes "$cid"',
@@ -53,6 +58,9 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
     ):
         assert required in source
     for forbidden in (
+        "fsync=off",
+        "synchronous_commit=off",
+        "full_page_writes=off",
         "docker build",
         "docker push",
         "qlib",
@@ -64,6 +72,10 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
         "  workflow_run:",
     ):
         assert forbidden not in source
+    assert source.index('test "$actual" = ') < source.index("postgres-exit.txt")
+    assert source.index("postgres-capacity.txt") < source.index(
+        'docker rm --force --volumes "$cid"'
+    )
     assert source.count("docker run ") == 1
     assert source.count("--group ") == 4
     assert source.count("--collect-only") == 4
