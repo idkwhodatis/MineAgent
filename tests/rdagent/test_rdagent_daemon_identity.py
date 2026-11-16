@@ -12,6 +12,7 @@ RAW = b"PID UID PPID PIDNS COMMAND\n100 0 1 4026532777 python\n101 65533 100 402
 
 
 def test_strict_top_real_namespace_value():
+    _diagnostic_preserves_parser_and_bounds_output()
     assert module.parse_top(RAW) == {
         100: (0, 1, 4026532777),
         101: (65533, 100, 4026532777),
@@ -245,3 +246,79 @@ def test_profile_excess_rejected_before_daemon_read(observer, profile, seconds):
     with pytest.raises(ProcessError):
         context.observe_pair(101)
     observer.cli._inspect.assert_not_called()
+
+
+def _diagnostic_preserves_parser_and_bounds_output():
+    import contextlib
+    import io
+    import json
+
+    from tests.integration.rd_daemon_top_diagnostic import (
+        diagnose_daemon_top,
+        top_shape,
+    )
+
+    original = module.parse_top
+    output = io.StringIO()
+    private = b"private-command-token"
+    with contextlib.redirect_stdout(output), diagnose_daemon_top():
+        assert module.parse_top(RAW) == original(RAW)
+        for _ in range(12):
+            with pytest.raises(ProcessError, match="^rd_controller_daemon_identity$"):
+                module.parse_top(
+                    RAW.replace(b"4026532777", b"-").replace(b"python", private)
+                )
+    assert module.parse_top is original
+    text = output.getvalue()
+    assert (
+        "100" not in text and "4026532777" not in text and private.decode() not in text
+    )
+    records = json.loads(text.split(":", 1)[1])
+    assert (
+        records == [{"category": "numeric_field", "field": "pidns", "kind": "dash"}] * 8
+    )
+    assert top_shape(RAW.replace(b"python", b"two words")) == {
+        "category": "row_width",
+        "width": "long",
+    }
+    assert top_shape(RAW.replace(b"65533", private)) == {
+        "category": "numeric_field",
+        "field": "uid",
+        "kind": "other",
+    }
+    assert top_shape(b"x" * 16385) == {"category": "type_or_size"}
+    with contextlib.redirect_stdout(io.StringIO()) as success, diagnose_daemon_top():
+        module.parse_top(RAW)
+    assert success.getvalue() == ""
+
+    # Force all concurrent calls past projection entry before any records append.
+    # The diagnostic remains bounded while each original ProcessError propagates.
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import patch
+
+    from tests.integration import rd_daemon_top_diagnostic as diagnostic
+
+    barrier = threading.Barrier(12)
+    shape = diagnostic.top_shape
+
+    def simultaneous(raw):
+        barrier.wait(timeout=5)
+        return shape(raw)
+
+    output = io.StringIO()
+    with (
+        contextlib.redirect_stdout(output),
+        patch.object(diagnostic, "top_shape", simultaneous),
+        diagnose_daemon_top(),
+        ThreadPoolExecutor(max_workers=12) as pool,
+    ):
+        futures = [
+            pool.submit(module.parse_top, RAW.replace(b"4026532777", b"-"))
+            for _ in range(12)
+        ]
+        for future in futures:
+            with pytest.raises(ProcessError, match="^rd_controller_daemon_identity$"):
+                future.result()
+    assert module.parse_top is original
+    assert len(json.loads(output.getvalue().split(":", 1)[1])) == 8

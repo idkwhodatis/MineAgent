@@ -65,6 +65,7 @@ on:
       - "tests/integration/test_configured_analysis_restore.py"
       - "script/ci_pg_client.py"
       - "tests/integration/rd_configured*"
+      - "tests/integration/rd_daemon_top_diagnostic.py"
       - "tests/integration/*engine_result*"
       - "tests/integration/factor_execution_http.py"
       - "frontend/**"
