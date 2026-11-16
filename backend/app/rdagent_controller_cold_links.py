@@ -5,7 +5,12 @@ from packages.factors.contracts import digest
 SCOPE = ("owner_id", "run_id", "attempt_id", "generation")
 
 
-def validate_controller_links(idx, shared, configs):
+def validate_controller_links(idx, shared, configs, *, workflow=False):
+    # Only workflow-capable source closures may select the provider protocol for
+    # workflow children. This flag grants no bypass of graph or byte validation.
+    if type(workflow) is not bool:
+        raise ValueError("Explicit workflow controller grammar required")
+
     def require(value):
         if not value:
             raise ValueError("RD protected controller cold links differ")
@@ -54,10 +59,13 @@ def validate_controller_links(idx, shared, configs):
         )
         source = sources[0]
         model_profile = configs[start["run_id"]].model_profile
-        require(model_profile in {"fixture.rdagent.v1", "configured.rdagent.v1"})
+        require(
+            model_profile in {"fixture.rdagent.v1", "configured.rdagent.v1"}
+            or (workflow and model_profile == "workflow.rdagent.v1")
+        )
         protocol_prefix = (
             "mineagent.rdagent-provider-"
-            if model_profile == "configured.rdagent.v1"
+            if model_profile in {"configured.rdagent.v1", "workflow.rdagent.v1"}
             else "mineagent.rdagent-"
         )
         expected = {
