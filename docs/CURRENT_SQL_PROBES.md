@@ -88,3 +88,18 @@ workflows, concurrent graph-changing transactions (including reverse-source
 changes), crash/recovery and unchanged native gates. The original deadline,
 receipt boundaries, installed schema requirement and all acceptance gates remain
 unchanged. A passing dispatch group alone cannot authorize promotion.
+
+Hosted dispatch evidence: commit `6d418ac7a7c436a70c95aae233b2dabe34d06107`,
+[isolated proof run 44244165171](https://github.com/idkwhodatis/MineAgent/actions/runs/44244165171),
+passed all 33 trigger-group cases on PostgreSQL 18.6, with no skips. The unchanged
+69-source, 11-keyset, 34-row and 46-current groups also passed. This does not
+change the limitations or authorize runtime activation described above.
+
+The separate `MineAgent independent populated workflow baseline` workflow runs
+that existing actual finite-workflow/complete-restore test without waiting for
+the earlier normal-demo gate. It retains the original setup, test, deadlines,
+containment and sanitized-artifact steps, plus a source-equality guard. It does
+not activate any SQL experiment, alter the original acceptance workflow, or
+claim full acceptance. Its narrow path filters serve this diagnostic baseline,
+not comprehensive runtime regression coverage. Actual completed-graph evidence
+is pending its result.
