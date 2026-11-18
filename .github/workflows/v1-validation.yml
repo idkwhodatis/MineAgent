@@ -210,8 +210,9 @@ jobs:
           TRADEGRAD_INDEPENDENT_POSTGRES_REQUIRED: "1"
           TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"
           TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"
-        # These exact runtime modules run on this same head in the dedicated
-        # image-building workflows; no PostgreSQL-only module is excluded.
+        # Original17 runtime modules retain their mandatory image-building gates.
+        # Nine later experiment modules run only in separately inventoried proof
+        # steps; all96 pre-existing generic PostgreSQL modules remain here.
         run: >-
           .venv-data/bin/python -m pytest tests/integration --maxfail=1 -q
           --ignore=tests/integration/test_openevolve_initial_runtime.py
@@ -231,6 +232,15 @@ jobs:
           --ignore=tests/integration/test_rdagent_workflow_user_flow.py
           --ignore=tests/integration/test_declared_upload_research_flow.py
           --ignore=tests/integration/test_workflow_structured_stage_flow.py
+          --ignore=tests/integration/test_heartbeat_graph_inventory.py
+          --ignore=tests/integration/test_oe_trigger_target_probe.py
+          --ignore=tests/integration/test_rd_admission_expiry_observation.py
+          --ignore=tests/integration/test_rd_admission_expiry_roles.py
+          --ignore=tests/integration/test_reverse_heartbeat_candidate.py
+          --ignore=tests/integration/test_workflow_current_head_baseline.py
+          --ignore=tests/integration/test_workflow_heartbeat_admission_candidate.py
+          --ignore=tests/integration/test_workflow_heartbeat_lock_order.py
+          --ignore=tests/integration/test_workflow_ticketed_admission_trial.py
           --junitxml=m1-m2-postgres-junit.xml
       - name: Require real provider material differential proof without skips
         run: |

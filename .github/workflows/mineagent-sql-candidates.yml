@@ -6,6 +6,11 @@ on:
   pull_request:
     paths:
       - ".github/workflows/mineagent-sql-candidates.yml"
+      - ".github/workflows/v1-validation.yml"
+      - "script/experimental_integration_partition.py"
+      - "tests/runner/experimental_integration_partition.json"
+      - "tests/runner/test_experimental_integration_partition.py"
+      - "tests/runner/test_ci_acceptance_boundary.py"
       - "backend/alembic/**"
       - "backend/app/**"
       - "backend/requirements.lock"
@@ -93,6 +98,22 @@ jobs:
           python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/source-collection.txt"
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/source.xml"
           python script/sql_candidate_proof.py --group source --collection "$RUNNER_TEMP/sql-candidate-private/source-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/source.xml" --output var/sql-candidate-proof/source-outcomes.json
+      - name: Require exact four experimental partition contracts separately
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest tests/runner/test_experimental_integration_partition.py -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/partition.xml"
+          python - <<'PYPARTITION'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          source=Path(os.environ['RUNNER_TEMP'])/'sql-candidate-private/partition.xml'
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==4
+          assert {case.get('name') for case in cases}=={'test_each_dedicated_experimental_group_requires_exact_successful_junit', 'test_partition_rejects_preexisting_exclusions_missing_nodes_or_changed_gates', 'test_experimental_partition_preserves_original_modules_and_full_collection', 'test_current_head_baseline_exact_inline_xml_gate_still_rejects_bad_results'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYPARTITION
       - name: Start only an owned disposable PostgreSQL 18.6 service
         id: candidate_postgres
         timeout-minutes: 3
