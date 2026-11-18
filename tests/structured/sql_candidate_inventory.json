@@ -259,5 +259,8 @@
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[immediate-032g]",
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[savepoint-032g]",
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_never_bypasses_original_attempt_run_fk[032g]"
+  ],
+  "reverse_heartbeat_native": [
+    "tests/integration/test_workflow_reverse_heartbeat_native_trial.py::test_actual_current032g_workflow_with_reverse_heartbeat_sql_trial"
   ]
 }

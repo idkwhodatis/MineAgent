@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py tests/sql_probes/test_rd_trial_contention_diagnostic.py tests/sql_probes/test_reverse_heartbeat_candidate_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py tests/sql_probes/test_rd_trial_contention_diagnostic.py tests/sql_probes/test_reverse_heartbeat_candidate_source.py tests/sql_probes/test_reverse_heartbeat_native_trial_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -169,7 +169,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
             "Require original heartbeat cancellation role evidence",
             "Require isolated reverse heartbeat event candidate",
         )
-        .replace("        id: heartbeat_roles\n", "")
+        .replace("        id: heartbeat_roles\n", "        id: reverse_heartbeat\n")
         .replace(
             "test_rd_admission_expiry_roles.py", "test_reverse_heartbeat_candidate.py"
         )
@@ -215,6 +215,37 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
             '          test "$status" = 0\n          python script/sql_candidate_proof.py --group heartbeat_native --collection var/numeric-private/heartbeat-native-collection.txt --junit var/numeric-private/workflow-ticketed-native-trial.xml --output var/numeric-proof/heartbeat-native-outcomes.json\n',
         )
     )
+    sql_trial_clean = trial_clean.replace(
+        "Require clean native units before isolated scheduling trial",
+        "Require clean native units before isolated native SQL trial",
+    ).replace("id: native_trial_containment", "id: native_sql_trial_containment")
+    sql_native_trial = (
+        native_trial.replace(
+            "Require isolated actual workflow scheduling trial",
+            "Require isolated actual workflow reverse heartbeat SQL trial",
+        )
+        .replace(
+            "steps.native_trial_containment.outcome == 'success' && steps.heartbeat_admission.outcome == 'success' && steps.heartbeat_observation.outcome == 'success' && steps.heartbeat_roles.outcome == 'success'",
+            "steps.native_sql_trial_containment.outcome == 'success' && steps.reverse_heartbeat.outcome == 'success'",
+        )
+        .replace(
+            "MINEAGENT_TICKETED_NATIVE_TRIAL_REQUIRED",
+            "MINEAGENT_REVERSE_HEARTBEAT_NATIVE_REQUIRED",
+        )
+        .replace(
+            "test_workflow_ticketed_admission_trial.py",
+            "test_workflow_reverse_heartbeat_native_trial.py",
+        )
+        .replace(
+            "test_actual_current032g_workflow_with_ticketed_admission_trial",
+            "test_actual_current032g_workflow_with_reverse_heartbeat_sql_trial",
+        )
+        .replace("heartbeat-native", "reverse-heartbeat-native")
+        .replace(
+            "workflow-ticketed-native-trial", "workflow-reverse-heartbeat-native-trial"
+        )
+        .replace("--group heartbeat_native", "--group reverse_heartbeat_native")
+    )
     target_index = named(expected, TARGET)
     expected[target_index : target_index + 1] = [
         readiness,
@@ -228,10 +259,12 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         current,
         trial_clean,
         native_trial,
+        sql_trial_clean,
+        sql_native_trial,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 42
+    assert len(independent) == 44
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -339,6 +372,9 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/reverse_heartbeat_candidate.py",
         "tests/sql_probes/reverse_heartbeat_candidate_pins.json",
         "tests/sql_probes/test_reverse_heartbeat_candidate_source.py",
+        "tests/integration/test_workflow_reverse_heartbeat_native_trial.py",
+        "tests/sql_probes/reverse_heartbeat_native_trial.py",
+        "tests/sql_probes/test_reverse_heartbeat_native_trial_source.py",
         "tests/sql_probes/rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
         "tests/structured/sql_candidate_inventory.json",
