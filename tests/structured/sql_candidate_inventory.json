@@ -259,5 +259,12 @@
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[immediate-032g]",
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[savepoint-032g]",
     "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_never_bypasses_original_attempt_run_fk[032g]"
+  ],
+  "dataset_admission": [
+    "tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_update_conflicts_with_actual_uncommitted_submission",
+    "tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_writer_blocks_actual_submission_and_rolls_back_all_graph_rows",
+    "tests/integration/test_direct_analysis_persistence.py::test_dataset_serial_identity_corruption_rejected_by_original_plan_guard",
+    "tests/integration/test_direct_analysis_persistence.py::test_dataset_nonkey_name_update_remains_concurrent_and_graph_valid",
+    "tests/integration/test_direct_analysis_persistence.py::test_dataset_graph_fk_lock_is_released_only_after_admission_savepoint_rollback"
   ]
 }

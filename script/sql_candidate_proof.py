@@ -183,6 +183,7 @@ def main():
             "heartbeat_roles",
             "heartbeat_native",
             "reverse_heartbeat",
+            "dataset_admission",
         ),
     )
     parser.add_argument("--collection", type=Path)

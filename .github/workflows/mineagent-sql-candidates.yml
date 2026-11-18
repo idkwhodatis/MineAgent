@@ -2,7 +2,7 @@ name: MineAgent isolated SQL candidate proof (not production acceptance)
 
 on:
   push:
-    branches: [master]
+    branches: [master, experiment/dataset-admission-proof-20261118]
   pull_request:
     paths:
       - ".github/workflows/mineagent-sql-candidates.yml"
@@ -38,6 +38,7 @@ on:
       - "tests/integration/test_rd_v3*"
       - "tests/integration/test_oe_trigger_target_probe.py"
       - "tests/integration/test_heartbeat_graph_inventory.py"
+      - "tests/integration/test_direct_analysis_persistence.py"
       - "tests/integration/conftest.py"
       - "tests/integration/test_sql_candidate_catalog.py"
       - "tests/integration/test_row_validation*"
@@ -201,6 +202,22 @@ jobs:
           python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt"
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/heartbeat.xml"
           python script/sql_candidate_proof.py --group heartbeat_inventory --collection "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/heartbeat.xml" --output var/sql-candidate-proof/heartbeat-inventory-outcomes.json
+      - name: Require five baseline dataset admission concurrency cases
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cases=(
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_update_conflicts_with_actual_uncommitted_submission
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_writer_blocks_actual_submission_and_rolls_back_all_graph_rows
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_serial_identity_corruption_rejected_by_original_plan_guard
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_nonkey_name_update_remains_concurrent_and_graph_valid
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_graph_fk_lock_is_released_only_after_admission_savepoint_rollback
+          )
+          python -m pytest "${cases[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt"
+          python -m pytest "${cases[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml"
+          python script/sql_candidate_proof.py --group dataset_admission --collection "$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml" --output var/sql-candidate-proof/dataset-admission-outcomes.json
       - name: Always remove only this job's exact owned PostgreSQL service
         if: always()
         timeout-minutes: 2
