@@ -101,5 +101,10 @@ the earlier normal-demo gate. It retains the original setup, test, deadlines,
 containment and sanitized-artifact steps, plus a source-equality guard. It does
 not activate any SQL experiment, alter the original acceptance workflow, or
 claim full acceptance. Its narrow path filters serve this diagnostic baseline,
-not comprehensive runtime regression coverage. Actual completed-graph evidence
-is pending its result.
+not comprehensive runtime regression coverage. The first independent baseline on `5e49c8c` reached the actual native test,
+then failed before the first RD stage reached `waiting_release`
+([run 44244844374](https://github.com/idkwhodatis/MineAgent/actions/runs/44244844374)).
+OE and complete restore were not reached; no completed graph was established.
+Containment and cleanup passed. This result does not identify the queue-failure
+cause, so bounded existing RD queue/RPC/state diagnostics are added around only
+the first drain without changing its acceptance assertions or execution policy.

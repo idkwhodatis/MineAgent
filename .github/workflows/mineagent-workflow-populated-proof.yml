@@ -55,7 +55,7 @@ jobs:
       - name: Install unchanged host test closure
         run: python -m pip install --require-hashes -r backend/requirements.lock
       - name: Require independent baseline source contract
-        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py -q
+        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py -q
       - name: Require host identity and diagnostic regressions
         run: |
           mkdir -p var/numeric-private var/numeric-proof

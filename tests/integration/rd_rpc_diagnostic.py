@@ -582,10 +582,13 @@ def diagnose_rd_queue(factory, run_id):
                         "stage": "unknown",
                         "sqlstate": "none",
                     }
-                print(
-                    "RD_QUEUE_FAILURE:" + json.dumps(diagnostic, sort_keys=True),
-                    flush=True,
-                )
+                try:
+                    print(
+                        "RD_QUEUE_FAILURE:" + json.dumps(diagnostic, sort_keys=True),
+                        flush=True,
+                    )
+                except BaseException:  # noqa: BLE001, S110 -- retain the task failure
+                    pass
                 failures += 1
             raise
 
@@ -597,4 +600,7 @@ def diagnose_rd_queue(factory, run_id):
             state = _queue_state(factory, run_id)
         except Exception:  # noqa: BLE001 - diagnostics cannot replace the failure
             state = {"status": "diagnostic_unavailable"}
-        print("RD_QUEUE_STATE:" + json.dumps(state, sort_keys=True), flush=True)
+        try:
+            print("RD_QUEUE_STATE:" + json.dumps(state, sort_keys=True), flush=True)
+        except BaseException:  # noqa: BLE001, S110 -- diagnostics cannot replace failure
+            pass
