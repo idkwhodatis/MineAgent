@@ -262,5 +262,24 @@
   ],
   "reverse_heartbeat_native": [
     "tests/integration/test_workflow_reverse_heartbeat_native_trial.py::test_actual_current032g_workflow_with_reverse_heartbeat_sql_trial"
+  ],
+  "pure_canonical": [
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_original_bodies_match_verified_installed_manifest",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_canonical_reuse_keeps_schema_gates_prefixes_and_tail_exact",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_frozen_hash_helper_is_exact_strict_pipeline",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_preflight_refuses_any_frozen_metadata_change",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_candidate_full_definition_is_not_blindly_erased",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_genuine_corpus_sizes_and_expected_python_boundaries",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_proof_is_separate_bounded_and_never_native_activated",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_candidate_restores_actual_pinned_full_postgresql_definitions",
+    "tests/sql_probes/test_canonical_text_reuse_source.py::test_cost_export_has_only_closed_cells_and_fixed_destination",
+    "tests/sql_probes/test_canonical_text_reuse_workflow.py::test_pure_wiring_preserves_original_sql_steps_and_old_inventories",
+    "tests/sql_probes/test_canonical_text_reuse_workflow.py::test_pure_cost_needs_independent_differential_success_and_private_inventory",
+    "tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_original_candidate_restored_differential",
+    "tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_preflight_rejects_helper_cost_drift",
+    "tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_cached_text_hash_helper_equivalence"
+  ],
+  "pure_canonical_cost": [
+    "tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_bounded_sql_cost_observation"
   ]
 }

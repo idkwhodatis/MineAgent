@@ -184,6 +184,8 @@ def main():
             "heartbeat_native",
             "reverse_heartbeat",
             "reverse_heartbeat_native",
+            "pure_canonical",
+            "pure_canonical_cost",
         ),
     )
     parser.add_argument("--collection", type=Path)

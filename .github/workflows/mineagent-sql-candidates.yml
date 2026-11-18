@@ -2,7 +2,7 @@ name: MineAgent isolated SQL candidate proof (not production acceptance)
 
 on:
   push:
-    branches: [master]
+    branches: [master, experiment/pure-validator-proof-20261118]
   pull_request:
     paths:
       - ".github/workflows/mineagent-sql-candidates.yml"
@@ -33,6 +33,7 @@ on:
       - "tests/integration/test_rd_v3*"
       - "tests/integration/test_oe_trigger_target_probe.py"
       - "tests/integration/test_heartbeat_graph_inventory.py"
+      - "tests/integration/test_canonical_text_reuse_probe.py"
       - "tests/integration/conftest.py"
       - "tests/integration/test_sql_candidate_catalog.py"
       - "tests/integration/test_row_validation*"
@@ -180,6 +181,31 @@ jobs:
           python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt"
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/heartbeat.xml"
           python script/sql_candidate_proof.py --group heartbeat_inventory --collection "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/heartbeat.xml" --output var/sql-candidate-proof/heartbeat-inventory-outcomes.json
+      - name: Require pure canonical text reuse differential without runtime activation
+        id: pure_canonical
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 5
+        env:
+          MINEAGENT_PURE_CANONICAL_REUSE_REQUIRED: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(tests/sql_probes/test_canonical_text_reuse_source.py tests/sql_probes/test_canonical_text_reuse_workflow.py tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_original_candidate_restored_differential tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_preflight_rejects_helper_cost_drift tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_cached_text_hash_helper_equivalence)
+          python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/pure-canonical-collection.txt"
+          python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/pure-canonical.xml"
+          python script/sql_candidate_proof.py --group pure_canonical --collection "$RUNNER_TEMP/sql-candidate-private/pure-canonical-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/pure-canonical.xml" --output var/sql-candidate-proof/pure-canonical-outcomes.json
+      - name: Record separate bounded pure canonical SQL cost without native claims
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' && steps.pure_canonical.outcome == 'success' }}
+        timeout-minutes: 5
+        env:
+          MINEAGENT_PURE_CANONICAL_REUSE_REQUIRED: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(tests/integration/test_canonical_text_reuse_probe.py::test_pure_canonical_bounded_sql_cost_observation)
+          python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/pure-canonical-cost-collection.txt"
+          python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/pure-canonical-cost.xml"
+          python script/sql_candidate_proof.py --group pure_canonical_cost --collection "$RUNNER_TEMP/sql-candidate-private/pure-canonical-cost-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/pure-canonical-cost.xml" --output var/sql-candidate-proof/pure-canonical-cost-outcomes.json
       - name: Always remove only this job's exact owned PostgreSQL service
         if: always()
         timeout-minutes: 2

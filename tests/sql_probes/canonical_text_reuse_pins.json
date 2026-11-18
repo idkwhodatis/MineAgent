@@ -1,0 +1,99 @@
+{
+  "functions": {
+    "mineagent_execution_metadata_sha": {
+      "acl_sha256": null,
+      "body_sha256": "b76d627cae0c69ce2cc4386853293ad2f7eca717f65b562e1ffb4484b6ca4eaf",
+      "configuration_sha256": "0e5c5deb67bdf8a0f1c087edd287aeab8d3ca04e5548a7679dd526aad7d8d491",
+      "definition_sha256": "ea6a50197815f54cac27c576eca1a823de632741a7fbf8743e53c8d4f52beb87",
+      "identity_arguments": "v jsonb",
+      "kind": "f",
+      "language": "sql",
+      "leakproof": false,
+      "lexical_execute_present": false,
+      "lexical_heartbeat_present": false,
+      "lexical_local_references": [
+        "mineagent_rd_canonical_json"
+      ],
+      "lexical_row_lock_present": false,
+      "lexical_whole_row_present": false,
+      "name": "mineagent_execution_metadata_sha",
+      "parallel": "u",
+      "security_definer": false,
+      "strict": true,
+      "volatility": "i"
+    },
+    "mineagent_rd_canonical_json": {
+      "acl_sha256": null,
+      "body_sha256": "81e0fc606311bcdc54edb14fbe164df2af9d8684aa586c9fbefda9d7f3a18b90",
+      "configuration_sha256": "0e5c5deb67bdf8a0f1c087edd287aeab8d3ca04e5548a7679dd526aad7d8d491",
+      "definition_sha256": "62bda31dfed20ae99a8cc4d8f06d6e211e2389ac44ea93c0b2392925f06e0f6c",
+      "identity_arguments": "v jsonb, ascii_only boolean, depth integer",
+      "kind": "f",
+      "language": "plpgsql",
+      "leakproof": false,
+      "lexical_execute_present": false,
+      "lexical_heartbeat_present": false,
+      "lexical_local_references": [
+        "mineagent_rd_canonical_json"
+      ],
+      "lexical_row_lock_present": false,
+      "lexical_whole_row_present": true,
+      "name": "mineagent_rd_canonical_json",
+      "parallel": "u",
+      "security_definer": false,
+      "strict": true,
+      "volatility": "i"
+    },
+    "mineagent_rd_provider_config_026_frozen": {
+      "acl_sha256": null,
+      "body_sha256": "f084d4e423ca6d14ec0bc1f14369eed7f2d1ba1e11d4c6ce662c7991f106adf7",
+      "configuration_sha256": "debf96136f680abc8f9d237c16a66e96f6cca96f9d9c96c665dbb9063811b4de",
+      "definition_sha256": "06fa571e59a895803df6669bfe9648c5858db331ffc39800ef043324ff408790",
+      "identity_arguments": "v jsonb",
+      "kind": "f",
+      "language": "plpgsql",
+      "leakproof": false,
+      "lexical_execute_present": false,
+      "lexical_heartbeat_present": false,
+      "lexical_local_references": [
+        "mineagent_rd_canonical_json",
+        "mineagent_rd_provider_payload"
+      ],
+      "lexical_row_lock_present": false,
+      "lexical_whole_row_present": false,
+      "name": "mineagent_rd_provider_config_026_frozen",
+      "parallel": "u",
+      "security_definer": false,
+      "strict": false,
+      "volatility": "i"
+    },
+    "mineagent_rd_workflow_config": {
+      "acl_sha256": null,
+      "body_sha256": "48e22f1903f8ab82ef9ae03ecc325e94e952fef9f1d379cadd122b8f565ed7ad",
+      "configuration_sha256": "debf96136f680abc8f9d237c16a66e96f6cca96f9d9c96c665dbb9063811b4de",
+      "definition_sha256": "845baa81dfac061a34ee978a3fd96aabab53cb4613312c65a0c3c64f2b9e27b0",
+      "identity_arguments": "v jsonb",
+      "kind": "f",
+      "language": "plpgsql",
+      "leakproof": false,
+      "lexical_execute_present": false,
+      "lexical_heartbeat_present": false,
+      "lexical_local_references": [
+        "mineagent_execution_metadata_sha",
+        "mineagent_rd_canonical_json",
+        "mineagent_rd_controller_selection",
+        "mineagent_rd_provider_config",
+        "mineagent_rd_schema"
+      ],
+      "lexical_row_lock_present": false,
+      "lexical_whole_row_present": false,
+      "name": "mineagent_rd_workflow_config",
+      "parallel": "u",
+      "security_definer": false,
+      "strict": false,
+      "volatility": "i"
+    }
+  },
+  "source_artifact_sha256": "269a2e0f51e6b0f385538d91aadf261f96897fd144391664bb3d6a378f076ce3",
+  "version": "mineagent.pure-canonical-text-reuse.v1"
+}
