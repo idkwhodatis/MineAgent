@@ -253,7 +253,11 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
         "heartbeat_order",
         "heartbeat_admission",
         "heartbeat_observation",
+        "heartbeat_roles",
+        "heartbeat_native",
     }
+    assert len(proof.inventory("heartbeat_roles")) == 4
+    assert len(proof.inventory("heartbeat_native")) == 1
     assert len(proof.inventory("heartbeat_observation")) == 8
     assert len(proof.inventory("heartbeat_admission")) == 16
     assert len(proof.inventory("heartbeat_order")) == 2

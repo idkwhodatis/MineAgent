@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -140,6 +140,65 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         .replace("heartbeat-admission", "heartbeat-observation")
         .replace("--group heartbeat_admission", "--group heartbeat_observation")
     )
+    heartbeat_roles = (
+        heartbeat_observation.replace(
+            "Require isolated committed expiry observation evidence",
+            "Require original heartbeat cancellation role evidence",
+        )
+        .replace(
+            "test_rd_admission_expiry_observation.py",
+            "test_rd_admission_expiry_roles.py",
+        )
+        .replace("heartbeat-observation", "heartbeat-roles")
+        .replace("--group heartbeat_observation", "--group heartbeat_roles")
+    )
+    heartbeat_admission = heartbeat_admission.replace(
+        "      - name: Require isolated local admission candidate evidence\n",
+        "      - name: Require isolated local admission candidate evidence\n        id: heartbeat_admission\n",
+    )
+    heartbeat_observation = heartbeat_observation.replace(
+        "      - name: Require isolated committed expiry observation evidence\n",
+        "      - name: Require isolated committed expiry observation evidence\n        id: heartbeat_observation\n",
+    )
+    heartbeat_roles = heartbeat_roles.replace(
+        "      - name: Require original heartbeat cancellation role evidence\n",
+        "      - name: Require original heartbeat cancellation role evidence\n        id: heartbeat_roles\n",
+    )
+    trial_clean = clean.replace(
+        "Require clean native units before current schema baseline",
+        "Require clean native units before isolated scheduling trial",
+    ).replace("id: current_baseline_containment", "id: native_trial_containment")
+    native_trial = (
+        current.replace(
+            "Require actual current032g finite workflow baseline",
+            "Require isolated actual workflow scheduling trial",
+        )
+        .replace(
+            "steps.current_baseline_containment.outcome == 'success'",
+            "steps.native_trial_containment.outcome == 'success' && steps.heartbeat_admission.outcome == 'success' && steps.heartbeat_observation.outcome == 'success' && steps.heartbeat_roles.outcome == 'success'",
+        )
+        .replace(
+            '          MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED: "1"',
+            '          MINEAGENT_TICKETED_NATIVE_TRIAL_REQUIRED: "1"\n          MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED: "1"',
+        )
+        .replace(
+            "test_workflow_current_head_baseline.py",
+            "test_workflow_ticketed_admission_trial.py",
+        )
+        .replace("workflow-current032g-baseline", "workflow-ticketed-native-trial")
+        .replace(
+            "test_actual_current032g_workflow_completes_with_readonly_graph_checks",
+            "test_actual_current032g_workflow_with_ticketed_admission_trial",
+        )
+        .replace(
+            "          status=0\n",
+            "          python -m pytest tests/integration/test_workflow_ticketed_admission_trial.py --collect-only -q -p no:cacheprovider > var/numeric-private/heartbeat-native-collection.txt\n          status=0\n",
+        )
+        .replace(
+            '          test "$status" = 0\n',
+            '          test "$status" = 0\n          python script/sql_candidate_proof.py --group heartbeat_native --collection var/numeric-private/heartbeat-native-collection.txt --junit var/numeric-private/workflow-ticketed-native-trial.xml --output var/numeric-proof/heartbeat-native-outcomes.json\n',
+        )
+    )
     target_index = named(expected, TARGET)
     expected[target_index : target_index + 1] = [
         readiness,
@@ -148,11 +207,14 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         heartbeat_order,
         heartbeat_admission,
         heartbeat_observation,
+        heartbeat_roles,
         current,
+        trial_clean,
+        native_trial,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 38
+    assert len(independent) == 41
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -248,6 +310,12 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/rd_admission_expiry_observation.py",
         "tests/sql_probes/test_rd_admission_expiry_observation_unit.py",
         "tests/sql_probes/test_rd_admission_expiry_observation_source.py",
+        "tests/integration/test_rd_admission_expiry_roles.py",
+        "tests/sql_probes/test_rd_admission_expiry_roles_unit.py",
+        "tests/sql_probes/rd_ticketed_admission_candidate.py",
+        "tests/sql_probes/test_rd_ticketed_admission_candidate.py",
+        "tests/sql_probes/rd_native_admission_trial.py",
+        "tests/sql_probes/test_rd_native_admission_trial.py",
         "tests/sql_probes/rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
         "tests/structured/sql_candidate_inventory.json",

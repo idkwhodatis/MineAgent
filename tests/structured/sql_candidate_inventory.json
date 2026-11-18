@@ -241,5 +241,14 @@
     "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[032g-cancel]",
     "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[031]",
     "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[032g]"
+  ],
+  "heartbeat_roles": [
+    "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[031-cancel_requested]",
+    "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[031-pause_requested]",
+    "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[032g-cancel_requested]",
+    "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[032g-pause_requested]"
+  ],
+  "heartbeat_native": [
+    "tests/integration/test_workflow_ticketed_admission_trial.py::test_actual_current032g_workflow_with_ticketed_admission_trial"
   ]
 }

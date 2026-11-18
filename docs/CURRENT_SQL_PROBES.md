@@ -223,3 +223,20 @@ attempt/function4096 limits remain. The final metadata export remains capped at
 OLD/NEW trigger predicates use explicitly labeled full-trigger-definition hashes
 because PostgreSQL cannot deparse them with pg_get_expr. Native runtime behavior
 and acceptance thresholds are unaffected by these evidence-tool corrections.
+
+Hostedc823214 baseline44261181034 passed all8 committed-observation cases and
+all16 admission cases; the unchanged historical/current native baselines still
+failed and remain required. The next separate4-case heartbeat-role group preserves
+original cancel_requested/pause_requested pulse semantics (cancel flag without
+lost authority), while neutral observation remains strict and role-bound.
+
+The isolated one-case native scheduling trial invokes the unchanged complete
+current032g baseline, including its authenticated controls, actual RD/OE bridge
+and final graph assertions. Test-only wrappers coordinate only exact factories
+and full fences claimed within that scope, enclosing original SQL transactions
+and pulses through commit without spanning external I/O. It runs alone in a
+fresh pytest process only after the16/8/4 metadata prerequisites and repeated
+six-unit absence checks pass. Original native baselines and all final containment
+checks remain separate and unchanged. Live lease threads must stop before patches
+restore; failure is red, not permission to continue. No production module imports
+or enables this candidate, no SQL guard is removed and no deadline is replaced.

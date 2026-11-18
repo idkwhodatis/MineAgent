@@ -180,6 +180,8 @@ def main():
             "heartbeat_order",
             "heartbeat_admission",
             "heartbeat_observation",
+            "heartbeat_roles",
+            "heartbeat_native",
         ),
     )
     parser.add_argument("--collection", type=Path)

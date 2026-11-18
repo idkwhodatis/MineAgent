@@ -1,0 +1,251 @@
+"""Wrapper mechanics only; real native workflow remains a separate required proof."""
+
+from contextlib import contextmanager
+from types import SimpleNamespace
+from uuid import UUID
+
+import pytest
+from sqlalchemy.orm import sessionmaker
+
+from backend.app import research_lifecycle as lifecycle
+from packages.research_runtime.fences import AttemptFence
+from tests.sql_probes import rd_native_admission_trial as trial
+from tests.sql_probes.rd_attempt_admission_candidate import AdmissionRejected
+from workers.research import rdagent_queue
+from workers.research.lease import AttemptLease
+
+
+def setup_trial(monkeypatch):
+    state = {"events": [], "gates": [], "fail": None, "alive": False}
+    factory = sessionmaker()
+    fence = AttemptFence(UUID(int=1), UUID(int=2), UUID(int=3), 1, UUID(int=4))
+
+    class Gate:
+        def __init__(self, f, binding):
+            assert f is factory and binding == fence
+            state["gates"].append(self)
+
+        @contextmanager
+        def transaction(self, f, binding, *, role):
+            state["events"].append("enter:" + role)
+            if state["fail"] is not None:
+                raise state["fail"]
+            try:
+                yield
+            finally:
+                state["events"].append("exit:" + role)
+
+        def close(self):
+            state["events"].append("gate_close")
+
+    def claim(*args, **kwargs):
+        state["events"].append("original_claim")
+        return fence
+
+    @contextmanager
+    def neutral(*args, **kwargs):
+        state["events"].append("original_neutral")
+        yield "session"
+        state["events"].append("original_commit")
+
+    def pulse(lease, force=False):
+        state["events"].append("original_pulse_commit")
+        return "result"
+
+    def close(lease):
+        state["events"].append("original_close")
+
+    monkeypatch.setattr(trial, "TicketedAdmission", Gate)
+    monkeypatch.setattr(rdagent_queue, "claim_configured_run", claim)
+    monkeypatch.setattr(lifecycle, "_neutral_transaction_once", neutral)
+    monkeypatch.setattr(AttemptLease, "pulse", pulse)
+    monkeypatch.setattr(AttemptLease, "close", close)
+    lease = AttemptLease(
+        factory,
+        SimpleNamespace(),
+        fence.attempt_id,
+        fence.generation,
+        fence.lease_token,
+        "test",
+    )
+    lease.thread = SimpleNamespace(is_alive=lambda: state["alive"])
+    return (
+        state,
+        factory,
+        fence,
+        lease,
+        (claim, neutral, pulse, close, AttemptLease.start),
+    )
+
+
+def test_original_claim_then_whole_neutral_and_pulse_then_restore(monkeypatch):
+    state, factory, fence, lease, originals = setup_trial(monkeypatch)
+    with trial.native_admission_trial() as counts:
+        assert rdagent_queue.claim_configured_run(factory) == fence
+        with lifecycle._neutral_transaction_once(factory, fence) as session:
+            assert session == "session"
+            state["events"].append("body")
+        assert lease.pulse(force=True) == "result"
+        lease.close()
+    assert state["events"][:8] == [
+        "original_claim",
+        "enter:neutral",
+        "original_neutral",
+        "body",
+        "original_commit",
+        "exit:neutral",
+        "enter:heartbeat",
+        "original_pulse_commit",
+    ]
+    assert state["events"].index("gate_close") < state["events"].index("original_close")
+    assert counts == {"claims": 1, "neutral_commits": 1, "pulse_returns": 1}
+    assert (
+        rdagent_queue.claim_configured_run,
+        lifecycle._neutral_transaction_once,
+        AttemptLease.pulse,
+        AttemptLease.close,
+        AttemptLease.start,
+    ) == originals
+
+
+def test_scheduling_failure_revokes_pulse_and_preserves_exception(monkeypatch):
+    state, factory, _fence, lease, _ = setup_trial(monkeypatch)
+    failure = AdmissionRejected("expired")
+    with trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        state["fail"] = failure
+        with pytest.raises(AdmissionRejected) as caught:
+            lease.pulse(force=True)
+        assert caught.value is failure
+        assert lease.lost.is_set() and lease.cancelled.is_set()
+        assert "original_pulse_commit" not in state["events"]
+
+
+def test_wrong_factory_passthrough_but_wrong_fence_rejected(monkeypatch):
+    _state, factory, fence, lease, _ = setup_trial(monkeypatch)
+    with trial.native_admission_trial() as counts:
+        rdagent_queue.claim_configured_run(factory)
+        with lifecycle._neutral_transaction_once(sessionmaker(), fence):
+            pass
+        with (
+            pytest.raises(AdmissionRejected, match="binding_mismatch"),
+            lifecycle._neutral_transaction_once(factory, None),
+        ):
+            pass
+        assert counts["neutral_commits"] == 0
+        lease.token = UUID(int=90)
+        with pytest.raises(AdmissionRejected, match="lease_binding_mismatch"):
+            lease.pulse()
+        assert lease.lost.is_set() and lease.cancelled.is_set()
+
+
+def test_body_failure_restores_after_owned_thread_cleanup(monkeypatch):
+    state, factory, _fence, lease, originals = setup_trial(monkeypatch)
+    failure = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt) as caught, trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        lease.pulse()
+        raise failure
+    assert caught.value is failure
+    assert AttemptLease.pulse is originals[2]
+    assert "gate_close" in state["events"] and "original_close" in state["events"]
+
+
+def test_live_thread_fails_red_and_does_not_restore_under_thread(monkeypatch):
+    state, factory, _fence, lease, originals = setup_trial(monkeypatch)
+    try:
+        with (
+            pytest.raises(AdmissionRejected, match="trial_cleanup_thread_alive"),
+            trial.native_admission_trial(),
+        ):
+            rdagent_queue.claim_configured_run(factory)
+            lease.pulse()
+            state["alive"] = True
+            with pytest.raises(AdmissionRejected, match="lease_thread_still_alive"):
+                lease.close()
+        assert AttemptLease.pulse is not originals[2]
+    finally:
+        # Fake thread only. Explicitly reset these test-owned patches so this unit
+        # suite can continue; actual native trial process must terminate instead.
+        state["alive"] = False
+        (
+            rdagent_queue.claim_configured_run,
+            lifecycle._neutral_transaction_once,
+            AttemptLease.pulse,
+            AttemptLease.close,
+            AttemptLease.start,
+        ) = originals
+
+
+def test_nested_context_preserves_original_rejection_before_gate(monkeypatch):
+    state, factory, fence, _lease, _originals = setup_trial(monkeypatch)
+    failure = AdmissionRejected("original_nested_rejection")
+
+    @contextmanager
+    def reject_nested(*args, **kwargs):
+        if lifecycle._neutral_scope.get() is not None:
+            raise failure
+        yield
+
+    monkeypatch.setattr(lifecycle, "_neutral_transaction_once", reject_nested)
+    with trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        token = lifecycle._neutral_scope.set({"test": True})
+        try:
+            with (
+                pytest.raises(AdmissionRejected) as caught,
+                lifecycle._neutral_transaction_once(factory, fence),
+            ):
+                pass
+            assert caught.value is failure
+            assert "enter:neutral" not in state["events"]
+        finally:
+            lifecycle._neutral_scope.reset(token)
+
+
+@pytest.mark.parametrize("failure", [RuntimeError("start failed"), KeyboardInterrupt()])
+def test_started_thread_tracked_before_original_start_raises(monkeypatch, failure):
+    state, factory, _fence, lease, _originals = setup_trial(monkeypatch)
+
+    def start(current):
+        assert current is lease
+        state["alive"] = True
+        raise failure
+
+    def close(current):
+        assert current is lease
+        state["events"].append("original_close")
+        state["alive"] = False
+
+    monkeypatch.setattr(AttemptLease, "start", start)
+    monkeypatch.setattr(AttemptLease, "close", close)
+    with pytest.raises(type(failure)) as caught, trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        lease.start()
+    assert caught.value is failure
+    assert "gate_close" in state["events"]
+    assert "original_close" in state["events"]
+    assert state["alive"] is False
+    assert AttemptLease.start is start
+
+
+def test_registered_start_is_rejected_during_scope_cleanup(monkeypatch):
+    state, factory, _fence, lease, _originals = setup_trial(monkeypatch)
+    calls = []
+
+    def start(current):
+        calls.append(current)
+
+    def close(current):
+        with pytest.raises(AdmissionRejected, match="trial_closing"):
+            current.start()
+        state["events"].append("closing_rejected")
+
+    monkeypatch.setattr(AttemptLease, "start", start)
+    monkeypatch.setattr(AttemptLease, "close", close)
+    with trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        lease.start()
+    assert len(calls) == 1
+    assert "closing_rejected" in state["events"]
+    assert AttemptLease.start is start
