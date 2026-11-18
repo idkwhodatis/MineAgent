@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -93,16 +93,35 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
             "test_actual_current032g_workflow_completes_with_readonly_graph_checks",
         )
     )
+    heartbeat_order = """      - name: Require real finite workflow heartbeat lock order evidence
+        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success' }}
+        timeout-minutes: 10
+        shell: bash
+        env:
+          MINEAGENT_HEARTBEAT_ORDER_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          python -m pytest tests/integration/test_workflow_heartbeat_lock_order.py --collect-only -q -p no:cacheprovider > var/numeric-private/heartbeat-order-collection.txt
+          python -m pytest tests/integration/test_workflow_heartbeat_lock_order.py -q -p no:cacheprovider --junitxml=var/numeric-private/heartbeat-order.xml
+          python script/sql_candidate_proof.py --group heartbeat_order --collection var/numeric-private/heartbeat-order-collection.txt --junit var/numeric-private/heartbeat-order.xml --output var/numeric-proof/heartbeat-order-outcomes.json
+"""
     target_index = named(expected, TARGET)
     expected[target_index : target_index + 1] = [
         readiness,
         expected[target_index],
         clean,
+        heartbeat_order,
         current,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 35
+    assert len(independent) == 36
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -191,6 +210,9 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "script/ci_pg_client.py",
         "tests/integration/rd_completed_graph_probe.py",
         "tests/sql_probes/test_rd_completed_graph_probe_source.py",
+        "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
+        "tests/structured/sql_candidate_inventory.json",
+        "script/sql_candidate_proof.py",
     ]
 
 

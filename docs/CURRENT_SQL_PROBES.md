@@ -166,3 +166,17 @@ active; the original24-case gate, selection and deadlines are unchanged. A fixed
 proof document is required only after all probes preserve the catalog and rows.
 This terminal-v2 evidence is not active-lease, workflow-v3, OE or optimization
 acceptance. Native execution of the new hook remains pending.
+
+### Independent heartbeat lock-order diagnostic
+
+The independent populated-workflow job also declares a separate two-case
+`heartbeat_order` group for exact031 and032g. It creates and claims a genuine
+finite-workflow RD child through the existing API/worker admission helpers, but
+never dispatches a controller, creates physical admissions, or calls an SDK.
+Two real connections exercise the crossed owner and Run/Attempt lock order and
+require the original deferred `workflow owner is busy` rejection, alongside
+uncontended controls and the unchanged fail-closed `AttemptLease.pulse` behavior.
+All adversarial writes roll back and private row/catalog fingerprints must remain
+unchanged. This is metadata/concurrency diagnosis, not completed graph acceptance,
+a runtime fix, or evidence that any deadline may be relaxed. Hosted execution is
+required before reporting the diagnostic as proved.

@@ -250,7 +250,9 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
         "current",
         "trigger",
         "heartbeat_inventory",
+        "heartbeat_order",
     }
+    assert len(proof.inventory("heartbeat_order")) == 2
     assert len(proof.inventory("keyset")) == 11
     assert len(proof.inventory("rows")) == 34
     assert len(proof.inventory("current")) == 46

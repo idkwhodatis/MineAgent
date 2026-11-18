@@ -209,5 +209,9 @@
     "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_read_only_guard_precedes_every_other_query",
     "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_exporter_has_no_mutating_sql_or_application_rows_or_runtime_imports",
     "tests/integration/test_heartbeat_graph_inventory.py::test_installed_heartbeat_inventory_read_only_and_unchanged"
+  ],
+  "heartbeat_order": [
+    "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[031]",
+    "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[032g]"
   ]
 }

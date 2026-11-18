@@ -172,7 +172,7 @@ def test_source_guard_and_paths_include_new_proof_without_old_inventory_changes(
         ROOT / ".github/workflows/mineagent-workflow-populated-proof.yml"
     ).read_text()
     assert (
-        "tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py -q"
+        "tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py -q"
         in independent
     )
     for source in (independent, WORKFLOW.read_text()):

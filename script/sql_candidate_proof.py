@@ -177,6 +177,7 @@ def main():
             "current",
             "trigger",
             "heartbeat_inventory",
+            "heartbeat_order",
         ),
     )
     parser.add_argument("--collection", type=Path)
