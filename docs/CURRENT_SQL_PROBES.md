@@ -180,3 +180,27 @@ All adversarial writes roll back and private row/catalog fingerprints must remai
 unchanged. This is metadata/concurrency diagnosis, not completed graph acceptance,
 a runtime fix, or evidence that any deadline may be relaxed. Hosted execution is
 required before reporting the diagnostic as proved.
+
+The first hosted `heartbeat_order` run (44256242127 at4292173) passed both
+revision cases. Its unchanged native baselines also demonstrated the opposite
+contention direction: successful heartbeat returns alongside a main
+`neutral_busy` rejection before any model operation. Earlier0d7796f baseline
+44254386892 recorded first-pulse `P0001`/`workflow_owner_busy` on both revisions.
+These observations establish the contention problem, not a safe runtime fix.
+The genuine completed-provider-v2 hook passed within the unchanged24-case
+Qlib gate in44254387009; its later workflow-v3 gate still failed.
+
+A separate16-case `heartbeat_admission` group now exercises a TEST-ONLY local
+FIFO admission prototype around complete original transactions. It uses a
+fixed conservative scheduling cutoff derived from the existing observed lease
+expiry, never refreshed authority. Cases cover both acquisition directions,
+external contention from an exact owned spawned process, and expiry/token
+changes while waiting. All original SQL guards, live fences, pulse revocation,
+and deadlines remain; no native worker imports or activates this prototype.
+This does not establish full native callback integration or an operational fix.
+
+Installed-catalog evidence v2 additionally records bounded noninternal trigger
+bindings, enabled/event/update-column metadata, table constraints and column
+ordinals across the owned schema. Definitions and predicates remain hashes,
+never raw SQL or application rows. Existing six inventory cases are preserved.
+This enables a coverage audit; catalog metadata alone is not equivalence proof.

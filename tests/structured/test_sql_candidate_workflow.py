@@ -251,7 +251,9 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
         "trigger",
         "heartbeat_inventory",
         "heartbeat_order",
+        "heartbeat_admission",
     }
+    assert len(proof.inventory("heartbeat_admission")) == 16
     assert len(proof.inventory("heartbeat_order")) == 2
     assert len(proof.inventory("keyset")) == 11
     assert len(proof.inventory("rows")) == 34

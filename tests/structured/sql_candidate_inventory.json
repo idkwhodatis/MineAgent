@@ -213,5 +213,23 @@
   "heartbeat_order": [
     "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[031]",
     "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[032g]"
+  ],
+  "heartbeat_admission": [
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[031-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[031-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[032g-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[032g-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[031-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[031-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[032g-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[032g-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-expiry-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-expiry-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-token-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-token-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-expiry-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-expiry-heartbeat]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-neutral]",
+    "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-heartbeat]"
   ]
 }

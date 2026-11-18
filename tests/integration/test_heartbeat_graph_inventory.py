@@ -56,3 +56,46 @@ def test_installed_heartbeat_inventory_read_only_and_unchanged(migrated_engine):
         assert row["update_columns"] == ""
     assert any(row["internal"] for row in result["triggers"])
     assert "static closure NOT established" in result["dependency_status"]
+
+    assert result["schema_version"] == "mineagent.heartbeat-installed-catalog.v2"
+    schema_reverse = [
+        row for row in result["schema_triggers"] if row["name"] == "oe031_reverse"
+    ]
+    assert len(schema_reverse) == 55
+    assert all(
+        row["function_name"] == "mineagent_oe_workflow_reverse"
+        and row["enabled"] == "O"
+        and row["event_bits"] == 29
+        and row["deferrable"]
+        and row["initially_deferred"]
+        and row["constraint_trigger"]
+        and row["update_columns"] == ""
+        and row["predicate_sha256"] is None
+        for row in schema_reverse
+    )
+    attempt_schema = [
+        row
+        for row in result["schema_triggers"]
+        if row["relation"] == "execution_attempts"
+    ]
+    assert {row["name"] for row in attempt_schema} == set(by_name)
+    assert all(
+        {key: value for key, value in row.items() if key != "relation"}
+        == {
+            key: value
+            for key, value in by_name[row["name"]].items()
+            if key != "internal"
+        }
+        for row in attempt_schema
+    )
+    assert any(
+        row["relation"] == "execution_attempts"
+        and row["kind"] == "f"
+        and row["validated"]
+        for row in result["schema_constraints"]
+    )
+    assert {
+        row["name"]
+        for row in result["schema_columns"]
+        if row["relation"] == "execution_attempts"
+    } >= {"id", "run_id", "generation", "heartbeat_at", "lease_expires_at"}

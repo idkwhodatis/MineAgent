@@ -174,7 +174,15 @@ def capture(connection):
     functions = [
         dict(row) for row in connection.exec_driver_sql(FUNCTIONS_QUERY).mappings()
     ]
-    return summarize(schema, triggers, functions)
+    from script import heartbeat_schema_inventory
+
+    result = summarize(schema, triggers, functions)
+    result["schema_version"] = heartbeat_schema_inventory.VERSION
+    result["scope"] = (
+        "execution_attempts triggers, all current-schema user triggers, table constraints, columns and functions"
+    )
+    result.update(heartbeat_schema_inventory.capture(connection, schema))
+    return result
 
 
 def export(connection, directory):

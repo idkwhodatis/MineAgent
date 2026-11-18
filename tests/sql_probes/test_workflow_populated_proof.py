@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -111,17 +111,35 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
           python -m pytest tests/integration/test_workflow_heartbeat_lock_order.py -q -p no:cacheprovider --junitxml=var/numeric-private/heartbeat-order.xml
           python script/sql_candidate_proof.py --group heartbeat_order --collection var/numeric-private/heartbeat-order-collection.txt --junit var/numeric-private/heartbeat-order.xml --output var/numeric-proof/heartbeat-order-outcomes.json
 """
+    heartbeat_admission = (
+        heartbeat_order.replace(
+            "Require real finite workflow heartbeat lock order evidence",
+            "Require isolated local admission candidate evidence",
+        )
+        .replace("timeout-minutes: 10", "timeout-minutes: 20")
+        .replace(
+            "MINEAGENT_HEARTBEAT_ORDER_REQUIRED",
+            "MINEAGENT_HEARTBEAT_ADMISSION_CANDIDATE_REQUIRED",
+        )
+        .replace(
+            "test_workflow_heartbeat_lock_order.py",
+            "test_workflow_heartbeat_admission_candidate.py",
+        )
+        .replace("heartbeat-order", "heartbeat-admission")
+        .replace("--group heartbeat_order", "--group heartbeat_admission")
+    )
     target_index = named(expected, TARGET)
     expected[target_index : target_index + 1] = [
         readiness,
         expected[target_index],
         clean,
         heartbeat_order,
+        heartbeat_admission,
         current,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 36
+    assert len(independent) == 37
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -210,6 +228,10 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "script/ci_pg_client.py",
         "tests/integration/rd_completed_graph_probe.py",
         "tests/sql_probes/test_rd_completed_graph_probe_source.py",
+        "tests/sql_probes/test_heartbeat_schema_inventory_source.py",
+        "tests/sql_probes/test_rd_attempt_admission_candidate.py",
+        "tests/sql_probes/test_workflow_heartbeat_admission_source.py",
+        "tests/sql_probes/rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
         "tests/structured/sql_candidate_inventory.json",
         "script/sql_candidate_proof.py",

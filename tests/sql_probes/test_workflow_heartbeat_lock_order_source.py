@@ -113,7 +113,7 @@ def test_hosted_step_is_independent_bounded_and_exactly_collected():
         "      - name: Require real finite workflow heartbeat lock order evidence\n"
     )
     stop = source.index(
-        "      - name: Require actual current032g finite workflow baseline\n", start
+        "      - name: Require isolated local admission candidate evidence\n", start
     )
     step = source[start:stop]
     assert (
@@ -127,4 +127,7 @@ def test_hosted_step_is_independent_bounded_and_exactly_collected():
     assert "--group heartbeat_order" in step
     assert "--output var/numeric-proof/heartbeat-order-outcomes.json" in step
     assert "continue-on-error" not in step
-    assert "test_workflow_heartbeat_lock_order_source.py -q" in source
+    assert (
+        "test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py"
+        in source
+    )
