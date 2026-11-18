@@ -249,3 +249,68 @@ def test_registered_start_is_rejected_during_scope_cleanup(monkeypatch):
     assert len(calls) == 1
     assert "closing_rejected" in state["events"]
     assert AttemptLease.start is start
+
+
+def test_metrics_output_is_bounded_and_drops_unrecognized_private_fields(capsys):
+    trial.report_trial_counts(
+        {
+            "claims": 10**20,
+            "neutral_commits": 2,
+            "pulse_returns": 3,
+            "private": "secret-fence-token",
+        }
+    )
+    output = capsys.readouterr().out
+    assert "secret" not in output and "private" not in output
+    assert "1000000" in output and "100000000000000000000" not in output
+    trial.report_trial_counts(
+        {"claims": "secret", "neutral_commits": 2, "pulse_returns": 3}
+    )
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    "print_error", [OSError("private output error"), KeyboardInterrupt()]
+)
+@pytest.mark.parametrize("baseline_fails", [False, True])
+def test_native_finally_metrics_cannot_replace_original_outcome(
+    monkeypatch, print_error, baseline_fails
+):
+    import importlib
+    from pathlib import Path
+
+    monkeypatch.syspath_prepend(
+        str(Path(__file__).resolve().parents[1] / "integration")
+    )
+    module = importlib.import_module("test_workflow_ticketed_admission_trial")
+    baseline_failure = RuntimeError("private original failure")
+    calls = []
+
+    @contextmanager
+    def context():
+        yield {"claims": 1, "neutral_commits": 2, "pulse_returns": 3}
+
+    def baseline(*args):
+        calls.append("baseline")
+        if baseline_fails:
+            raise baseline_failure
+
+    def broken_print(*args, **kwargs):
+        calls.append("print")
+        raise print_error
+
+    monkeypatch.setenv("MINEAGENT_TICKETED_NATIVE_TRIAL_REQUIRED", "1")
+    monkeypatch.setattr(module, "native_admission_trial", context)
+    monkeypatch.setattr(module, "_original_baseline", baseline)
+    monkeypatch.setattr("builtins.print", broken_print)
+    if baseline_fails:
+        with pytest.raises(RuntimeError) as caught:
+            module.test_actual_current032g_workflow_with_ticketed_admission_trial(
+                None, None, monkeypatch
+            )
+        assert caught.value is baseline_failure
+    else:
+        module.test_actual_current032g_workflow_with_ticketed_admission_trial(
+            None, None, monkeypatch
+        )
+    assert calls == ["baseline", "print"]

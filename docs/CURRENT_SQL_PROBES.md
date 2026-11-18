@@ -240,3 +240,21 @@ six-unit absence checks pass. Original native baselines and all final containmen
 checks remain separate and unchanged. Live lease threads must stop before patches
 restore; failure is red, not permission to continue. No production module imports
 or enables this candidate, no SQL guard is removed and no deadline is replaced.
+
+A separate7-case `reverse_heartbeat` experiment installs a single guarded reverse
+function ONLY in an owned disposable current032g database, then restores it. It
+pins60 installed functions and the selected64-relation catalog (353 triggers,
+1692 constraints,826 columns) to the verified v2 artifact. Only exact
+execution_attempts UPDATE events with whole OLD/NEW rows equal after removing
+the two lease timestamps bypass that one reverse validator. This deliberately
+changes owner-contention outcomes; it is NOT original-outcome equivalence or a
+production optimization. Cases exercise original/candidate/restored contention,
+non-timestamp token/status events, mutate/revert, immediate constraints, savepoint
+rollback and original FK rejection. Normalization preserves unrelated identifiers;
+full function-definition verification retains all header attributes. Hosted
+execution is still required, and these metadata cases do not replace populated
+native, multiprocess or complete dependency-equivalence proof.
+
+Native trial counters now report fixed bounded aggregates even when the original
+baseline fails. Reporting cannot replace the original failure, and successful
+pulse returns are explicitly not claimed as durable renewals.

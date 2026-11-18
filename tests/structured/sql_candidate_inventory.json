@@ -250,5 +250,14 @@
   ],
   "heartbeat_native": [
     "tests/integration/test_workflow_ticketed_admission_trial.py::test_actual_current032g_workflow_with_ticketed_admission_trial"
+  ],
+  "reverse_heartbeat": [
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_pure_timestamp_commit_and_exact_original_restore[032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[token-032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[status-032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[revert-032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[immediate-032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[savepoint-032g]",
+    "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_never_bypasses_original_attempt_run_fk[032g]"
   ]
 }

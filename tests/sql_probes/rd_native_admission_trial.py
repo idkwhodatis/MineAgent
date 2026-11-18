@@ -142,3 +142,19 @@ def native_admission_trial():
         lifecycle._neutral_transaction_once = original_neutral
         AttemptLease.pulse, AttemptLease.close = original_pulse, original_close
         AttemptLease.start = original_start
+
+
+def report_trial_counts(counts):
+    """Best-effort closed bounded metrics; cannot replace native/cleanup failure."""
+    try:
+        if type(counts) is not dict:
+            return
+        output = {}
+        for name in ("claims", "neutral_commits", "pulse_returns"):
+            value = counts.get(name)
+            if type(value) is not int or value < 0:
+                return
+            output[name] = min(value, 1_000_000)
+        print("RD_TICKETED_NATIVE_TRIAL", output)
+    except BaseException:  # noqa: BLE001 -- diagnostics must never alter native outcome
+        return

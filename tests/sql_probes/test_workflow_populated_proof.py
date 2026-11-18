@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py tests/sql_probes/test_reverse_heartbeat_candidate_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -164,6 +164,22 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         "      - name: Require original heartbeat cancellation role evidence\n",
         "      - name: Require original heartbeat cancellation role evidence\n        id: heartbeat_roles\n",
     )
+    reverse_heartbeat = (
+        heartbeat_roles.replace(
+            "Require original heartbeat cancellation role evidence",
+            "Require isolated reverse heartbeat event candidate",
+        )
+        .replace("        id: heartbeat_roles\n", "")
+        .replace(
+            "test_rd_admission_expiry_roles.py", "test_reverse_heartbeat_candidate.py"
+        )
+        .replace("heartbeat-roles", "reverse-heartbeat")
+        .replace("--group heartbeat_roles", "--group reverse_heartbeat")
+        .replace(
+            '          MINEAGENT_HEARTBEAT_ADMISSION_CANDIDATE_REQUIRED: "1"',
+            '          MINEAGENT_REVERSE_HEARTBEAT_CANDIDATE_REQUIRED: "1"\n          MINEAGENT_HEARTBEAT_ADMISSION_CANDIDATE_REQUIRED: "1"',
+        )
+    )
     trial_clean = clean.replace(
         "Require clean native units before current schema baseline",
         "Require clean native units before isolated scheduling trial",
@@ -208,13 +224,14 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         heartbeat_admission,
         heartbeat_observation,
         heartbeat_roles,
+        reverse_heartbeat,
         current,
         trial_clean,
         native_trial,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 41
+    assert len(independent) == 42
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -316,6 +333,10 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/test_rd_ticketed_admission_candidate.py",
         "tests/sql_probes/rd_native_admission_trial.py",
         "tests/sql_probes/test_rd_native_admission_trial.py",
+        "tests/integration/test_reverse_heartbeat_candidate.py",
+        "tests/sql_probes/reverse_heartbeat_candidate.py",
+        "tests/sql_probes/reverse_heartbeat_candidate_pins.json",
+        "tests/sql_probes/test_reverse_heartbeat_candidate_source.py",
         "tests/sql_probes/rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
         "tests/structured/sql_candidate_inventory.json",
