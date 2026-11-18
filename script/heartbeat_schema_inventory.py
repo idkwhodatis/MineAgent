@@ -1,6 +1,8 @@
 """Bounded schema metadata supplement, not dependency or concurrency proof."""
 
-from script.heartbeat_graph_inventory import MAX_ROWS, arguments, digest, identifier
+from script.heartbeat_graph_inventory import arguments, digest, identifier
+
+MAX_ROWS = 8192
 
 VERSION = "mineagent.heartbeat-installed-catalog.v2"
 TRIGGERS_QUERY = """SELECT c.relname AS relation,t.tgname AS name,
@@ -17,7 +19,7 @@ TRIGGERS_QUERY = """SELECT c.relname AS relation,t.tgname AS name,
  JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
  JOIN pg_catalog.pg_namespace fn ON fn.oid=p.pronamespace
  WHERE n.nspname=current_schema() AND NOT t.tgisinternal
- ORDER BY c.relname,t.tgname LIMIT 4097"""
+ ORDER BY c.relname,t.tgname LIMIT 8193"""
 CONSTRAINTS_QUERY = """SELECT c.relname AS relation,k.conname AS name,
  k.contype AS kind,k.condeferrable AS deferrable,
  k.condeferred AS initially_deferred,k.convalidated AS validated,
@@ -31,14 +33,14 @@ CONSTRAINTS_QUERY = """SELECT c.relname AS relation,k.conname AS name,
  LEFT JOIN pg_catalog.pg_class rc ON rc.oid=k.confrelid
  LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=rc.relnamespace
  WHERE n.nspname=current_schema()
- ORDER BY c.relname,k.conname LIMIT 4097"""
+ ORDER BY c.relname,k.conname LIMIT 8193"""
 COLUMNS_QUERY = """SELECT c.relname AS relation,a.attnum AS ordinal,
  a.attname AS name,a.attnotnull AS not_null,a.attisdropped AS dropped
  FROM pg_catalog.pg_attribute a
  JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
  JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
  WHERE n.nspname=current_schema() AND c.relkind IN ('r','p') AND a.attnum>0
- ORDER BY c.relname,a.attnum LIMIT 4097"""
+ ORDER BY c.relname,a.attnum LIMIT 8193"""
 
 
 def key_columns(value):
@@ -59,7 +61,11 @@ def summarize(schema, triggers, constraints, columns):
     if any(
         not rows or len(rows) > MAX_ROWS for rows in (triggers, constraints, columns)
     ):
-        raise ValueError("Bounded nonempty schema metadata required")
+        raise ValueError(
+            "Bounded nonempty schema metadata required: "
+            f"triggers={len(triggers)} constraints={len(constraints)} "
+            f"columns={len(columns)} maximum={MAX_ROWS}"
+        )
     result = {"schema_triggers": [], "schema_constraints": [], "schema_columns": []}
     for row in triggers:
         if row["function_schema"] not in {schema, "pg_catalog"}:

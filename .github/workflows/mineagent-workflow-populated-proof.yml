@@ -21,6 +21,10 @@ on:
       - "tests/sql_probes/test_heartbeat_schema_inventory_source.py"
       - "tests/sql_probes/test_rd_attempt_admission_candidate.py"
       - "tests/sql_probes/test_workflow_heartbeat_admission_source.py"
+      - "tests/integration/test_rd_admission_expiry_observation.py"
+      - "tests/sql_probes/rd_admission_expiry_observation.py"
+      - "tests/sql_probes/test_rd_admission_expiry_observation_unit.py"
+      - "tests/sql_probes/test_rd_admission_expiry_observation_source.py"
       - "tests/sql_probes/rd_attempt_admission_candidate.py"
       - "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py"
       - "tests/structured/sql_candidate_inventory.json"
@@ -64,7 +68,7 @@ jobs:
       - name: Install unchanged host test closure
         run: python -m pip install --require-hashes -r backend/requirements.lock
       - name: Require independent baseline source contract
-        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py -q
+        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py -q
       - name: Require host identity and diagnostic regressions
         run: |
           mkdir -p var/numeric-private var/numeric-proof
@@ -345,6 +349,23 @@ jobs:
           python -m pytest tests/integration/test_workflow_heartbeat_admission_candidate.py --collect-only -q -p no:cacheprovider > var/numeric-private/heartbeat-admission-collection.txt
           python -m pytest tests/integration/test_workflow_heartbeat_admission_candidate.py -q -p no:cacheprovider --junitxml=var/numeric-private/heartbeat-admission.xml
           python script/sql_candidate_proof.py --group heartbeat_admission --collection var/numeric-private/heartbeat-admission-collection.txt --junit var/numeric-private/heartbeat-admission.xml --output var/numeric-proof/heartbeat-admission-outcomes.json
+      - name: Require isolated committed expiry observation evidence
+        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success' }}
+        timeout-minutes: 20
+        shell: bash
+        env:
+          MINEAGENT_HEARTBEAT_ADMISSION_CANDIDATE_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          python -m pytest tests/integration/test_rd_admission_expiry_observation.py --collect-only -q -p no:cacheprovider > var/numeric-private/heartbeat-observation-collection.txt
+          python -m pytest tests/integration/test_rd_admission_expiry_observation.py -q -p no:cacheprovider --junitxml=var/numeric-private/heartbeat-observation.xml
+          python script/sql_candidate_proof.py --group heartbeat_observation --collection var/numeric-private/heartbeat-observation-collection.txt --junit var/numeric-private/heartbeat-observation.xml --output var/numeric-proof/heartbeat-observation-outcomes.json
       - name: Require actual current032g finite workflow baseline
         if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success' }}
         timeout-minutes: 40

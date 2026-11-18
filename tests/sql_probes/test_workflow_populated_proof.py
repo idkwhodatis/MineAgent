@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -128,6 +128,18 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         .replace("heartbeat-order", "heartbeat-admission")
         .replace("--group heartbeat_order", "--group heartbeat_admission")
     )
+    heartbeat_observation = (
+        heartbeat_admission.replace(
+            "Require isolated local admission candidate evidence",
+            "Require isolated committed expiry observation evidence",
+        )
+        .replace(
+            "test_workflow_heartbeat_admission_candidate.py",
+            "test_rd_admission_expiry_observation.py",
+        )
+        .replace("heartbeat-admission", "heartbeat-observation")
+        .replace("--group heartbeat_admission", "--group heartbeat_observation")
+    )
     target_index = named(expected, TARGET)
     expected[target_index : target_index + 1] = [
         readiness,
@@ -135,11 +147,12 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
         clean,
         heartbeat_order,
         heartbeat_admission,
+        heartbeat_observation,
         current,
     ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 37
+    assert len(independent) == 38
     assert named(independent, TARGET) == setup_end + 2
 
 
@@ -231,6 +244,10 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/test_heartbeat_schema_inventory_source.py",
         "tests/sql_probes/test_rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_admission_source.py",
+        "tests/integration/test_rd_admission_expiry_observation.py",
+        "tests/sql_probes/rd_admission_expiry_observation.py",
+        "tests/sql_probes/test_rd_admission_expiry_observation_unit.py",
+        "tests/sql_probes/test_rd_admission_expiry_observation_source.py",
         "tests/sql_probes/rd_attempt_admission_candidate.py",
         "tests/sql_probes/test_workflow_heartbeat_lock_order_source.py",
         "tests/structured/sql_candidate_inventory.json",

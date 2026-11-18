@@ -179,6 +179,7 @@ def main():
             "heartbeat_inventory",
             "heartbeat_order",
             "heartbeat_admission",
+            "heartbeat_observation",
         ),
     )
     parser.add_argument("--collection", type=Path)

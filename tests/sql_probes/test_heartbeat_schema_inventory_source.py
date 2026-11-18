@@ -94,11 +94,23 @@ def test_bad_names_namespaces_and_unbounded_metadata_rejected():
         data[group][0][key] = value
         with pytest.raises(ValueError):
             m.summarize(SCHEMA, *data)
+    valid = rows()
+    assert (
+        len(m.summarize(SCHEMA, valid[0] * 8192, valid[1], valid[2])["schema_triggers"])
+        == 8192
+    )
     for group in range(3):
         data = list(rows())
         data[group] *= m.MAX_ROWS + 1
-        with pytest.raises(ValueError, match="Bounded"):
+        with pytest.raises(ValueError, match="Bounded") as caught:
             m.summarize(SCHEMA, *data)
+        expected = [1, 1, 1]
+        expected[group] = 8193
+        assert str(caught.value) == (
+            "Bounded nonempty schema metadata required: "
+            f"triggers={expected[0]} constraints={expected[1]} "
+            f"columns={expected[2]} maximum=8192"
+        )
     with pytest.raises(ValueError, match="disposable"):
         m.summarize("public", *rows())
 
@@ -106,6 +118,10 @@ def test_bad_names_namespaces_and_unbounded_metadata_rejected():
 def test_all_queries_are_schema_scoped_bounded_catalog_only():
     from script import heartbeat_graph_inventory as original
 
+    assert original.MAX_ROWS == 4096 and m.MAX_ROWS == 8192
+    assert original.MAX_BYTES == 8_000_000
+    assert "LIMIT 4097" in original.TRIGGERS_QUERY
+    assert "LIMIT 4097" in original.FUNCTIONS_QUERY
     assert "pg_get_expr" not in original.TRIGGERS_QUERY
     assert (
         "CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid) END AS predicate"
@@ -114,7 +130,7 @@ def test_all_queries_are_schema_scoped_bounded_catalog_only():
     for query in (m.TRIGGERS_QUERY, m.CONSTRAINTS_QUERY, m.COLUMNS_QUERY):
         assert query.startswith("SELECT ")
         assert "n.nspname=current_schema()" in query
-        assert "LIMIT 4097" in query
+        assert "LIMIT 8193" in query
         assert "FROM pg_catalog." in query
     assert "NOT t.tgisinternal" in m.TRIGGERS_QUERY
     assert "pg_get_expr" not in m.TRIGGERS_QUERY

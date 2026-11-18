@@ -11,7 +11,7 @@ from pathlib import Path
 
 REVISION = "032g_schema_keyset_cost"
 MAX_ROWS = 4096
-MAX_BYTES = 2_000_000
+MAX_BYTES = 8_000_000
 NAME = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 TRIGGERS_QUERY = """SELECT t.tgname AS name,t.tgisinternal AS internal,
  t.tgtype AS event_bits,t.tgenabled AS enabled,t.tgdeferrable AS deferrable,
@@ -200,7 +200,9 @@ def export(connection, directory):
     result = capture(connection)
     data = (json.dumps(result, sort_keys=True, indent=2) + "\n").encode()
     if len(data) > MAX_BYTES:
-        raise ValueError("Metadata artifact bound exceeded")
+        raise ValueError(
+            f"Metadata artifact bound exceeded: bytes={len(data)} maximum={MAX_BYTES}"
+        )
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / "heartbeat-installed-032g.json").open("xb") as stream:
         stream.write(data)

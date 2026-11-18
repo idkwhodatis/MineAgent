@@ -231,5 +231,15 @@
     "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-expiry-heartbeat]",
     "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-neutral]",
     "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-heartbeat]"
+  ],
+  "heartbeat_observation": [
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_uses_only_committed_renewals_and_old_ticket_never_refreshes[031]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_uses_only_committed_renewals_and_old_ticket_never_refreshes[032g]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[031-token]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[031-cancel]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[032g-token]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[032g-cancel]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[031]",
+    "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[032g]"
   ]
 }

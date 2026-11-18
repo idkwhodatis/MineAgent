@@ -204,3 +204,22 @@ bindings, enabled/event/update-column metadata, table constraints and column
 ordinals across the owned schema. Definitions and predicates remain hashes,
 never raw SQL or application rows. Existing six inventory cases are preserved.
 This enables a coverage audit; catalog metadata alone is not equivalence proof.
+
+Hosted3bd41fa baseline44259341284 passed all16 isolated admission cases, with
+original two lock-order cases also green. This establishes the stated metadata
+schedules, including separate-process contention, not native integration.
+A separate8-case `heartbeat_observation` group checks a scheduling-only observer:
+one READ COMMITTED/read-only exact-fence observation using database time and a
+pre-query monotonic sample; later tickets may see committed renewal but an old
+ticket never refreshes. Tests retain original heartbeat/deferred checks, verify
+uncommitted/rolled-back renewal invisibility, token/cancellation rejection and
+NullPool physical connection closure. They do not prove pooled-connection reset,
+complete callback participation, or native execution/cleanup phase integration.
+
+The first catalog-v2 extraction hit its closed4096-row schema bound. Only the
+supplement now allows8192 rows per category with an8193 sentinel; the original
+attempt/function4096 limits remain. The final metadata export remains capped at
+8MB, with fixed-label numeric counts on overflow and no silent truncation. Mixed
+OLD/NEW trigger predicates use explicitly labeled full-trigger-definition hashes
+because PostgreSQL cannot deparse them with pg_get_expr. Native runtime behavior
+and acceptance thresholds are unaffected by these evidence-tool corrections.
