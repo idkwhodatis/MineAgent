@@ -443,7 +443,13 @@ def test_research_notes_require_actual_postgres_without_filtered_acceptance():
     )
     assert 'TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"' in postgres
     assert 'TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"' in postgres
-    modules = _assert_actual_runtime_partition()
+    from script.experimental_integration_partition import validate, verify_v1_additions
+
+    original_modules = _assert_actual_runtime_partition()
+    experiments = validate()
+    assert set(original_modules).isdisjoint(experiments)
+    modules = original_modules + experiments
+    verify_v1_additions()
     assert re.findall(r"--ignore(?:-glob)?(?:=|\s+)(\S+)", postgres) == modules
     assert postgres.split("run: >-", 1)[1].split() == [
         ".venv-data/bin/python",

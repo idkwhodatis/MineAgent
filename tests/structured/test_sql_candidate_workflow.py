@@ -79,7 +79,7 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
     assert source.count("docker run ") == 1
     assert source.count("--group ") == 8
     assert source.count("--collect-only") == 8
-    assert source.count("--junitxml=") == 8
+    assert source.count("--junitxml=") == 9
     assert source.count("if: always()") == 2
 
 

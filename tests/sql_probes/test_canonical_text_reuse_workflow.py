@@ -23,6 +23,17 @@ def test_pure_wiring_preserves_original_sql_steps_and_old_inventories():
     original = original.replace(
         '      - "tests/integration/test_canonical_text_reuse_probe.py"\n', "", 1
     )
+    for path in [
+        ".github/workflows/v1-validation.yml",
+        "script/experimental_integration_partition.py",
+        "tests/runner/experimental_integration_partition.json",
+        "tests/runner/test_experimental_integration_partition.py",
+        "tests/runner/test_ci_acceptance_boundary.py",
+    ]:
+        original = original.replace('      - "' + path + '"\n', "", 1)
+    partition = "      - name: Require exact four experimental partition contracts separately\n        timeout-minutes: 3\n        shell: bash\n        run: |\n          set -euo pipefail\n          python -m pytest tests/runner/test_experimental_integration_partition.py -q -p no:cacheprovider --junitxml=\"$RUNNER_TEMP/sql-candidate-private/partition.xml\"\n          python - <<'PYPARTITION'\n          import os\n          from pathlib import Path\n          from xml.etree import ElementTree as ET\n          source=Path(os.environ['RUNNER_TEMP'])/'sql-candidate-private/partition.xml'\n          cases=list(ET.parse(source).getroot().iter('testcase'))\n          assert len(cases)==4\n          assert {case.get('name') for case in cases}=={'test_each_dedicated_experimental_group_requires_exact_successful_junit', 'test_partition_rejects_preexisting_exclusions_missing_nodes_or_changed_gates', 'test_experimental_partition_preserves_original_modules_and_full_collection', 'test_current_head_baseline_exact_inline_xml_gate_still_rejects_bad_results'}\n          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))\n          PYPARTITION\n"
+    assert original.count(partition) == 1
+    original = original.replace(partition, "", 1)
     assert (
         hashlib.sha256(original.encode()).hexdigest()
         == "aeb4e222dd4dbc65869ba4fd0726343a95acffc50aaaa4e6f4fcae082cd66850"
