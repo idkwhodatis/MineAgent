@@ -250,6 +250,9 @@ jobs:
           python -m script.build_oe_structured_images --output var/numeric-proof/oe-normal \
             --controller-parent "$(cat var/numeric-proof/oe-controller-parent.iid)" \
             --engine-parent "$(cat var/numeric-proof/structured-parent.iid)"
+      - name: Record successful native baseline setup
+        id: native_setup
+        run: echo "Native baseline setup complete"
       - name: Require actual finite workflow RD to OE stage and complete restore
         timeout-minutes: 40
         shell: bash
@@ -278,6 +281,56 @@ jobs:
           cases=list(ET.parse(source).getroot().iter('testcase'))
           assert len(cases)==1
           assert {case.get('name') for case in cases}=={'test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYRESULT
+          test "$status" = 0
+      - name: Require clean native units before current schema baseline
+        id: current_baseline_containment
+        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-oe-structured-orchestrator-v1)
+          test -z "$ids" || { echo 'Normal OE controller containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.structured.admission)
+          test -z "$ids" || { echo 'Structured engine containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
+          test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.analysis.admission)
+          test -z "$ids" || { echo 'Analysis unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2)
+          test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
+          test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Require actual current032g finite workflow baseline
+        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success' }}
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED: "1"
+          MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          status=0
+          python -m pytest tests/integration/test_workflow_current_head_baseline.py -q \
+            --junitxml=var/numeric-private/workflow-current032g-baseline.xml || status=$?
+          python - <<'PYRESULT'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/workflow-current032g-baseline.xml')
+          summarize(source,Path('var/numeric-proof/workflow-current032g-baseline-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==1
+          assert {case.get('name') for case in cases}=={'test_actual_current032g_workflow_completes_with_readonly_graph_checks'}
           assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
           PYRESULT
           test "$status" = 0

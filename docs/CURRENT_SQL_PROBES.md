@@ -108,3 +108,20 @@ OE and complete restore were not reached; no completed graph was established.
 Containment and cleanup passed. This result does not identify the queue-failure
 cause, so bounded existing RD queue/RPC/state diagnostics are added around only
 the first drain without changing its acceptance assertions or execution policy.
+
+The historical diagnostic rerun on `d6481a1`
+([run 44246639295](https://github.com/idkwhodatis/MineAgent/actions/runs/44246639295))
+localized failure to the third RD `submit_chat`: durable commits consumed most
+of its remaining controller budget, and a provider exception retained a domain
+exception from the transaction boundary. The then-closed vocabulary reported
+these codes as unknown; it did not prove a specific fence/deadline error. Five
+fixed existing provider/fence codes are now allowlisted, never arbitrary text.
+
+An additional current-032g native baseline uses the same pre-admission control
+history and actual bridge against a separate fresh database. It runs even if the
+historical gate fails, but only after every setup step and all six original
+process-absence checks succeed. It does not activate an SQL candidate. Only
+successful real RD/OE completion permits its read-only post-run graph checks.
+The historical gate remains mandatory/red on failure, and current graph success
+would not replace its historical restore proof or establish an optimization's
+performance or concurrency safety.

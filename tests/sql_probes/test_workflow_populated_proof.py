@@ -49,10 +49,61 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
+    readiness = (
+        "      - name: Record successful native baseline setup\n"
+        "        id: native_setup\n"
+        '        run: echo "Native baseline setup complete"\n'
+    )
+    clean = (
+        "      - name: Require clean native units before current schema baseline\n"
+        "        id: current_baseline_containment\n"
+        "        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' }}\n"
+        "        shell: bash\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        + "".join(
+            step.split("        run: |\n", 1)[1]
+            for step in original[cleanup_start : cleanup_start + 6]
+        )
+    )
+    current = (
+        original[target]
+        .replace(TARGET, "Require actual current032g finite workflow baseline", 1)
+        .replace(
+            "        timeout-minutes: 40\n",
+            "        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success' }}\n"
+            "        timeout-minutes: 40\n",
+            1,
+        )
+        .replace(
+            '          MINEAGENT_WORKFLOW_STRUCTURED_FLOW_REQUIRED: "1"\n',
+            '          MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED: "1"\n',
+            1,
+        )
+        .replace(
+            "tests/integration/test_workflow_structured_stage_flow.py",
+            "tests/integration/test_workflow_current_head_baseline.py",
+        )
+        .replace(
+            "workflow-structured-stage",
+            "workflow-current032g-baseline",
+        )
+        .replace(
+            "test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore",
+            "test_actual_current032g_workflow_completes_with_readonly_graph_checks",
+        )
+    )
+    target_index = named(expected, TARGET)
+    expected[target_index : target_index + 1] = [
+        readiness,
+        expected[target_index],
+        clean,
+        current,
+    ]
     # Full step bytes, including command, env, timeout, if and artifact policy.
     assert independent == expected
-    assert len(independent) == 32
-    assert named(independent, TARGET) == setup_end + 1
+    assert len(independent) == 35
+    assert named(independent, TARGET) == setup_end + 2
 
 
 def test_job_environment_runner_and_deadlines_are_unchanged():
@@ -429,3 +480,148 @@ def test_queue_diagnostic_print_failure_preserves_callback_and_restores_patch(
         original_receive,
         original_send,
     )
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        "provider_input_rejected",
+        "provider_admission_unconfirmed",
+        "provider_identity_receipt_unconfirmed",
+        "provider_stop_receipt_unconfirmed",
+        "attempt_fenced",
+    ],
+)
+def test_first_rd_failure_codes_are_closed_and_preserve_private_unknowns(code):
+    from backend.app.services import DomainError
+    from packages.rdagent_provider.transport import ProviderFailure
+    from tests.rdagent.test_rpc_stage_diagnostic import _diagnostic
+
+    error_type = DomainError if code == "attempt_fenced" else ProviderFailure
+
+    def error(value):
+        return (
+            DomainError(value, "private diagnostic detail", 409)
+            if error_type is DomainError
+            else ProviderFailure(value)
+        )
+
+    module = _diagnostic()
+    assert module._queue_failure(error(code))["code"] == code
+    assert (
+        module._queue_failure(error("private credential and arbitrary code"))["code"]
+        == "unknown"
+    )
+
+
+def test_current_native_baseline_is_real_separate_and_readonly_after_bridge():
+    import ast
+
+    path = ROOT / "tests/integration/test_workflow_current_head_baseline.py"
+    source = path.read_text()
+    tree = ast.parse(source)
+    tests = [
+        n
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+    ]
+    assert len(tests) == 1
+    assert (
+        tests[0].name
+        == "test_actual_current032g_workflow_completes_with_readonly_graph_checks"
+    )
+    assert [arg.arg for arg in tests[0].args.args] == [
+        "drill_databases",
+        "tmp_path",
+        "monkeypatch",
+    ]
+    for required in (
+        "MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED",
+        "legacy._engine(drill_databases.source)",
+        'legacy._upgrade(source, "032g_schema_keyset_cost")',
+        'storage = tmp_path / "current032g-workflow-source"',
+        "with actual_environment(source, settings, monkeypatch) as env:",
+        "completed = run_bridge(env, source, tmp_path)",
+        "SET TRANSACTION READ ONLY",
+        "SELECT version_num FROM alembic_version",
+        "SELECT public.mineagent_rd_provider_graph(:rid)",
+        "SELECT public.mineagent_oes_graph_check(:rid)",
+        "completed.rd.child_run_id",
+        "completed.oe_run_id",
+        "completed.workflow_id",
+        "source.dispose()",
+        "assert (len(env.rd_calls), len(env.oe_calls)) == call_counts",
+    ):
+        assert required in source
+    assert source.index("run_bridge(env, source, tmp_path)") < source.index(
+        "SET TRANSACTION READ ONLY"
+    )
+    for forbidden in (
+        "render_candidate_sql",
+        "oe_trigger_target_probe",
+        "session.add",
+        "statement_timeout",
+        "lock_timeout",
+        "pytest.skip",
+        "assert_restore(",
+        "INSERT INTO",
+        "UPDATE ",
+        "DELETE FROM",
+    ):
+        assert forbidden not in source
+    assert (
+        source.count("legacy._upgrade(")
+        == source.count("run_bridge(env, source, tmp_path)")
+        == 1
+    )
+
+
+def test_current_native_probe_readiness_and_all_six_absence_checks_are_required():
+    items = steps(INDEPENDENT.read_text())
+    ready = items[named(items, "Record successful native baseline setup")]
+    absence = items[
+        named(items, "Require clean native units before current schema baseline")
+    ]
+    current = items[named(items, "Require actual current032g finite workflow baseline")]
+    assert "        if:" not in ready  # Default success requires every prior setup.
+    assert "id: native_setup" in ready
+    assert "!cancelled() && steps.native_setup.outcome == 'success'" in absence
+    assert (
+        "!cancelled() && steps.native_setup.outcome == 'success' && steps.current_baseline_containment.outcome == 'success'"
+        in current
+    )
+    assert absence.count("docker ps --all --quiet --no-trunc") == 6
+    assert "docker rm" not in absence
+    assert "assert len(cases)==1" in current
+    assert "('failure','error','skipped')" in current
+    assert "var/numeric-private/workflow-current032g-baseline.xml" in current
+    assert "var/numeric-proof/workflow-current032g-baseline-outcomes.xml" in current
+    assert 'test "$status" = 0' in current
+    assert named(items, "Record successful native baseline setup") < named(
+        items, TARGET
+    )
+    assert (
+        named(items, TARGET)
+        < named(items, "Require clean native units before current schema baseline")
+        < named(items, "Require actual current032g finite workflow baseline")
+        < named(items, CLEANUP)
+    )
+
+
+def test_current_baseline_preserves_original_pre_admission_control_history():
+    original = (
+        ROOT / "tests/integration/test_workflow_structured_stage_flow.py"
+    ).read_text()
+    current = (
+        ROOT / "tests/integration/test_workflow_current_head_baseline.py"
+    ).read_text()
+
+    def controls(source):
+        return source.split(
+            "        with actual_environment(source, settings, monkeypatch) as env:\n",
+            1,
+        )[1].split("            completed = run_bridge(env, source, tmp_path)", 1)[0]
+
+    assert controls(current) == controls(original)
+    assert "assert stale.status_code == 409" in controls(current)
+    assert "assert env.rd_calls == env.oe_calls == []" in controls(current)
