@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "tests/runner/experimental_integration_partition.json"
-MANIFEST_SHA256 = "ff90020dc5845ec4b5eb7f4439f5e3ed77adf11fb9b542e052b367318ca609a9"
+MANIFEST_SHA256 = "ad27df11f2d71f50ae1441ae19af549951a160f00ccce596c1b5b2a8eac24990"
 OLD_COMMENT = """        # These exact runtime modules run on this same head in the dedicated
         # image-building workflows; no PostgreSQL-only module is excluded.
 """
@@ -151,6 +151,9 @@ def verify_sql_additions():
     step = data["sql_partition_step"]
     assert source.count(step) == 1
     restored = source.replace(step, "", 1)
+    baseline_step = data["sql_dataset_admission_step"]
+    assert restored.count(baseline_step) == 1
+    restored = restored.replace(baseline_step, "", 1)
     for path in data["sql_added_paths"]:
         line = '      - "' + path + '"\n'
         assert restored.count(line) == 1

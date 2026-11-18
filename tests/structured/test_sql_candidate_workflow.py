@@ -77,9 +77,9 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
         'docker rm --force --volumes "$cid"'
     )
     assert source.count("docker run ") == 1
-    assert source.count("--group ") == 6
-    assert source.count("--collect-only") == 6
-    assert source.count("--junitxml=") == 7
+    assert source.count("--group ") == 7
+    assert source.count("--collect-only") == 7
+    assert source.count("--junitxml=") == 8
     assert source.count("if: always()") == 2
 
 
@@ -110,6 +110,7 @@ def test_workflow_selects_all_candidates_without_deselection_and_tracks_inputs()
         "current",
         "trigger",
         "heartbeat_inventory",
+        "dataset_admission",
     ):
         for node in proof.inventory(group):
             assert node.split("::")[0] in source
@@ -256,7 +257,9 @@ def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
         "heartbeat_roles",
         "heartbeat_native",
         "reverse_heartbeat",
+        "dataset_admission",
     }
+    assert len(proof.inventory("dataset_admission")) == 5
     assert len(proof.inventory("reverse_heartbeat")) == 7
     assert len(proof.inventory("heartbeat_roles")) == 4
     assert len(proof.inventory("heartbeat_native")) == 1

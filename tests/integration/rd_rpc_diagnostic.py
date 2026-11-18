@@ -21,6 +21,7 @@ def _milliseconds(value):
 @contextmanager
 def diagnose_rd_rpc():
     from runtimes.rdagent_operational import rpc
+    from tests.integration.rd_analysis_stage_diagnostic import diagnose_analysis_stages
     from workers.research import rdagent_operational as worker
 
     original_serve, original_receive, original_send = (
@@ -132,6 +133,7 @@ def diagnose_rd_rpc():
         event.listen(Session, name, callback)
     try:
         with (
+            diagnose_analysis_stages(),
             patch.object(worker, "serve_one", serve),
             patch.object(rpc, "receive", receive),
             patch.object(rpc, "send", send),
@@ -171,6 +173,8 @@ def _analysis_trace_context(error):
     particular, constructing an identity precedes writing its journal and
     calling the database callback. Missing keys mean the frame was not observed.
     """
+    from inspect import unwrap
+
     from backend.app import analysis_launch_services
     from packages.research_runtime.analysis_process_journal import (
         AnalysisExtraction,
@@ -186,30 +190,33 @@ def _analysis_trace_context(error):
 
     supervisor = analysis_supervisor.AnalysisSupervisor
     stages = (
-        (analysis_process.execute_analysis_acceptance_unit.__code__, "worker"),
-        (analysis_launch_services.record_analysis_identity.__code__, "record_identity"),
+        (unwrap(analysis_process.execute_analysis_acceptance_unit).__code__, "worker"),
         (
-            analysis_launch_services.record_analysis_containment.__code__,
+            unwrap(analysis_launch_services.record_analysis_identity).__code__,
+            "record_identity",
+        ),
+        (
+            unwrap(analysis_launch_services.record_analysis_containment).__code__,
             "record_containment",
         ),
-        (supervisor.execute.__code__, "execute"),
-        (supervisor._verify_staged_launch.__code__, "verify_launch"),
-        (supervisor._verify.__code__, "verify_runtime"),
-        (supervisor._observe_identity.__code__, "observe_identity"),
-        (supervisor.stop_and_verify.__code__, "stop"),
-        (supervisor._cleanup_unobserved.__code__, "cleanup_unobserved"),
-        (daemon_identity.observe_leader.__code__, "observe_leader"),
-        (runtime_contract.verify_inspect.__code__, "verify_inspect"),
-        (analysis_transport.read_analysis_frame.__code__, "read_frame"),
-        (analysis_transport.require_live_analysis_frame.__code__, "live_frame"),
+        (unwrap(supervisor.execute).__code__, "execute"),
+        (unwrap(supervisor._verify_staged_launch).__code__, "verify_launch"),
+        (unwrap(supervisor._verify).__code__, "verify_runtime"),
+        (unwrap(supervisor._observe_identity).__code__, "observe_identity"),
+        (unwrap(supervisor.stop_and_verify).__code__, "stop"),
+        (unwrap(supervisor._cleanup_unobserved).__code__, "cleanup_unobserved"),
+        (unwrap(daemon_identity.observe_leader).__code__, "observe_leader"),
+        (unwrap(runtime_contract.verify_inspect).__code__, "verify_inspect"),
+        (unwrap(analysis_transport.read_analysis_frame).__code__, "read_frame"),
+        (unwrap(analysis_transport.require_live_analysis_frame).__code__, "live_frame"),
         (
-            analysis_transport.require_complete_analysis_stream.__code__,
+            unwrap(analysis_transport.require_complete_analysis_stream).__code__,
             "complete_stream",
         ),
-        (analysis_journal.read_analysis_journal.__code__, "read_journal"),
-        (read_numeric_record.__code__, "read_record"),
-        (NumericDockerClient._command.__code__, "docker_command"),
-        (NumericDockerClient._inspect.__code__, "docker_inspect"),
+        (unwrap(analysis_journal.read_analysis_journal).__code__, "read_journal"),
+        (unwrap(read_numeric_record).__code__, "read_record"),
+        (unwrap(NumericDockerClient._command).__code__, "docker_command"),
+        (unwrap(NumericDockerClient._inspect).__code__, "docker_inspect"),
     )
     operations = {
         ("image", "inspect"): "image_inspect",
@@ -221,9 +228,9 @@ def _analysis_trace_context(error):
     }
     result, analysis_seen = {}, False
     shared_codes = (
-        read_numeric_record.__code__,
-        NumericDockerClient._command.__code__,
-        NumericDockerClient._inspect.__code__,
+        unwrap(read_numeric_record).__code__,
+        unwrap(NumericDockerClient._command).__code__,
+        unwrap(NumericDockerClient._inspect).__code__,
     )
     trace = error.__traceback__
     for _ in range(64):
@@ -237,7 +244,7 @@ def _analysis_trace_context(error):
                     frame.f_code is shared for shared in shared_codes
                 )
                 break
-        if frame.f_code is supervisor.execute.__code__:
+        if frame.f_code is unwrap(supervisor.execute).__code__:
             for name, expected in (
                 ("launch", AnalysisLaunch),
                 ("reader", AttachStream),
@@ -247,7 +254,7 @@ def _analysis_trace_context(error):
                 result["analysis_" + name + "_constructed"] = (
                     type(frame.f_locals.get(name)) is expected
                 )
-        if frame.f_code is NumericDockerClient._command.__code__:
+        if frame.f_code is unwrap(NumericDockerClient._command).__code__:
             args = frame.f_locals.get("args")
             operation = "unknown"
             if type(args) is list:
