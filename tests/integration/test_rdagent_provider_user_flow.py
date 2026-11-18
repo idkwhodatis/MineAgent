@@ -461,5 +461,11 @@ def test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units(
                     and json.dumps(SOURCE) in seeded_prompt
                 )
                 assert derived_guidance in seeded_prompt
+                if os.environ.get("MINEAGENT_COMPLETED_RD_GRAPH_PROBE_REQUIRED") == "1":
+                    from rd_completed_graph_probe import prove_completed_rd_graph
+
+                    provider_call_count = len(captured)
+                    prove_completed_rd_graph(engine, rid, child_run_id)
+                    assert len(captured) == provider_call_count
     finally:
         engine.dispose()

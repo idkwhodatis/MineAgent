@@ -30,6 +30,21 @@ def _elapsed(start, end):
     return max(0, min(MAXIMUM, round((end - start) * 1000)))
 
 
+def _database_guard(error):
+    from sqlalchemy.exc import DBAPIError
+
+    if not isinstance(error, DBAPIError):
+        return "none"
+    message = getattr(getattr(error.orig, "diag", None), "message_primary", None)
+    if type(message) is not str:
+        return "other"
+    # Exact public literals from mineagent_workflow_lock, never arbitrary text.
+    return {
+        "workflow owner is busy": "workflow_owner_busy",
+        "workflow owner scope missing": "workflow_owner_scope_missing",
+    }.get(message, "other")
+
+
 @contextmanager
 def diagnose_attempt_lease():
     from rd_rpc_diagnostic import _queue_failure
@@ -70,6 +85,7 @@ def diagnose_attempt_lease():
                         "family": diagnostic["family"],
                         "code": diagnostic["code"],
                         "sqlstate": diagnostic["sqlstate"],
+                        "database_guard": _database_guard(error),
                         "lost": lease.lost.is_set() is True,
                         "cancelled": lease.cancelled.is_set() is True,
                         "elapsed_ms": elapsed,

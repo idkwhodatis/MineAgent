@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -189,6 +189,8 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/integration/oe_structured*",
         "tests/integration/rd_configured*",
         "script/ci_pg_client.py",
+        "tests/integration/rd_completed_graph_probe.py",
+        "tests/sql_probes/test_rd_completed_graph_probe_source.py",
     ]
 
 
@@ -707,6 +709,7 @@ def test_lease_observer_preserves_call_result_failure_state_and_patch(
             "cancelled": True,
             "elapsed_ms": 400,
             "last_success_age_ms": 10300,
+            "database_guard": "none",
             "successful_pulse_returns": 1,
         }
     ]
@@ -856,3 +859,30 @@ def test_lease_observer_scope_has_no_runtime_mutations_or_extra_threads():
     assert "len(samples) < 8" in source
     assert "lock.acquire(blocking=False)" in source
     assert source.count("print(") == 1
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("workflow owner is busy", "workflow_owner_busy"),
+        ("workflow owner scope missing", "workflow_owner_scope_missing"),
+        ("private arbitrary credential error", "other"),
+    ],
+)
+def test_lease_database_guard_is_an_exact_closed_public_literal(
+    monkeypatch, message, expected
+):
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import DBAPIError
+
+    monkeypatch.syspath_prepend(str(ROOT / "tests/integration"))
+    import rd_lease_diagnostic as lease
+    import rd_rpc_diagnostic as rpc_diagnostic
+
+    driver = Exception("private database detail")
+    driver.sqlstate = "P0001"
+    driver.diag = SimpleNamespace(message_primary=message)
+    error = DBAPIError("private SQL", {"private": "parameter"}, driver)
+    assert lease._database_guard(error) == expected
+    assert rpc_diagnostic._queue_failure(error)["sqlstate"] == "P0001"

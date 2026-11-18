@@ -34,6 +34,8 @@ on:
       - "tests/rdagent_provider/**"
       - "runtimes/rdagent_provider/**"
       - "tests/integration/*provider*"
+      - "tests/integration/rd_completed_graph_probe.py"
+      - "tests/sql_probes/test_rd_completed_graph_probe_source.py"
       - "packages/qlib_adapter/**"
       - "packages/research_runtime/analysis*"
       - "runtimes/qlib/**"
@@ -348,6 +350,8 @@ jobs:
       # before release; its raw JUnit stays private. The second is real cold restore.
       - name: Require actual configured results browser and cold restore
         shell: bash
+        env:
+          MINEAGENT_COMPLETED_RD_GRAPH_PROBE_REQUIRED: "1"
         run: |
           set -euo pipefail
           export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
@@ -371,6 +375,9 @@ jobs:
           summarize(source,Path('var/numeric-proof/controller-outcomes.xml'))
           cases=list(ET.parse(source).getroot().iter('testcase'))
           assert len(cases)==24
+          import json
+          proof=json.loads(Path('var/numeric-proof/rd-completed-v2-proof.json').read_text())
+          assert proof=={'schema':'mineagent.completed-rd-v2-baseline.v1','revision':'032g_schema_keyset_cost','completed_runs':2,'timestamp_rollback_cases':2,'identity_rejection_cases':2,'nowait_contention_cases':4,'candidate_activated':False}
           names={case.get('name') for case in cases}
           required={'test_terminal_repair_actual_predicate_and_reversible_maintenance','test_installed_seed_parent_check_accepts_nonnull_only_at_initial_step','test_repair_downgrade_refuses_retained_parent_and_restores_empty_contract','test_installed_authoring_contract_matches_real_canonical_producer','test_normal_provider_generated_price_level_uses_frozen_steer_and_real_units','test_actual_configured_source_snapshot_direct_analysis_generation','test_actual_configured_analysis_cold_restore_historical_read','test_authenticated_rd_queue_four_unit_declared_objective_and_exact_replay','test_http_submission_is_queued_without_synthetic_attempt_and_replays_after_disable','test_actual_first_claim_and_duplicate_are_distinct_from_queued_counter','test_queued_cancel_is_authenticated_and_cannot_create_attempt','test_claimed_cancel_without_any_physical_admission_revokes_real_fence'}
           assert required <= names

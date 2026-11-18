@@ -147,3 +147,22 @@ application data or SQL text is exported. Existing candidate inventories remain
 unchanged. The native lease observer likewise preserves original pulse behavior;
 its successful-return count may include throttle no-ops, not durable renewals,
 and sampling is explicitly best-effort. It emits only after the worker scope.
+
+Hosted run [44251736436](https://github.com/idkwhodatis/MineAgent/actions/runs/44251736436)
+passed the six inventory cases and all prior groups for `10b29f7`. Its source
+artifact records merge commit `dfcef880` and tree
+`3faa895b4dd354e21d626ea08532164a6dffe7a2`, matching the branch tree. The actual
+inventory contains eight user attempt triggers, 186 internal FK triggers and247
+local functions. The baseline lease diagnostics on the same branch showed the
+first pulse failing with a database error, zero successful returns and lost
+signals set; the then-closed SQLSTATE vocabulary did not identify that error.
+Only fixed `P0001` and two exact public workflow-lock error tags are added next.
+
+The opt-in completed provider-v2 graph hook runs **after** every original native
+parent/seeded-child assertion. It upgrades that owned quiescent028 database to
+032g, checks genuine completed provider graphs, and rolls back timestamp,
+identity-rejection and two-connection lock probes. Every installed guard stays
+active; the original24-case gate, selection and deadlines are unchanged. A fixed
+proof document is required only after all probes preserve the catalog and rows.
+This terminal-v2 evidence is not active-lease, workflow-v3, OE or optimization
+acceptance. Native execution of the new hook remains pending.
