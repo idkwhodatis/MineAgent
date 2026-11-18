@@ -174,7 +174,11 @@ def test_candidate_never_bypasses_original_attempt_run_fk(candidate_workflow):
     state = candidate_workflow
     before = _snapshot(state.source)
 
-    def corrupt():
+    with state.source.connect() as connection, connection.begin():
+        connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+        allowed = candidate.attempt_run_foreign_keys(connection)
+
+    def corrupt(expected=None):
         with pytest.raises(DBAPIError) as caught:  # noqa: SIM117 -- separate exception boundary
             with state.env.factory.begin() as writer:
                 _owner(writer, state)
@@ -185,18 +189,10 @@ def test_candidate_never_bypasses_original_attempt_run_fk(candidate_workflow):
                     ),
                     {"run": uuid4(), "id": state.fence.attempt_id},
                 )
-        error = caught.value.orig
-        # Exact original FK identity, never broad P0001 or raw error output.
-        if (
-            getattr(error, "sqlstate", None) != "23503"
-            or error.diag.constraint_name != "execution_attempts_run_id_fkey"
-        ):
-            raise AssertionError(
-                "Expected original attempt-run foreign key rejection"
-            ) from None
+        return candidate.require_attempt_run_fk(caught.value, allowed, expected)
 
-    corrupt()
+    baseline = corrupt()
     with candidate.installed_candidate(state.source):
-        corrupt()
-    corrupt()
+        corrupt(baseline)
+    corrupt(baseline)
     _require_unchanged(state.source, before)

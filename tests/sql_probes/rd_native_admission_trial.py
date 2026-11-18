@@ -16,6 +16,17 @@ from tests.sql_probes.rd_ticketed_admission_candidate import TicketedAdmission
 
 @contextmanager
 def native_admission_trial():
+    from tests.sql_probes.rd_trial_contention_diagnostic import observe_contention
+
+    with (
+        observe_contention() as diagnostic,
+        _native_admission_trial(diagnostic) as counts,
+    ):
+        yield counts
+
+
+@contextmanager
+def _native_admission_trial(diagnostic):
     from backend.app import research_lifecycle as lifecycle
     from workers.research import rdagent_queue
     from workers.research.lease import AttemptLease
@@ -97,6 +108,10 @@ def native_admission_trial():
                     counts["pulse_returns"] += 1
                 return result
         except Exception:  # Original pulse failures revoke lease authority.
+            try:
+                diagnostic.pulse_failure()
+            except BaseException:  # noqa: BLE001, S110 -- diagnostic cannot replace pulse error
+                pass
             lease.lost.set()
             lease.cancelled.set()
             raise
@@ -126,6 +141,12 @@ def native_admission_trial():
     AttemptLease.start = start
     try:
         yield counts
+    except BaseException:
+        try:
+            diagnostic.body_failure()
+        except BaseException:  # noqa: BLE001, S110 -- diagnostic cannot replace body error
+            pass
+        raise
     finally:
         with lock:
             closing = True

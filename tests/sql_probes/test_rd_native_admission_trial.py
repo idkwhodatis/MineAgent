@@ -314,3 +314,22 @@ def test_native_finally_metrics_cannot_replace_original_outcome(
             None, None, monkeypatch
         )
     assert calls == ["baseline", "print"]
+
+
+def test_broken_diagnostic_methods_cannot_replace_pulse_or_body_error(monkeypatch):
+    from tests.sql_probes.rd_trial_contention_diagnostic import ContentionDiagnostic
+
+    state, factory, _fence, lease, _originals = setup_trial(monkeypatch)
+    failure = AdmissionRejected("expired")
+
+    def broken(*args):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr(ContentionDiagnostic, "pulse_failure", broken)
+    monkeypatch.setattr(ContentionDiagnostic, "body_failure", broken)
+    with pytest.raises(AdmissionRejected) as caught, trial.native_admission_trial():
+        rdagent_queue.claim_configured_run(factory)
+        state["fail"] = failure
+        lease.pulse()
+    assert caught.value is failure
+    assert lease.lost.is_set() and lease.cancelled.is_set()

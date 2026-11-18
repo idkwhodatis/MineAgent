@@ -183,7 +183,7 @@ def test_no_production_import_and_real_probe_keeps_guarded_transaction_cases():
         '"status"',
         "_require_unchanged(state.source, before)",
         "_restore_timestamps(state, times)",
-        '"execution_attempts_run_id_fkey"',
+        "candidate.require_attempt_run_fk(caught.value, allowed, expected)",
     ):
         assert required in source
     assert "DISABLE TRIGGER" not in source
@@ -307,3 +307,88 @@ def test_restoration_matches_verified_installed_full_definition_not_only_synthet
         m.restored_definition_hash(m._candidate_body(), changed_cost)
         != installed["definition_sha256"]
     )
+
+
+def test_fk_inventory_is_read_only_bounded_and_structurally_incident():
+    from types import SimpleNamespace
+
+    key = ("public", "execution_attempts", "execution_attempts_run_id_fkey")
+
+    class Connection:
+        def __init__(self, readonly="on", rows=(key,)):
+            self.readonly, self.rows, self.calls = readonly, rows, []
+
+        def exec_driver_sql(self, sql):
+            self.calls.append(sql)
+            return SimpleNamespace(
+                scalar_one=lambda: self.readonly, all=lambda: self.rows
+            )
+
+    connection = Connection()
+    assert m.attempt_run_foreign_keys(connection) == frozenset({key})
+    denied = Connection(readonly="off")
+    with pytest.raises(ValueError, match="Read-only"):
+        m.attempt_run_foreign_keys(denied)
+    assert len(denied.calls) == 1
+    for rows in ((), (key,) * 257, (("other", "execution_attempts", key[2]),)):
+        with pytest.raises(ValueError, match="Bounded"):
+            m.attempt_run_foreign_keys(Connection(rows=rows))
+    sql = m.ATTEMPT_RUN_FKS_QUERY
+    for term in (
+        "c.contype='f' AND c.convalidated AND NOT c.condeferrable",
+        "a.attname='run_id' AND NOT a.attisdropped",
+        "c.conrelid=a.attrelid AND a.attnum=ANY(c.conkey)",
+        "c.confrelid=a.attrelid AND a.attnum=ANY(c.confkey)",
+        "LIMIT 257",
+    ):
+        assert term in sql
+
+
+def test_fk_original_baseline_identity_is_required_for_candidate_and_restore():
+    from types import SimpleNamespace
+
+    direct = ("public", "execution_attempts", "execution_attempts_run_id_fkey")
+    incoming = ("public", "research_runs", "reviewed_incoming_scope_fk")
+    allowed = frozenset({direct, incoming})
+
+    def error(key):
+        return SimpleNamespace(
+            orig=SimpleNamespace(
+                sqlstate="23503",
+                diag=SimpleNamespace(
+                    schema_name=key[0], table_name=key[1], constraint_name=key[2]
+                ),
+            )
+        )
+
+    for baseline in allowed:
+        assert m.require_attempt_run_fk(error(baseline), allowed) == baseline
+        assert m.require_attempt_run_fk(error(baseline), allowed, baseline) == baseline
+        other = next(value for value in allowed if value != baseline)
+        with pytest.raises(AssertionError, match="identity changed"):
+            m.require_attempt_run_fk(error(other), allowed, baseline)
+    source = Path("tests/integration/test_reverse_heartbeat_candidate.py").read_text()
+    assert "baseline = corrupt()" in source
+    assert source.count("corrupt(baseline)") == 2
+
+
+def test_fk_failure_classifier_never_accepts_or_emits_arbitrary_error_data():
+    from types import SimpleNamespace
+
+    secret = "secret-private-row-token"
+    for state in ("23503", "P0001", "55P03", "57014", "40P01", secret, None):
+        error = SimpleNamespace(
+            orig=SimpleNamespace(
+                sqlstate=state,
+                diag=SimpleNamespace(
+                    schema_name=secret,
+                    table_name=secret,
+                    constraint_name=secret,
+                    message_primary=secret,
+                ),
+            )
+        )
+        with pytest.raises(AssertionError) as caught:
+            m.require_attempt_run_fk(error, frozenset())
+        assert secret not in str(caught.value)
+        assert caught.value.__cause__ is None
