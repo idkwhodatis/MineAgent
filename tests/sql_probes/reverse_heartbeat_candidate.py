@@ -226,3 +226,63 @@ def installed_candidate(engine):
         with engine.begin() as connection:
             connection.exec_driver_sql(render(False))
         check(engine)
+
+
+ATTEMPT_RUN_FKS_QUERY = """
+SELECT ns.nspname, rel.relname, c.conname
+FROM pg_catalog.pg_constraint c
+JOIN pg_catalog.pg_class rel ON rel.oid=c.conrelid
+JOIN pg_catalog.pg_namespace ns ON ns.oid=rel.relnamespace
+WHERE c.contype='f' AND c.convalidated AND NOT c.condeferrable
+ AND ns.nspname='public'
+ AND EXISTS (
+  SELECT 1 FROM pg_catalog.pg_attribute a
+  WHERE a.attrelid='public.execution_attempts'::regclass
+   AND a.attname='run_id' AND NOT a.attisdropped
+   AND ((c.conrelid=a.attrelid AND a.attnum=ANY(c.conkey))
+     OR (c.confrelid=a.attrelid AND a.attnum=ANY(c.confkey)))
+ )
+ORDER BY ns.nspname, rel.relname, c.conname
+LIMIT 257
+"""
+
+
+def attempt_run_foreign_keys(connection):
+    """Private structural identities, never application data or error text."""
+    if connection.exec_driver_sql("SHOW transaction_read_only").scalar_one() != "on":
+        raise ValueError("Read-only FK inventory required")
+    rows = connection.exec_driver_sql(ATTEMPT_RUN_FKS_QUERY).all()
+    identities = frozenset(tuple(row) for row in rows)
+    if (
+        not 1 <= len(rows) <= 256
+        or len(identities) != len(rows)
+        or any(len(row) != 3 or row[0] != "public" for row in identities)
+        or ("public", "execution_attempts", "execution_attempts_run_id_fkey")
+        not in identities
+    ):
+        raise ValueError("Bounded original attempt-run FK inventory required")
+    return identities
+
+
+def require_attempt_run_fk(error, allowed, expected=None):
+    """Accept only a structural original FK, then its exact baseline identity."""
+    original = error.orig
+    state = getattr(original, "sqlstate", None)
+    diag = getattr(original, "diag", None)
+    identity = tuple(
+        getattr(diag, field, None)
+        for field in ("schema_name", "table_name", "constraint_name")
+    )
+    if state != "23503" or identity not in allowed:
+        # Fixed classifier only. Never interpolate arbitrary error/identity data.
+        family = {
+            "23503": "other_foreign_key",
+            "P0001": "procedural_guard",
+            "55P03": "lock_unavailable",
+            "57014": "query_cancelled",
+            "40P01": "deadlock",
+        }.get(state, "unknown")
+        raise AssertionError("Expected structural attempt-run FK: " + family) from None
+    if expected is not None and identity != expected:
+        raise AssertionError("Original attempt-run FK identity changed") from None
+    return identity
