@@ -19,7 +19,7 @@ TRIGGERS_QUERY = """SELECT t.tgname AS name,t.tgisinternal AS internal,
  n.nspname AS function_schema,p.proname AS function_name,
  pg_get_function_identity_arguments(p.oid) AS identity_arguments,
  pg_get_triggerdef(t.oid) AS definition,
- pg_get_expr(t.tgqual,t.tgrelid) AS predicate,encode(t.tgargs,'hex') AS arguments,
+ CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid) END AS predicate,encode(t.tgargs,'hex') AS arguments,
  t.tgconstraint<>0 AS constraint_trigger
  FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
  JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
@@ -91,6 +91,11 @@ def summarize(schema, triggers, functions):
                 "deferrable": bool(row["deferrable"]),
                 "initially_deferred": bool(row["initially_deferred"]),
                 "constraint_trigger": bool(row["constraint_trigger"]),
+                # pg_get_expr cannot deparse trigger OLD+NEW Vars. Preserve
+                # their full definition fingerprint, never claim predicate-only.
+                "predicate_encoding": "full_trigger_definition"
+                if row["predicate"] is not None
+                else None,
                 "update_columns": columns,
                 "function_schema": "@SCHEMA@"
                 if row["function_schema"] == schema

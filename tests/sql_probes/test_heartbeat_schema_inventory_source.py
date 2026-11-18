@@ -38,12 +38,22 @@ def rows():
 
 def test_supplement_retains_bindings_coverage_and_only_hashes_expressions():
     triggers, constraints, columns = rows()
-    triggers[0]["predicate"] = "PRIVATE WHEN EXPRESSION"
+    triggers[0]["predicate"] = (
+        "PRIVATE CREATE TRIGGER WHEN (OLD.run_id IS DISTINCT FROM NEW.run_id)"
+    )
+    triggers[0]["definition"] = triggers[0]["predicate"]
     result = m.summarize(SCHEMA, triggers, constraints, columns)
     assert "PRIVATE" not in json.dumps(result) and SCHEMA not in json.dumps(result)
     assert result["schema_triggers"][0]["relation"] == "execution_attempts"
     assert result["schema_triggers"][0]["predicate_sha256"] == m.digest(
         triggers[0]["predicate"], SCHEMA
+    )
+    assert (
+        result["schema_triggers"][0]["predicate_encoding"] == "full_trigger_definition"
+    )
+    assert (
+        result["schema_triggers"][0]["predicate_sha256"]
+        == result["schema_triggers"][0]["definition_sha256"]
     )
     assert result["schema_triggers"][0]["event_bits"] == 29
     assert result["schema_constraints"][0]["columns"] == "{1,2}"
@@ -94,13 +104,24 @@ def test_bad_names_namespaces_and_unbounded_metadata_rejected():
 
 
 def test_all_queries_are_schema_scoped_bounded_catalog_only():
+    from script import heartbeat_graph_inventory as original
+
+    assert "pg_get_expr" not in original.TRIGGERS_QUERY
+    assert (
+        "CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid) END AS predicate"
+        in original.TRIGGERS_QUERY
+    )
     for query in (m.TRIGGERS_QUERY, m.CONSTRAINTS_QUERY, m.COLUMNS_QUERY):
         assert query.startswith("SELECT ")
         assert "n.nspname=current_schema()" in query
         assert "LIMIT 4097" in query
         assert "FROM pg_catalog." in query
     assert "NOT t.tgisinternal" in m.TRIGGERS_QUERY
-    assert "pg_get_expr" in m.TRIGGERS_QUERY
+    assert "pg_get_expr" not in m.TRIGGERS_QUERY
+    assert (
+        "CASE WHEN t.tgqual IS NOT NULL THEN pg_get_triggerdef(t.oid) END AS predicate"
+        in m.TRIGGERS_QUERY
+    )
     assert "convalidated" in m.CONSTRAINTS_QUERY
     assert "attnum" in m.COLUMNS_QUERY
 

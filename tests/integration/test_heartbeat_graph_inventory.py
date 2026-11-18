@@ -99,3 +99,17 @@ def test_installed_heartbeat_inventory_read_only_and_unchanged(migrated_engine):
         for row in result["schema_columns"]
         if row["relation"] == "execution_attempts"
     } >= {"id", "run_id", "generation", "heartbeat_at", "lease_expires_at"}
+
+    # Installed032f identity triggers have OLD and NEW Vars. PostgreSQL must
+    # deparse these successfully via pg_get_triggerdef, not pg_get_expr.
+    identity = [
+        row
+        for row in result["schema_triggers"]
+        if row["relation"] == "outbox_events"
+        and row["name"] == "oes032f_outbox_identity"
+    ]
+    assert len(identity) == 1
+    assert identity[0]["predicate_encoding"] == "full_trigger_definition"
+    assert identity[0]["predicate_sha256"] is not None
+    assert identity[0]["predicate_sha256"] == identity[0]["definition_sha256"]
+    assert all(row["predicate_encoding"] is None for row in schema_reverse)
