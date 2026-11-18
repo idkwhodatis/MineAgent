@@ -60,3 +60,31 @@ Current-head component measurement artifacts use a `current-` filename prefix.
 The original row proof retains its existing filenames, and both groups retain
 exclusive creation so duplicate evidence in one group still fails. This avoids
 collision when the same reviewed benchmark is invoked against both schemas.
+
+## Per-event OE trigger dispatch experiment (not activated)
+
+`oe_trigger_target_probe_sql.py` is a separate, opt-in experiment against exact
+032g. It changes only `mineagent_oes_consistent`: after a target's graph check
+succeeds, another occurrence of the same target in that **one trigger invocation**
+does not repeat the graph call. Both OLD and NEW reverse queries, reverse bounds,
+membership checks, READ COMMITTED checks and NOWAIT run locks still execute in
+the original order. There is no transaction- or session-wide cache. Unknown/NULL
+membership is not treated as a cache hit. Rollback restores the original body.
+
+The independently named `trigger` CI group contains six source contracts and
+27 PostgreSQL cases. The latter include installed-catalog roundtrip/preflight
+checks and baseline/candidate/restored **synthetic dispatch** cases: target
+routing, rejection/savepoint rollback, per-event scope, isolation/reverse bounds,
+and contention between two database connections. The synthetic checker records
+calls instead of validating the real graph; it is installed only in a separate
+empty test schema. It is not a production substitute or populated-graph proof.
+The existing source/keyset/rows/current named inventories remain unchanged.
+
+This experiment is motivated by structured-native logs where repeated deferred
+graph validation dominates durable receipt commits. No measured end-to-end
+speedup, Qlib fix, provider-deadline fix, or native acceptance is claimed here.
+Before any runtime migration, prove equivalence on populated actual RD/OE
+workflows, concurrent graph-changing transactions (including reverse-source
+changes), crash/recovery and unchanged native gates. The original deadline,
+receipt boundaries, installed schema requirement and all acceptance gates remain
+unchanged. A passing dispatch group alone cannot authorize promotion.
