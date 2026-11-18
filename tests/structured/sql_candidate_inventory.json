@@ -201,5 +201,13 @@
     "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[baseline]",
     "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[candidate]",
     "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[restored]"
+  ],
+  "heartbeat_inventory": [
+    "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_exact_safe_shape_hashes_and_honest_lexical_observations",
+    "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_schema_normalization_is_exact_and_output_is_bounded",
+    "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_unexpected_identity_cannot_leak_into_artifact",
+    "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_read_only_guard_precedes_every_other_query",
+    "tests/sql_probes/test_heartbeat_graph_inventory_source.py::test_exporter_has_no_mutating_sql_or_application_rows_or_runtime_imports",
+    "tests/integration/test_heartbeat_graph_inventory.py::test_installed_heartbeat_inventory_read_only_and_unchanged"
   ]
 }

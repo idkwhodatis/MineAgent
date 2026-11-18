@@ -125,3 +125,25 @@ successful real RD/OE completion permits its read-only post-run graph checks.
 The historical gate remains mandatory/red on failure, and current graph success
 would not replace its historical restore proof or establish an optimization's
 performance or concurrency safety.
+
+On `33b816c`, both historical031 and current032g baselines failed before the
+first RD child reached release; no OE/completed-graph postcheck ran
+([run 44248740303](https://github.com/idkwhodatis/MineAgent/actions/runs/44248740303)).
+The closed error chain was `provider_stop_receipt_unconfirmed` →
+`provider_identity_receipt_unconfirmed` → `attempt_fenced`. Current032g's fourth
+`submit_chat` exhausted its remaining controller budget during durable commits.
+This establishes the failing boundary, not which fence condition first failed.
+All process-absence checks and final cleanup passed. Test-only lease observation
+and read-only installed trigger inventory are the next evidence steps; neither
+changes lease policy, deadlines, graph predicates or runtime schema.
+
+`heartbeat_inventory` is a separate six-case group: five source checks and one
+read-only installed-catalog observation on disposable PostgreSQL 18.6/032g.
+It records all attempt triggers (including internal triggers), function hashes
+and bounded lexical observations, including row-lock/whole-row/dynamic-SQL flags.
+It explicitly does **not** establish dependency closure, frozen-source manifest
+agreement, timestamp-update equivalence, or concurrency safety. No function body,
+application data or SQL text is exported. Existing candidate inventories remain
+unchanged. The native lease observer likewise preserves original pulse behavior;
+its successful-return count may include throttle no-ops, not durable renewals,
+and sampling is explicitly best-effort. It emits only after the worker scope.

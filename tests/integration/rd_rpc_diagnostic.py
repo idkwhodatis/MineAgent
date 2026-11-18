@@ -428,7 +428,7 @@ def _queue_failure(error):
         sqlstate = (
             value
             if type(value) is str
-            and value in {"23503", "23505", "23514", "40001", "55P03", "57014"}
+            and value in {"23503", "23505", "23514", "40001", "40P01", "55P03", "57014"}
             else "other"
         )
     stages = {

@@ -355,6 +355,16 @@ def _injected_diagnostic(monkeypatch, mode):
     install("backend.app.models", ResearchRun=object())
     install("rd_pg_diagnostic", diagnose_provider_functions=pg)
     install("rd_rpc_diagnostic", diagnose_rd_queue=queue)
+
+    @contextmanager
+    def lease_observer():
+        events.append("lease-enter")
+        try:
+            yield
+        finally:
+            events.append("lease-exit")
+
+    install("rd_lease_diagnostic", diagnose_attempt_lease=lease_observer)
     install("normal_rd_fixture_diagnostic", report_normal_rd_state=report)
     namespace = {
         "ExitStack": ExitStack,
@@ -411,6 +421,10 @@ def test_diagnostics_never_replace_retry_or_suppress_worker(
         caught = error
     assert caught is (failure if worker_fails else None)
     assert events.count("drain") == 1
+    assert events.count("lease-enter") == events.count("lease-exit") == 1
+    assert (
+        events.index("lease-enter") < events.index("drain") < events.index("lease-exit")
+    )
     assert worker.execute is original  # Patches restore even if worker/exit fails.
     assert "PRIVATE" not in capsys.readouterr().out
     if mode not in {"lookup", "ambiguous", "malformed", "queue-enter"}:
@@ -625,3 +639,220 @@ def test_current_baseline_preserves_original_pre_admission_control_history():
     assert controls(current) == controls(original)
     assert "assert stale.status_code == 409" in controls(current)
     assert "assert env.rd_calls == env.oe_calls == []" in controls(current)
+
+
+def _lease_diagnostic(monkeypatch):
+    import importlib.util
+
+    monkeypatch.syspath_prepend(str(ROOT / "tests/integration"))
+    path = ROOT / "tests/integration/rd_lease_diagnostic.py"
+    spec = importlib.util.spec_from_file_location("rd_lease_diagnostic_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _lease_object():
+    from threading import Event
+    from types import SimpleNamespace
+
+    return SimpleNamespace(lost=Event(), cancelled=Event(), last_pulse=0.0)
+
+
+def test_lease_observer_preserves_call_result_failure_state_and_patch(
+    monkeypatch, capsys
+):
+    import json
+
+    from backend.app.services import DomainError
+    from workers.research.lease import AttemptLease
+
+    module = _lease_diagnostic(monkeypatch)
+    lease, calls, result = _lease_object(), [], object()
+    error = DomainError("attempt_fenced", "PRIVATE_OWNER_TOKEN", 409)
+    times = iter([10.0, 10.1, 20.0, 20.4])
+    monkeypatch.setattr(module, "monotonic", lambda: next(times))
+
+    def original(instance, *args, **kwargs):
+        assert instance is lease
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            instance.last_pulse = 10.1
+            return result
+        instance.lost.set()
+        instance.cancelled.set()
+        raise error
+
+    monkeypatch.setattr(AttemptLease, "pulse", original)
+    with module.diagnose_attempt_lease():
+        assert AttemptLease.pulse(lease, True, extra="opaque") is result
+        with pytest.raises(DomainError) as caught:
+            AttemptLease.pulse(lease, force=True)
+        assert caught.value is error
+        assert capsys.readouterr().out == ""  # No heartbeat-thread stdout.
+    assert AttemptLease.pulse is original
+    assert calls == [((True,), {"extra": "opaque"}), ((), {"force": True})]
+    output = capsys.readouterr().out
+    assert "PRIVATE" not in output and "opaque" not in output
+    report = json.loads(output.removeprefix("RD_LEASE_PULSES_V1:"))
+    assert report["successful_pulse_returns"] == report["failed_pulse_calls"] == 1
+    assert report["observed_total_ms"] == 500
+    assert report["observed_max_ms"] == 400
+    assert report["failures"] == [
+        {
+            "family": "domain",
+            "code": "attempt_fenced",
+            "sqlstate": "none",
+            "lost": True,
+            "cancelled": True,
+            "elapsed_ms": 400,
+            "last_success_age_ms": 10300,
+            "successful_pulse_returns": 1,
+        }
+    ]
+
+
+@pytest.mark.parametrize("worker_fails", [False, True])
+@pytest.mark.parametrize("diagnostic_failure", ["clock", "classifier", "print"])
+def test_lease_observer_failures_never_change_worker_outcome(
+    monkeypatch, worker_fails, diagnostic_failure
+):
+    from workers.research.lease import AttemptLease
+
+    module = _lease_diagnostic(monkeypatch)
+    import rd_rpc_diagnostic
+
+    lease, result = _lease_object(), object()
+    original_error = RuntimeError("PRIVATE_WORKER")
+    calls = []
+
+    def original(instance, *args, **kwargs):
+        calls.append((instance, args, kwargs))
+        if worker_fails:
+            instance.lost.set()
+            instance.cancelled.set()
+            raise original_error
+        return result
+
+    def broken(*args, **kwargs):
+        raise KeyboardInterrupt("PRIVATE_DIAGNOSTIC")
+
+    monkeypatch.setattr(AttemptLease, "pulse", original)
+    if diagnostic_failure == "clock":
+        monkeypatch.setattr(module, "monotonic", broken)
+    elif diagnostic_failure == "classifier":
+        monkeypatch.setattr(rd_rpc_diagnostic, "_queue_failure", broken)
+    else:
+        monkeypatch.setattr(module, "print", broken, raising=False)
+    caught = observed = None
+    try:
+        with module.diagnose_attempt_lease():
+            observed = AttemptLease.pulse(lease, force=True)
+    except RuntimeError as error:
+        caught = error
+    assert caught is (original_error if worker_fails else None)
+    assert observed is (None if worker_fails else result)
+    assert calls == [(lease, (), {"force": True})]
+    assert AttemptLease.pulse is original
+
+
+def test_lease_reports_are_bounded_and_do_not_claim_missing_renewal(
+    monkeypatch, capsys
+):
+    import json
+
+    from workers.research.lease import AttemptLease
+
+    module = _lease_diagnostic(monkeypatch)
+    lease = _lease_object()
+    monkeypatch.setattr(module, "monotonic", lambda: 1e20)
+    error = RuntimeError("PRIVATE_VALUE")
+
+    def original(instance):
+        raise error
+
+    monkeypatch.setattr(AttemptLease, "pulse", original)
+    with module.diagnose_attempt_lease():
+        for _ in range(12):
+            with pytest.raises(RuntimeError) as caught:
+                AttemptLease.pulse(lease)
+            assert caught.value is error
+    output = capsys.readouterr().out
+    assert output.count("RD_LEASE_PULSES_V1:") == 1 and "PRIVATE" not in output
+    report = json.loads(output.removeprefix("RD_LEASE_PULSES_V1:"))
+    assert len(report["failures"]) == 8 and report["failed_pulse_calls"] == 12
+    assert report["successful_pulse_returns"] == 0
+    assert all(row["last_success_age_ms"] is None for row in report["failures"])
+    assert all(row["code"] == "unknown" for row in report["failures"])
+    assert module._elapsed(0, 1e20) == module.MAXIMUM
+    assert module._elapsed(10, 1) == 0
+
+
+def test_lease_nonblocking_observation_never_waits_or_changes_callback(
+    monkeypatch, capsys
+):
+    import json
+
+    from workers.research.lease import AttemptLease
+
+    module = _lease_diagnostic(monkeypatch)
+    result, acquired = object(), []
+
+    class BusyObserver:
+        def acquire(self, *, blocking):
+            acquired.append(blocking)
+            assert blocking is False
+            return False
+
+    monkeypatch.setattr(module, "Lock", BusyObserver)
+    monkeypatch.setattr(AttemptLease, "pulse", lambda *_: result)
+    original = AttemptLease.pulse
+    with module.diagnose_attempt_lease():
+        assert AttemptLease.pulse(_lease_object()) is result
+    assert AttemptLease.pulse is original and acquired == [False, False]
+    report = json.loads(capsys.readouterr().out.removeprefix("RD_LEASE_PULSES_V1:"))
+    assert report == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "sqlstate, expected", [("40P01", "40P01"), ("PRIVATE_STATE", "other")]
+)
+def test_lease_deadlock_sqlstate_is_closed(monkeypatch, sqlstate, expected):
+    from sqlalchemy.exc import DBAPIError
+
+    from tests.rdagent.test_rpc_stage_diagnostic import _diagnostic
+
+    class DriverError(Exception):
+        pass
+
+    driver = DriverError("PRIVATE_QUERY")
+    driver.sqlstate = sqlstate
+    error = DBAPIError("PRIVATE_SQL", {"private": "token"}, driver, False)
+    report = _diagnostic()._queue_failure(error)
+    assert report["family"] == "database"
+    assert report["sqlstate"] == expected
+    assert "PRIVATE" not in str(report)
+
+
+def test_lease_observer_scope_has_no_runtime_mutations_or_extra_threads():
+    import ast
+
+    source = (ROOT / "tests/integration/rd_lease_diagnostic.py").read_text()
+    helper = ast.unparse(diagnostic_function())
+    assert "observers.enter_context(diagnose_attempt_lease())" in helper
+    for forbidden in (
+        ".start(",
+        ".join(",
+        ".wait(",
+        "sleep(",
+        ".set(",
+        "session",
+        "token",
+        "attempt_id",
+        "worker_id",
+    ):
+        assert forbidden not in source
+    assert "original(lease, *args, **kwargs)" in source
+    assert "len(samples) < 8" in source
+    assert "lock.acquire(blocking=False)" in source
+    assert source.count("print(") == 1

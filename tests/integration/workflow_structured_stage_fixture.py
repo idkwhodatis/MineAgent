@@ -60,6 +60,12 @@ def diagnose_first_rd_drain(factory, engine, workflow_id):
         )
     except Exception:  # noqa: BLE001, S110 -- observations cannot block execution
         pass
+    try:
+        from rd_lease_diagnostic import diagnose_attempt_lease
+
+        observers.enter_context(diagnose_attempt_lease())
+    except Exception:  # noqa: BLE001, S110 -- observations cannot block execution
+        pass
     if run_id is not None:
         try:
             from rd_rpc_diagnostic import diagnose_rd_queue
