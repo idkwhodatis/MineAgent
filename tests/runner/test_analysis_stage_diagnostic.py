@@ -41,16 +41,27 @@ def test_original_callback_result_arguments_and_error_identity_are_preserved(cap
     assert all(row["ok"] is False for row in report(capsys)["tail"])
 
 
-def test_intent_projection_then_exact_original_authority_deadline(monkeypatch, capsys):
+@pytest.mark.parametrize("projection_delay_seconds", [0, 0.25, 8, 9])
+def test_intent_projection_then_exact_original_authority_deadline(
+    monkeypatch, capsys, projection_delay_seconds
+):
     from packages.research_runtime.analysis_process_journal import AnalysisIntent
     from runtimes.research_supervisor.analysis_supervisor import AnalysisAuthority
 
     observer = diagnostic.Observer()
     now = [100.0]
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class ProjectionClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is UTC
+            return created_at + timedelta(seconds=projection_delay_seconds)
+
+    # Control both clocks: scheduling pauses must not change this test's budget.
+    monkeypatch.setattr(diagnostic, "datetime", ProjectionClock)
     monkeypatch.setattr(diagnostic, "monotonic", lambda: now[0])
-    intent = AnalysisIntent.model_construct(
-        not_after=datetime.now(UTC) + timedelta(seconds=8)
-    )
+    intent = AnalysisIntent.model_construct(not_after=created_at + timedelta(seconds=8))
     authority = object.__new__(AnalysisAuthority)
     authority.deadline = 108.0
 
@@ -64,7 +75,7 @@ def test_intent_projection_then_exact_original_authority_deadline(monkeypatch, c
     observer.root(original)()
     rows = report(capsys)["tail"]
     assert rows[0]["deadline_source"] == "intent_wall_projection"
-    assert 7900 <= rows[0]["unit_remaining_ms"] <= 8000
+    assert rows[0]["unit_remaining_ms"] == (8 - projection_delay_seconds) * 1000
     assert rows[1]["deadline_source"] == "original_authority_monotonic"
     assert rows[1]["unit_remaining_ms"] == -1000
     assert authority.deadline == 108.0
