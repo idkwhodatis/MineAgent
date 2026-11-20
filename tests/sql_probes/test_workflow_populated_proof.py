@@ -45,7 +45,7 @@ def test_exact_original_setup_target_and_cleanup_are_preserved():
     # One additional source-only guard runs after the unchanged host installation.
     source_guard = (
         "      - name: Require independent baseline source contract\n"
-        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py tests/sql_probes/test_reverse_heartbeat_candidate_source.py -q\n"
+        "        run: python -m pytest tests/sql_probes/test_workflow_populated_proof.py tests/rdagent/test_rpc_stage_diagnostic.py tests/sql_probes/test_rd_completed_graph_probe_source.py tests/sql_probes/test_workflow_heartbeat_lock_order_source.py tests/sql_probes/test_heartbeat_schema_inventory_source.py tests/sql_probes/test_rd_attempt_admission_candidate.py tests/sql_probes/test_workflow_heartbeat_admission_source.py tests/sql_probes/test_rd_admission_expiry_observation_unit.py tests/sql_probes/test_rd_admission_expiry_observation_source.py tests/sql_probes/test_rd_admission_expiry_roles_unit.py tests/sql_probes/test_rd_ticketed_admission_candidate.py tests/sql_probes/test_rd_native_admission_trial.py tests/sql_probes/test_rd_timeline_diagnostic.py tests/sql_probes/test_reverse_heartbeat_candidate_source.py -q\n"
     )
     install = named(expected, "Install unchanged host test closure")
     expected.insert(install + 1, source_guard)
@@ -333,6 +333,8 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/test_rd_ticketed_admission_candidate.py",
         "tests/sql_probes/rd_native_admission_trial.py",
         "tests/sql_probes/test_rd_native_admission_trial.py",
+        "tests/sql_probes/test_rd_timeline_diagnostic.py",
+        "tests/integration/rd_timeline_diagnostic.py",
         "tests/integration/test_reverse_heartbeat_candidate.py",
         "tests/sql_probes/reverse_heartbeat_candidate.py",
         "tests/sql_probes/reverse_heartbeat_candidate_pins.json",
