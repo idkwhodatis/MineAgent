@@ -10,6 +10,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 
+import duckdb
 import pytest
 
 from packages.research_trace.comparison import (
@@ -274,6 +275,129 @@ def test_projection_preserves_exact_input_byte_boundary(tmp_path):
                     assert error.value.code == "comparison_capacity"
                 else:
                     assert len(operation()) == 1000
+
+
+def test_window_preflight_preserves_exact_ranges_and_empty_sections(
+    tmp_path, monkeypatch
+):
+    from packages.research_trace import storage
+
+    # Each pair of sessions shares a detail shard, but the two pairs do not.
+    monkeypatch.setattr(storage, "BLOCK_ROWS", 2000)
+    value = trace_shaped_input(tmp_path / "source", frozen_namespace(), sessions=4)
+    control = ComparisonControl()
+    with ExitStack() as stack, control.connection() as connection:
+        scan = TrustedTraceScan(value, stack, control)
+        events = list(scan.rows(connection, "events"))
+        args = [
+            {"decision_id": row["decision_id"], "day": row["session_date"]}
+            for row in events
+        ]
+        assert scan.source("features", args[0]["day"]) == scan.source(
+            "features", args[1]["day"]
+        )
+        assert scan.source("features", args[0]["day"]) != scan.source(
+            "features", args[2]["day"]
+        )
+        expected = [list(scan.rows(connection, "features", **kw)) for kw in args]
+        # A syntactically valid but absent decision also gets an exact zero.
+        missing = {**events[0], "decision_id": "absent"}
+        scan.preflight_payload_window(connection, [*events, missing])
+        assert [
+            list(scan.rows(connection, "features", **kw)) for kw in args
+        ] == expected
+        assert not list(
+            scan.rows(connection, "features", decision_id="absent", day=args[0]["day"])
+        )
+        assert not list(
+            scan.rows(connection, "features", **{**args[0], "day": args[2]["day"]})
+        )
+        scan.preflight_payload_window(connection, events[2:])
+        previous = {row["decision_id"] for row in events[:2]}
+        assert all(key[2] not in previous for key in scan._payload_bounds)
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [{"max_event_rows": 999}, {"max_event_bytes": 1024}, {"max_record_bytes": 1024}],
+)
+def test_window_preflight_rejects_before_materializing_rows(tmp_path, limit):
+    namespace = frozen_namespace()
+    value = (
+        make_input(
+            tmp_path / "source",
+            namespace,
+            features=[feature("x" * 5000)],
+            event_ids=("frozen:one", "frozen:two"),
+        )
+        if "max_record_bytes" in limit
+        else trace_shaped_input(tmp_path / "source", namespace, sessions=2)
+    )
+    control = ComparisonControl()
+    with ExitStack() as stack, control.connection() as connection:
+        scan = TrustedTraceScan(value, stack, control, ComparisonLimits(**limit))
+        events = list(scan.rows(connection, "events"))
+        scan.preflight_payload_window(connection, events)
+
+        class NoFetch:
+            def execute(self, *_args, **_kwargs):
+                pytest.fail("Cached over-limit section reached another query")
+
+        with pytest.raises(ComparisonError) as error:
+            next(
+                scan.rows(
+                    NoFetch(),
+                    "features",
+                    decision_id=events[0]["decision_id"],
+                    day=events[0]["session_date"],
+                )
+            )
+        assert error.value.code == "comparison_capacity"
+
+
+def test_window_preflight_sql_error_falls_back_unless_cancelled(tmp_path):
+    value = trace_shaped_input(tmp_path / "source", frozen_namespace(), sessions=2)
+    control = ComparisonControl()
+    with (
+        pytest.raises(ComparisonError) as error,
+        ExitStack() as stack,
+        control.connection() as connection,
+    ):
+        scan = TrustedTraceScan(value, stack, control)
+        events = list(scan.rows(connection, "events"))
+
+        class FailedGroup:
+            cancel = False
+            attempts = 0
+
+            def execute(self, *_args, **_kwargs):
+                self.attempts += 1
+                if self.cancel:
+                    control.cancel()
+                raise duckdb.InvalidInputException("Grouped query failed")
+
+        failing = FailedGroup()
+        scan.preflight_payload_window(failing, events)
+        assert failing.attempts > 0
+        assert not scan._payload_bounds
+        assert (
+            len(
+                list(
+                    scan.rows(
+                        connection,
+                        "features",
+                        decision_id=events[0]["decision_id"],
+                        day=events[0]["session_date"],
+                    )
+                )
+            )
+            == 1000
+        )
+
+        failing.cancel = True
+        scan.preflight_payload_window(failing, events)
+    assert error.value.code == "comparison_cancelled"
+    assert control.closure_confirmed
 
 
 def test_all_public_comparison_rows_match_without_projection_optimization(

@@ -16,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import defaultdict
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
@@ -58,6 +59,13 @@ MAX_PAGE = 500
 MAX_OFFSET = 100_000
 MAX_RESPONSE_BYTES = 4 * 1024**2
 MAX_READ_BYTES = 128 * 1024**2
+PAYLOAD_PREFLIGHT_WINDOW = 32
+_PREFLIGHT_FILE_LIMIT = 8
+_PREFLIGHT_FILE_BYTES = 32 * 1024**2
+_PAYLOAD_BOUNDS = (
+    "count(*), coalesce(sum(octet_length(encode(payload))),0), "
+    "coalesce(max(octet_length(encode(payload))),0)"
+)
 _OUTPUT_SCHEMA = {
     "row_number": "BIGINT",
     "event_pair_id": "VARCHAR",
@@ -259,6 +267,7 @@ class TrustedTraceScan:
         self.manifest = value.trace_manifest
         self.control, self.limits = control, limits
         self.files = {}
+        self._payload_bounds = {}
         if self.manifest is None:
             return
         # Reuse schema/name validation only, never its browser query/pagination.
@@ -295,6 +304,45 @@ class TrustedTraceScan:
     def source(self, table, day=None):
         refs = self.refs(table, day)
         return [self.files[ref.name] for ref in refs]
+
+    def preflight_payload_window(self, connection, events):
+        """Aggregate exact per-decision bounds on identical pinned file sets."""
+        self._payload_bounds.clear()
+        if not 2 <= len(events) <= PAYLOAD_PREFLIGHT_WINDOW:
+            return
+        for table, schema in SCHEMAS.items():
+            if "payload" not in schema:
+                continue
+            groups = defaultdict(list)
+            for event in events:
+                self.control.check()
+                refs = self.refs(table, event["session_date"])
+                if (
+                    0 < len(refs) <= _PREFLIGHT_FILE_LIMIT
+                    and sum(ref.size_bytes for ref in refs) <= _PREFLIGHT_FILE_BYTES
+                ):
+                    paths = tuple(self.files[ref.name] for ref in refs)
+                    groups[paths].append(event["decision_id"])
+            for paths, ids in groups.items():
+                if len(ids) < 2:
+                    continue
+                self.control.check()
+                try:
+                    rows = connection.execute(
+                        f"SELECT decision_id, {_PAYLOAD_BOUNDS} FROM read_parquet(?) "
+                        "WHERE decision_id IN (SELECT unnest(?)) GROUP BY decision_id",
+                        [list(paths), ids],
+                    ).fetchall()
+                except duckdb.Error:
+                    # Grouped lookahead is optional. On SQL failure, use the
+                    # original per-event query; never mask cancellation.
+                    self.control.check()
+                    continue
+                bounds = {row[0]: row[1:] for row in rows}
+                for decision_id in ids:
+                    self._payload_bounds[table, paths, decision_id] = bounds.get(
+                        decision_id, (0, 0, 0)
+                    )
 
     def rows(
         self,
@@ -362,10 +410,13 @@ class TrustedTraceScan:
                         "The event index exceeds its fixed pre-materialization row/byte budget",
                     )
             if "payload" in SCHEMAS[table]:
-                count, total_bytes, largest = connection.execute(
-                    f"SELECT count(*), coalesce(sum(octet_length(encode(payload))),0), coalesce(max(octet_length(encode(payload))),0) FROM read_parquet(?) WHERE {where}",
-                    args,
-                ).fetchone()
+                bounds = self._payload_bounds.get((table, tuple(paths), decision_id))
+                if bounds is None:
+                    bounds = connection.execute(
+                        f"SELECT {_PAYLOAD_BOUNDS} FROM read_parquet(?) WHERE {where}",
+                        args,
+                    ).fetchone()
+                count, total_bytes, largest = bounds
                 if (
                     count > self.limits.max_event_rows
                     or total_bytes > self.limits.max_event_bytes

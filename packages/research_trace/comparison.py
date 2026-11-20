@@ -45,6 +45,7 @@ from .comparison_semantics import (
     trace_retention_saving,
 )
 from .comparison_storage import (
+    PAYLOAD_PREFLIGHT_WINDOW,
     ComparisonControl,
     ComparisonReader,
     ComparisonWriter,
@@ -991,8 +992,19 @@ def compare_evaluations(
                 limits=limits,
                 durable_root=durable_root,
             )
-            for lid, rid in pairs:
+            for offset, (lid, rid) in enumerate(pairs):
                 control.check()
+                if offset % PAYLOAD_PREFLIGHT_WINDOW == 0:
+                    window = pairs[offset : offset + PAYLOAD_PREFLIGHT_WINDOW]
+                    for side, scan in enumerate(scans):
+                        scan.preflight_payload_window(
+                            connection,
+                            [
+                                indexed[side][pair[side]]
+                                for pair in window
+                                if pair[side] is not None
+                            ],
+                        )
                 le, revent = indexed[0].get(lid), indexed[1].get(rid)
                 pair_id = digest({"input_hash": input_hash, "left": lid, "right": rid})
                 lh, lstages = _details(connection, scans[0], le)

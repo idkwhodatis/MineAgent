@@ -85,6 +85,7 @@ def scan_rows(raws, *, retain=False, reuse=None, limits=DEFAULT_LIMITS, ordinals
     ]
     scan = object.__new__(TrustedTraceScan)
     scan.limits, scan.control = limits, Control()
+    scan._payload_bounds = {}
     scan.source = lambda *_: ["pinned-fixture"]
     connection = Connection(rows)
     result = list(
