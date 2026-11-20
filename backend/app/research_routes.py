@@ -5,7 +5,8 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
+from sqlalchemy.orm import aliased
 
 from backend.app.api.deps import CurrentUser, SessionDep
 from backend.app.list_queries import candidate_query, query_page
@@ -206,18 +207,29 @@ def resume_research(
 def _page(session, model, run_id, owner_id, offset, limit):
     owned_research_run(session, run_id, owner_id)
     clause = model.run_id == run_id
+    order_column = "sequence" if model is ResearchCheckpoint else "created_at"
+    page = (
+        select(model)
+        .where(clause)
+        .order_by(getattr(model, order_column), model.id)
+        .offset(offset)
+        .limit(limit)
+        .subquery()
+    )
+    item = aliased(model, page)
+    total = (
+        select(func.count().label("count")).select_from(model).where(clause).subquery()
+    )
+    # One statement gives both reads the same READ COMMITTED snapshot. Start
+    # from the aggregate so an empty/out-of-range page still carries its total.
+    rows = session.execute(
+        select(item, total.c.count)
+        .select_from(total.outerjoin(page, true()))
+        .order_by(getattr(item, order_column), item.id)
+    ).all()
     return {
-        "data": session.scalars(
-            select(model)
-            .where(clause)
-            .order_by(
-                model.sequence if model is ResearchCheckpoint else model.created_at,
-                model.id,
-            )
-            .offset(offset)
-            .limit(limit)
-        ).all(),
-        "count": session.scalar(select(func.count()).select_from(model).where(clause)),
+        "data": [item for item, _ in rows if item is not None],
+        "count": rows[0][1],
     }
 
 
