@@ -335,6 +335,7 @@ def test_baseline_trigger_paths_cover_proof_and_relevant_inputs():
         "tests/sql_probes/test_rd_native_admission_trial.py",
         "tests/sql_probes/test_rd_timeline_diagnostic.py",
         "tests/integration/rd_timeline_diagnostic.py",
+        "tests/integration/rd_owner_lock_diagnostic.py",
         "tests/integration/test_reverse_heartbeat_candidate.py",
         "tests/sql_probes/reverse_heartbeat_candidate.py",
         "tests/sql_probes/reverse_heartbeat_candidate_pins.json",

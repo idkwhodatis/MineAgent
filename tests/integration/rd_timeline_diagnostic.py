@@ -32,7 +32,7 @@ def diagnose_rd_timeline(factory, run_id=None):
     dropped = 0
     factories = [factory]
 
-    def record(name, error=None):
+    def record(name, error=None, **fields):
         nonlocal dropped
         try:
             timestamp = _elapsed(origin, _clock())
@@ -42,7 +42,9 @@ def diagnose_rd_timeline(factory, run_id=None):
             try:
                 if len(events) == maximum:
                     dropped = min(1_000_000, dropped + 1)
-                events.append({"event": name, "at_ms": timestamp, "guard": guard})
+                events.append(
+                    {"event": name, "at_ms": timestamp, "guard": guard, **fields}
+                )
             finally:
                 lock.release()
         except BaseException:  # noqa: BLE001, S110 -- never change original outcome
@@ -115,7 +117,13 @@ def diagnose_rd_timeline(factory, run_id=None):
             record("serve_one_error", error)
             raise
 
+    from rd_owner_lock_diagnostic import observe_owner_transactions
+
+    def matches(session):
+        return any(session.get_bind() is item.kw["bind"] for item in factories)
+
     with ExitStack() as stack:
+        stack.enter_context(observe_owner_transactions(record, matches))
         event.listen(Session, "after_commit", committed)
         stack.callback(event.remove, Session, "after_commit", committed)
         stack.enter_context(patch.object(rdagent_queue, "claim_configured_run", claim))
