@@ -9,6 +9,7 @@ import os
 
 from backend.app.core.atomic_storage import _open_directory
 from backend.app.factor_native_io import require_native_storage_guard
+from backend.app.historical_process_files import read_historical_record
 from packages.research_runtime.process_contracts import ProcessError, canonical
 from runtimes.rdagent_operational.process_journal import (
     ControllerChild,
@@ -18,7 +19,6 @@ from runtimes.rdagent_operational.process_journal import (
     ControllerStop,
     validate_records,
 )
-from runtimes.research_supervisor.numeric_journal import read_numeric_record
 from runtimes.research_supervisor.supervisor import operation_path
 
 
@@ -43,7 +43,7 @@ def read_historical_controller_records(root, *, intent, identity, child, stop):
         if set(os.listdir(fd)) != names:
             raise ProcessError("controller_history_inventory")
         launch = _decode(
-            ControllerLaunch, read_numeric_record(directory / "launch.json")
+            ControllerLaunch, read_historical_record(root, directory / "launch.json")
         )
         if launch.intent != intent:
             raise ProcessError("controller_history_intent")
@@ -52,9 +52,9 @@ def read_historical_controller_records(root, *, intent, identity, child, stop):
             ("child", child),
             ("stop", stop),
         ):
-            if read_numeric_record(directory / (name + ".json")) != expected.model_dump(
-                mode="json"
-            ):
+            if read_historical_record(
+                root, directory / (name + ".json")
+            ) != expected.model_dump(mode="json"):
                 raise ProcessError("controller_history_receipt")
         result = validate_records(launch, identity, child, stop)
         named = os.stat(directory, follow_symlinks=False)

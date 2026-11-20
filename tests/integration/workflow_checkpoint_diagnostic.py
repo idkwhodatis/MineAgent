@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import text
 
 # Exact58-function transitive read-only closure, including immutable validators.
-PINS = {
+PINS_032F = {
     "mineagent_analysis_raw_commitment": (
         "4dd030f0db0bf1ad611a302c5447a13cb731db14dbd2cbd04352a66abd7b99f5",
         "i",
@@ -301,6 +301,21 @@ PINS = {
     ),
 }
 
+# Revision is selected first. Never accept a union of old/new bodies: an old
+# function under032g (or a new one under032f) is a mismatch, not compatibility.
+PINS_032G = {
+    **PINS_032F,
+    "mineagent_rd_schema": (
+        "c4bb8d7b8744adbf4904b1782abfb5ec9aa39e75778fa148c0c566ec0eb70afe",
+        "i",
+        "catalog",
+    ),
+}
+PINS_BY_REVISION = {
+    "032f_shared_validation_cost": PINS_032F,
+    "032g_schema_keyset_cost": PINS_032G,
+}
+
 STATES = frozenset({"23514", "42703", "42702", "42P01", "57014", "55P03", "P0001"})
 PIN_SQL = """SELECT p.proname,replace(p.prosrc,chr(34)||n.nspname||chr(34),'@SCHEMA@'),p.prosecdef,p.provolatile,
  CASE WHEN p.proconfig IS NULL THEN 'none'
@@ -396,15 +411,21 @@ def probe(connection, owner, workflow, checkpoint):
     # Connection savepoints do not flush/commit the owning ORM session.
     savepoint = connection.begin_nested()
     try:
-        rows = connection.execute(text(PIN_SQL), {"names": list(PINS)}).all()
+        revisions = connection.execute(
+            text("SELECT version_num FROM alembic_version")
+        ).all()
+        if len(revisions) != 1 or revisions[0][0] not in PINS_BY_REVISION:
+            return {"category": "installed_revision_mismatch"}
+        pins = PINS_BY_REVISION[revisions[0][0]]
+        rows = connection.execute(text(PIN_SQL), {"names": list(pins)}).all()
         found = {}
         for name, body, security, volatility, setting in rows:
             if (
-                name not in PINS
+                name not in pins
                 or name in found
                 or security is not False
-                or volatility != PINS[name][1]
-                or setting != PINS[name][2]
+                or volatility != pins[name][1]
+                or setting != pins[name][2]
                 or type(body) is not str
             ):
                 return {"category": "installed_body_mismatch"}
@@ -413,7 +434,7 @@ def probe(connection, owner, workflow, checkpoint):
                 volatility,
                 setting,
             )
-        if found != PINS:
+        if found != pins:
             return {"category": "installed_body_mismatch"}
     except Exception as error:  # noqa: BLE001 -- bounded metadata only
         return {"category": "catalog_error", "sqlstate": sqlstate(error)}

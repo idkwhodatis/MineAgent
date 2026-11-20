@@ -30,6 +30,7 @@ def input_inventory_enabled(session):
         "032d_rd_validation_cost",
         "032e_rd_workflow_cost",
         "032f_shared_validation_cost",
+        "032g_schema_keyset_cost",
     }
     expected = "mineagent.research-inputs.v1" if enabled else None
     if capability.research_input_schema != expected:

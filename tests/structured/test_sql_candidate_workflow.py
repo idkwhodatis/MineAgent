@@ -38,12 +38,17 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
         "postgres:18.6",
         "--require-hashes -r backend/requirements.lock",
         "--publish 127.0.0.1::5432",
-        "--memory 2g --memory-swap 2g --cpus 2 --pids-limit 128",
+        "--memory 3g --memory-swap 3g --cpus 2 --pids-limit 128",
         "-c statement_timeout=10000 -c lock_timeout=5000",
         "-c track_functions=pl",
+        "--tmpfs /var/lib/postgresql:rw,size=2g,nosuid",
+        "-c max_wal_size=256MB -c min_wal_size=80MB -c checkpoint_timeout=60s",
+        "SHOW fsync; SHOW synchronous_commit; SHOW full_page_writes;",
         'MINEAGENT_SQL_COST_BENCHMARK: "1"',
         "mineagent-sql-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}",
         "--cidfile",
+        'timeout 10s docker exec "$cid" df -Pk /var/lib/postgresql',
+        "{{.State.OOMKilled}}|{{.State.ExitCode}}",
         "if: always()",
         "{{.Id}}|{{.Name}}|",
         'docker rm --force --volumes "$cid"',
@@ -53,6 +58,9 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
     ):
         assert required in source
     for forbidden in (
+        "fsync=off",
+        "synchronous_commit=off",
+        "full_page_writes=off",
         "docker build",
         "docker push",
         "qlib",
@@ -64,10 +72,14 @@ def test_workflow_is_read_only_loopback_disposable_and_bounded():
         "  workflow_run:",
     ):
         assert forbidden not in source
+    assert source.index('test "$actual" = ') < source.index("postgres-exit.txt")
+    assert source.index("postgres-capacity.txt") < source.index(
+        'docker rm --force --volumes "$cid"'
+    )
     assert source.count("docker run ") == 1
-    assert source.count("--group ") == 3
-    assert source.count("--collect-only") == 3
-    assert source.count("--junitxml=") == 3
+    assert source.count("--group ") == 7
+    assert source.count("--collect-only") == 7
+    assert source.count("--junitxml=") == 8
     assert source.count("if: always()") == 2
 
 
@@ -85,7 +97,21 @@ def test_workflow_selects_all_candidates_without_deselection_and_tracks_inputs()
         "tests/integration/test_schema_keyset_candidate.py",
     ):
         assert f'      - "{path}"' in source
-    for group in ("source", "keyset", "rows"):
+    current_step = source.split(
+        "      - name: Require current-head isolated RD and OE proofs without runtime promotion\n",
+        1,
+    )[1].split("      - name:", 1)[0]
+    assert "MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP: current" in current_step
+    assert source.count("MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP:") == 1
+    for group in (
+        "source",
+        "keyset",
+        "rows",
+        "current",
+        "trigger",
+        "heartbeat_inventory",
+        "dataset_admission",
+    ):
         for node in proof.inventory(group):
             assert node.split("::")[0] in source
 
@@ -95,10 +121,18 @@ def test_candidates_are_not_imported_by_runtime_or_migrations_and_timeout_is_unc
         "row_validation_invariant_sql",
         "row_validation_content_sql",
         "schema_keyset_candidate",
+        "rd_v3_invariant_probe_sql",
+        "row_validation_oe_032g_base_sql",
+        "row_validation_oe_032g_sql",
+        "oe_trigger_target_probe_sql",
     )
     permitted = {
         Path("backend/app/row_validation_invariant_sql.py"),
         Path("backend/app/row_validation_content_sql.py"),
+        Path("backend/app/rd_v3_invariant_probe_sql.py"),
+        Path("backend/app/row_validation_oe_032g_base_sql.py"),
+        Path("backend/app/row_validation_oe_032g_sql.py"),
+        Path("backend/app/oe_trigger_target_probe_sql.py"),
     }
     for base in ("backend", "packages", "runtimes", "workers"):
         for path in Path(base).rglob("*.py"):
@@ -116,7 +150,7 @@ def test_candidates_are_not_imported_by_runtime_or_migrations_and_timeout_is_unc
         "statement_timeout=10000" in Path("tests/integration/conftest.py").read_text()
     )
     assert (
-        'REQUIRED_SCHEMA_REVISION = "032f_shared_validation_cost"'
+        'REQUIRED_SCHEMA_REVISION = "032g_schema_keyset_cost"'
         in Path("backend/app/core/db.py").read_text()
     )
 
@@ -210,9 +244,33 @@ def test_success_evidence_is_named_outcome_only_and_duration_matches_case():
 
 def test_inventory_keeps_all_44_pg_cases_and_component_benchmark_separate():
     manifest = json.loads(proof.MANIFEST.read_text())
-    assert set(manifest) == {"source", "keyset", "rows"}
+    assert set(manifest) == {
+        "source",
+        "keyset",
+        "rows",
+        "current",
+        "trigger",
+        "heartbeat_inventory",
+        "heartbeat_order",
+        "heartbeat_admission",
+        "heartbeat_observation",
+        "heartbeat_roles",
+        "heartbeat_native",
+        "reverse_heartbeat",
+        "dataset_admission",
+    }
+    assert len(proof.inventory("dataset_admission")) == 5
+    assert len(proof.inventory("reverse_heartbeat")) == 7
+    assert len(proof.inventory("heartbeat_roles")) == 4
+    assert len(proof.inventory("heartbeat_native")) == 1
+    assert len(proof.inventory("heartbeat_observation")) == 8
+    assert len(proof.inventory("heartbeat_admission")) == 16
+    assert len(proof.inventory("heartbeat_order")) == 2
     assert len(proof.inventory("keyset")) == 11
     assert len(proof.inventory("rows")) == 34
+    assert len(proof.inventory("current")) == 46
+    assert len(proof.inventory("trigger")) == 33
+    assert len(proof.inventory("heartbeat_inventory")) == 6
     assert len(proof.inventory("source")) == 69
     assert (
         "tests/integration/test_schema_keyset_candidate.py::test_opt_in_table_backed_workload_benchmark"

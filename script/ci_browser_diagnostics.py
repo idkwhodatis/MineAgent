@@ -135,6 +135,119 @@ def _unique_object(pairs):
     return value
 
 
+TOKEN_DIAGNOSTIC_PREFIX = "TOKEN_DIAGNOSTIC_V1:"
+
+
+def _token_diagnostics(text):
+    """Closed phase/status projection; untrusted sentinel is not authorization."""
+    values = {}
+    for count, match in enumerate(
+        re.finditer(re.escape(TOKEN_DIAGNOSTIC_PREFIX), text)
+    ):
+        if count >= 32:
+            break
+        payload = (
+            text[match.end() : match.end() + 257].split("\n", 1)[0].removesuffix("\r")
+        )
+        if len(payload) > 256:
+            continue
+        try:
+            value = json.loads(payload, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            continue
+        if not isinstance(value, dict) or set(value) != {"phase", "http_status"}:
+            continue
+        phase, status = value["phase"], value["http_status"]
+        if type(phase) is not str or phase not in {"request", "http", "decode"}:
+            continue
+        if phase == "request":
+            if status is not None:
+                continue
+        elif type(status) is not int or not 100 <= status <= 599:
+            continue
+        values[json.dumps(value, sort_keys=True)] = value
+    return [values[key] for key in sorted(values)[:4]]
+
+
+COMPARISON_STATUS_PREFIX = "COMPARISON_STATUS_DIAGNOSTIC_V1:"
+COMPARISON_STATUSES = {
+    "queued",
+    "running",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "interrupted",
+    "paused",
+    "cancel_requested",
+    "pause_requested",
+    "unrecognized",
+}
+COMPARISON_ERROR_CODES = {
+    "comparison_failed",
+    "comparison_cancelled",
+    "comparison_interrupted",
+    "comparison_timeout",
+    "comparison_capacity",
+    "comparison_integrity",
+    "comparison_algorithm_unsupported",
+    "comparison_source_unavailable",
+    "comparison_pin_mismatch",
+    "comparison_recovery_blocked",
+    "comparison_query_too_large",
+    "unrecognized",
+}
+
+
+def _comparison_status_diagnostics(text):
+    values = {}
+    for count, match in enumerate(
+        re.finditer(re.escape(COMPARISON_STATUS_PREFIX), text)
+    ):
+        if count >= 32:
+            break
+        payload = (
+            text[match.end() : match.end() + 514].split("\n", 1)[0].removesuffix("\r")
+        )
+        if (
+            len(payload) > 512
+            or not payload.startswith("{")
+            or not payload.endswith("}")
+        ):
+            continue
+        try:
+            value = json.loads(payload, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            continue
+        if not isinstance(value, dict) or set(value) != {
+            "presence",
+            "status",
+            "error_code",
+        }:
+            continue
+        if (
+            type(value["presence"]) is not str
+            or value["presence"] not in {"missing", "single", "multiple"}
+            or type(value["status"]) is not str
+            or value["status"] not in COMPARISON_STATUSES
+            or (
+                value["error_code"] is not None
+                and (
+                    type(value["error_code"]) is not str
+                    or value["error_code"] not in COMPARISON_ERROR_CODES
+                )
+            )
+            or (
+                value["presence"] != "single"
+                and (
+                    value["status"] != "unrecognized" or value["error_code"] is not None
+                )
+            )
+        ):
+            continue
+        values[json.dumps(value, sort_keys=True)] = value
+    return [values[key] for key in sorted(values)[:4]]
+
+
 def _note_http_diagnostics(text):
     """An explicit sentinel is not trusted: validate every key and value again."""
     values = {}
@@ -238,6 +351,20 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
         for path in (root / "frontend/tests" / suites[source_suite]).glob("*.spec.ts")
         if path.is_file() and not path.is_symlink() and path.stat().st_size <= 1_000_000
     }
+    # Explicit public helper sources only. A spec callsite does not identify
+    # which navigation assertion failed; never widen this to arbitrary TS files.
+    helper_names = {
+        "engine-results": ("factor-library.ts",),
+        "e2e": ("helpers.ts", "token-diagnostics.ts"),
+    }
+    for name in helper_names.get(source_suite, ()):
+        path = root / "frontend/tests" / suites[source_suite] / name
+        if (
+            path.is_file()
+            and not path.is_symlink()
+            and path.stat().st_size <= 1_000_000
+        ):
+            allowed[name] = len(path.read_text().splitlines())
     result = []
     for index, case in enumerate(cases):
         failures = [child for child in case if child.tag in {"failure", "error"}]
@@ -245,11 +372,12 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
             continue
         frames = set()
         http_diagnostics = {}
+        token_diagnostics = {}
         for failure in failures:
             # Only a known public source basename and bounded numeric line/column
             # escape. Never copy a title, message, argument, URL, body or raw stack.
             for match in re.finditer(
-                r"(?:^|[\s(/])([A-Za-z0-9_-]+\.spec\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
+                r"(?:^|[\s(/])([A-Za-z0-9_-]+(?:\.spec)?\.ts):(\d{1,6}):(\d{1,5})(?=\D|$)",
                 failure.text or "",
             ):
                 name, line, column = match[1], int(match[2]), int(match[3])
@@ -265,10 +393,44 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
                 else ()
             ):
                 http_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
+            for diagnostic in (
+                _token_diagnostics(failure.text or "") if source_suite == "e2e" else ()
+            ):
+                token_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
+        comparison_diagnostics = {}
+        if source_suite == "e2e":
+            # Only failed-case per-test stdout; never suite output or raw text.
+            for output in case.findall("system-out")[:4]:
+                for diagnostic in _comparison_status_diagnostics(
+                    (output.text or "")[:65536]
+                ):
+                    comparison_diagnostics[json.dumps(diagnostic, sort_keys=True)] = (
+                        diagnostic
+                    )
         result.append(
             {
                 "case_index": index,
+                **(
+                    {
+                        "comparison_diagnostics": [
+                            comparison_diagnostics[key]
+                            for key in sorted(comparison_diagnostics)[:4]
+                        ]
+                    }
+                    if comparison_diagnostics
+                    else {}
+                ),
                 "outcome": "failed",
+                **(
+                    {
+                        "token_diagnostics": [
+                            token_diagnostics[key]
+                            for key in sorted(token_diagnostics)[:4]
+                        ]
+                    }
+                    if token_diagnostics
+                    else {}
+                ),
                 "source_frames": [
                     {"file": name, "line": line, "column": column}
                     for name, line, column in sorted(frames)[:12]

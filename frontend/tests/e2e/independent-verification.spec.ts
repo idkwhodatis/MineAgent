@@ -29,6 +29,7 @@ import {
 } from "./independent-helpers";
 import { requiredDiagnosticChecks } from "../../src/lib/diagnostic-parity-evidence";
 import parityWindow from "../fixtures/independent-parity-window.json" with { type: "json" };
+import { withComparisonFailureDiagnostic } from "./comparison-status-diagnostics";
 import { noteHttpDiagnostic } from "./research-note-diagnostics";
 
 // I5 REAL-STACK acceptance: PostgreSQL + actual isolated native source and
@@ -668,8 +669,13 @@ test("actual three-arm manual control retains failed outcomes, immutable conditi
   await page
     .getByRole("button", { name: "Create immutable comparison", exact: true })
     .click();
-  await expect(page.getByTestId("comparison-status")).toHaveText("succeeded", {
-    timeout: 210000,
+  await withComparisonFailureDiagnostic(page, async () => {
+    await expect(page.getByTestId("comparison-status")).toHaveText(
+      "succeeded",
+      {
+        timeout: 210000,
+      },
+    );
   });
   await expect(
     page

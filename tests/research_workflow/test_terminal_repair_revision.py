@@ -66,6 +66,10 @@ def test_non_rd_paths_and_all_existing_stop_settlement_guards_preserved():
 def assert_predicate_fixture_copies_complete_frozen_schema_validator_closure():
     from tests.integration.workflow_terminal_repair_fixture import SCHEMA, dependencies
 
+    fixture = (
+        Path(__file__).parents[1] / "integration/workflow_terminal_repair_fixture.py"
+    ).read_text()
+    assert 'if path.stem > "032f_shared_validation_cost":' in fixture
     definitions = {
         re.search(r"CREATE OR REPLACE FUNCTION \w+\.(\w+)\(", sql)[1]: sql
         for sql in dependencies()

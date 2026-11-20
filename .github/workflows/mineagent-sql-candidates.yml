@@ -6,6 +6,11 @@ on:
   pull_request:
     paths:
       - ".github/workflows/mineagent-sql-candidates.yml"
+      - ".github/workflows/v1-validation.yml"
+      - "script/experimental_integration_partition.py"
+      - "tests/runner/experimental_integration_partition.json"
+      - "tests/runner/test_experimental_integration_partition.py"
+      - "tests/runner/test_ci_acceptance_boundary.py"
       - "backend/alembic/**"
       - "backend/app/**"
       - "backend/requirements.lock"
@@ -21,12 +26,19 @@ on:
       - "packages/strategy_sdk/**"
       - "script/schema_keyset_candidate.py"
       - "script/sql_candidate_proof.py"
+      - "script/heartbeat_graph_inventory.py"
       - "script/sql_candidate_catalog.py"
       - "docs/SQL_CANDIDATE_PROOF.md"
+      - "docs/CURRENT_SQL_PROBES.md"
       - "script/bootstrap_tradegrad_compat.py"
       - "tests/rdagent/test_row_validation*"
       - "tests/structured/*sql_candidate*"
       - "tests/structured/test_schema_keyset_candidate.py"
+      - "tests/sql_probes/**"
+      - "tests/integration/test_rd_v3*"
+      - "tests/integration/test_oe_trigger_target_probe.py"
+      - "tests/integration/test_heartbeat_graph_inventory.py"
+      - "tests/integration/test_direct_analysis_persistence.py"
       - "tests/integration/conftest.py"
       - "tests/integration/test_sql_candidate_catalog.py"
       - "tests/integration/test_row_validation*"
@@ -87,6 +99,22 @@ jobs:
           python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/source-collection.txt"
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/source.xml"
           python script/sql_candidate_proof.py --group source --collection "$RUNNER_TEMP/sql-candidate-private/source-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/source.xml" --output var/sql-candidate-proof/source-outcomes.json
+      - name: Require exact four experimental partition contracts separately
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest tests/runner/test_experimental_integration_partition.py -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/partition.xml"
+          python - <<'PYPARTITION'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          source=Path(os.environ['RUNNER_TEMP'])/'sql-candidate-private/partition.xml'
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          assert len(cases)==4
+          assert {case.get('name') for case in cases}=={'test_each_dedicated_experimental_group_requires_exact_successful_junit', 'test_partition_rejects_preexisting_exclusions_missing_nodes_or_changed_gates', 'test_experimental_partition_preserves_original_modules_and_full_collection', 'test_current_head_baseline_exact_inline_xml_gate_still_rejects_bad_results'}
+          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))
+          PYPARTITION
       - name: Start only an owned disposable PostgreSQL 18.6 service
         id: candidate_postgres
         timeout-minutes: 3
@@ -98,14 +126,17 @@ jobs:
           echo "::add-mask::$password"
           export POSTGRES_PASSWORD="$password"
           name="mineagent-sql-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # Fresh-schema proofs generate substantial WAL. Keep bounded tmpfs with
+          # headroom for PostgreSQL memory and checkpoint before WAL crowds data.
           docker run --detach --name "$name" --cidfile "$RUNNER_TEMP/sql-candidate-private/postgres.cid" \
             --label "io.mineagent.sql-candidate=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
             --publish 127.0.0.1::5432 --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
-            --memory 2g --memory-swap 2g --cpus 2 --pids-limit 128 \
-            --tmpfs /var/lib/postgresql:rw,size=1g,nosuid \
+            --memory 3g --memory-swap 3g --cpus 2 --pids-limit 128 \
+            --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
             --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
             --health-interval 2s --health-timeout 5s --health-retries 30 \
-            postgres:18.6 -c track_functions=pl -c statement_timeout=10000 -c lock_timeout=5000 >/dev/null
+            postgres:18.6 -c track_functions=pl -c statement_timeout=10000 -c lock_timeout=5000 \
+            -c max_wal_size=256MB -c min_wal_size=80MB -c checkpoint_timeout=60s >/dev/null
           cid=$(cat "$RUNNER_TEMP/sql-candidate-private/postgres.cid")
           for attempt in $(seq 1 90); do
             state=$(docker inspect --format '{{.State.Health.Status}}' "$cid")
@@ -118,7 +149,7 @@ jobs:
           [[ "$endpoint" =~ ^127\.0\.0\.1:([0-9]+)$ ]]
           port="${BASH_REMATCH[1]}"
           printf 'TEST_DATABASE_URL=postgresql+psycopg://%s:%s@127.0.0.1:%s/%s\n' "$POSTGRES_USER" "$password" "$port" "$POSTGRES_DB" >> "$GITHUB_ENV"
-          docker exec "$cid" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT version(); SHOW statement_timeout; SHOW lock_timeout; SHOW track_functions;" > var/sql-candidate-proof/postgres.txt
+          docker exec "$cid" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT version(); SHOW statement_timeout; SHOW lock_timeout; SHOW track_functions; SHOW max_wal_size; SHOW min_wal_size; SHOW checkpoint_timeout; SHOW fsync; SHOW synchronous_commit; SHOW full_page_writes;" > var/sql-candidate-proof/postgres.txt
       - name: Require 11 key-set PostgreSQL cases including the bounded component benchmark
         timeout-minutes: 5
         shell: bash
@@ -137,6 +168,56 @@ jobs:
           python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/rows-collection.txt"
           python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/rows.xml"
           python script/sql_candidate_proof.py --group rows --collection "$RUNNER_TEMP/sql-candidate-private/rows-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/rows.xml" --output var/sql-candidate-proof/rows-outcomes.json
+      - name: Require current-head isolated RD and OE proofs without runtime promotion
+        env:
+          MINEAGENT_SQL_CANDIDATE_MEASUREMENT_GROUP: current
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(tests/sql_probes/test_rd_v3_probe_sql.py tests/sql_probes/test_row_validation_oe_032g_sql.py tests/integration/test_rd_v3_invariant_probe.py tests/integration/test_rd_v3_queued_graph_probe.py tests/integration/test_row_validation_oe_032g.py)
+          python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/current-collection.txt"
+          python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/current.xml"
+          python script/sql_candidate_proof.py --group current --collection "$RUNNER_TEMP/sql-candidate-private/current-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/current.xml" --output var/sql-candidate-proof/current-outcomes.json
+      - name: Require isolated per-event trigger dispatch proof without native claims
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(tests/sql_probes/test_oe_trigger_target_probe_sql.py tests/integration/test_oe_trigger_target_probe.py)
+          python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/trigger-collection.txt"
+          python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/trigger.xml"
+          python script/sql_candidate_proof.py --group trigger --collection "$RUNNER_TEMP/sql-candidate-private/trigger-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/trigger.xml" --output var/sql-candidate-proof/trigger-outcomes.json
+      - name: Require read-only installed heartbeat catalog evidence without equivalence claims
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          MINEAGENT_HEARTBEAT_INVENTORY_DIR: var/sql-candidate-proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(tests/sql_probes/test_heartbeat_graph_inventory_source.py tests/integration/test_heartbeat_graph_inventory.py)
+          python -m pytest "${files[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt"
+          python -m pytest "${files[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/heartbeat.xml"
+          python script/sql_candidate_proof.py --group heartbeat_inventory --collection "$RUNNER_TEMP/sql-candidate-private/heartbeat-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/heartbeat.xml" --output var/sql-candidate-proof/heartbeat-inventory-outcomes.json
+      - name: Require five baseline dataset admission concurrency cases
+        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          cases=(
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_update_conflicts_with_actual_uncommitted_submission
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_writer_blocks_actual_submission_and_rolls_back_all_graph_rows
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_serial_identity_corruption_rejected_by_original_plan_guard
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_nonkey_name_update_remains_concurrent_and_graph_valid
+            tests/integration/test_direct_analysis_persistence.py::test_dataset_graph_fk_lock_is_released_only_after_admission_savepoint_rollback
+          )
+          python -m pytest "${cases[@]}" --collect-only -q -p no:cacheprovider > "$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt"
+          python -m pytest "${cases[@]}" -q -p no:cacheprovider --junitxml="$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml"
+          python script/sql_candidate_proof.py --group dataset_admission --collection "$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt" --junit "$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml" --output var/sql-candidate-proof/dataset-admission-outcomes.json
       - name: Always remove only this job's exact owned PostgreSQL service
         if: always()
         timeout-minutes: 2
@@ -149,6 +230,13 @@ jobs:
             [[ "$cid" =~ ^[a-f0-9]{64}$ ]]
             actual=$(docker inspect --format '{{.Id}}|{{.Name}}|{{index .Config.Labels "io.mineagent.sql-candidate"}}' "$cid")
             test "$actual" = "$cid|/mineagent-sql-candidate-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT|$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            # Bounded, non-secret capacity evidence even when PostgreSQL is in recovery.
+            if ! timeout 10s docker inspect --format '{{.State.OOMKilled}}|{{.State.ExitCode}}' "$cid" > var/sql-candidate-proof/postgres-exit.txt; then
+              printf 'container state observation unavailable\n' >> var/sql-candidate-proof/postgres-exit.txt
+            fi
+            if ! timeout 10s docker exec "$cid" df -Pk /var/lib/postgresql > var/sql-candidate-proof/postgres-capacity.txt; then
+              printf 'capacity observation unavailable\n' >> var/sql-candidate-proof/postgres-capacity.txt
+            fi
             docker rm --force --volumes "$cid" >/dev/null
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -1,6 +1,7 @@
 from alembic import context
 from sqlalchemy import create_engine
 
+from backend.alembic.encoding_compat import legacy_sql_encoding_compatibility
 from backend.app.core.config import get_settings
 from backend.app.models import Base
 
@@ -11,7 +12,7 @@ def configure(connection):
     context.configure(
         connection=connection, target_metadata=Base.metadata, compare_type=True
     )
-    with context.begin_transaction():
+    with legacy_sql_encoding_compatibility(connection), context.begin_transaction():
         context.run_migrations()
 
 

@@ -116,6 +116,7 @@ def reservation(tmp_path, monkeypatch):
         "032d_rd_validation_cost",
         "032e_rd_workflow_cost",
         "032f_shared_validation_cost",
+        "032g_schema_keyset_cost",
     ],
 )
 def test_numeric_failure_actual_reservation_keeps_exact_typed_bytes(

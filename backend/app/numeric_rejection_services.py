@@ -58,6 +58,7 @@ def require_numeric_rejection_schema(session, fence):
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     ):
         raise ProcessError("numeric_rejection_schema_unsupported")
 

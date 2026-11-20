@@ -139,9 +139,10 @@ def run_configured_generation(engine, settings, owner_id):
 
     factory, fence = prepare_configured_generation(engine, settings, owner_id)
     from direct_analysis_diagnostic import diagnose_direct_outcomes
+    from rd_daemon_top_diagnostic import diagnose_daemon_top
     from rd_rpc_diagnostic import diagnose_rd_rpc
 
-    with diagnose_rd_rpc(), diagnose_direct_outcomes():
+    with diagnose_rd_rpc(), diagnose_direct_outcomes(), diagnose_daemon_top():
         assert execute_configured_controller(factory, fence, settings) == fence.run_id
     with factory() as session:
         assert_composed_controller(session, fence.run_id)

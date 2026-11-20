@@ -446,6 +446,13 @@ def test_resolved_report_api_returns_exact_immutable_context_with_authority_doub
         "030_declared_upload_basket",
         "031_workflow_structured_stage",
         "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
+        "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
+        "032d_rd_validation_cost",
+        "032e_rd_workflow_cost",
+        "032f_shared_validation_cost",
+        "032g_schema_keyset_cost",
     ],
 )
 def test_report_capability_inherits_only_installed_exact_successor_pairs(revision):
@@ -462,6 +469,10 @@ def test_report_capability_inherits_only_installed_exact_successor_pairs(revisio
     [
         ["020_rd_controller"],
         ["027_unknown_future"],
+        ["032g"],
+        ["032g_schema_keyset_cost_future"],
+        ["032f_shared_validation_cost", "032g_schema_keyset_cost"],
+        ["032g_schema_keyset_cost", "032g_schema_keyset_cost"],
         [],
         ["025_structured_factor_strategy", "026_rd_seeded_submissions"],
     ],
@@ -519,7 +530,17 @@ _REPORT_REVISION_GROUPS = (
     ("028_oe_structured_search",),
     ("029_research_workflow",),
     ("030_declared_upload_basket",),
-    ("031_workflow_structured_stage", "032_normal_oe_note_pins"),
+    (
+        "031_workflow_structured_stage",
+        "032_normal_oe_note_pins",
+        "032a_rd_terminal_results",
+        "032b_oe_append_run_state",
+        "032c_oe_provider_table_checks",
+        "032d_rd_validation_cost",
+        "032e_rd_workflow_cost",
+        "032f_shared_validation_cost",
+        "032g_schema_keyset_cost",
+    ),
 )
 
 

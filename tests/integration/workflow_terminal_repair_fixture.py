@@ -43,7 +43,7 @@ def dependencies():
     found = {}
     root = Path(__file__).resolve().parents[2] / "backend/alembic/versions"
     for path in sorted(root.glob("*.py")):
-        if path.name[:3] > "032":
+        if path.stem > "032f_shared_validation_cost":
             continue
         for node in ast.parse(path.read_text()).body:
             if (

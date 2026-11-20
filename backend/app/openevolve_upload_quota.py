@@ -107,6 +107,7 @@ def upload_holds(session):
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     ):
         return ()
     from backend.app.openevolve_operational_models import SearchCheckpointUpload
@@ -149,6 +150,7 @@ def upload_holds(session):
         ["032d_rd_validation_cost"],
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
+        ["032g_schema_keyset_cost"],
     ):
         from backend.app.oe_structured_quota import checkpoint_upload_holds
 

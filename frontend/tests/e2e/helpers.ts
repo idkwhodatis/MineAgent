@@ -7,6 +7,8 @@ import type {
   Token,
 } from "../../src/client/types.gen";
 
+import { observeTokenPhase } from "./token-diagnostics";
+
 export const apiBase = process.env.E2E_API_URL || "http://127.0.0.1:8000";
 export const api = (path: string) => `${apiBase}/api/v1${path}`;
 export function account(other = false) {
@@ -33,11 +35,19 @@ export async function token(
   other = false,
 ): Promise<Token> {
   const user = account(other);
-  const response = await request.post(api("/login/access-token"), {
-    form: { username: user.email, password: user.password },
+  const response = await observeTokenPhase("request", null, () =>
+    request.post(api("/login/access-token"), {
+      form: { username: user.email, password: user.password },
+    }),
+  );
+  await observeTokenPhase("http", response.status(), async () => {
+    expect(response.ok()).toBe(true);
   });
-  expect(response.ok()).toBe(true);
-  return response.json() as Promise<Token>;
+  return observeTokenPhase(
+    "decode",
+    response.status(),
+    () => response.json() as Promise<Token>,
+  );
 }
 export function authorization(auth: Token) {
   return { Authorization: `Bearer ${auth.access_token}` };

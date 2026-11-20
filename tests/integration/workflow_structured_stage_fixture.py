@@ -8,7 +8,7 @@ real-data or PIT claim. The successful root is created through the actual browse
 import json
 import os
 import secrets
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from types import SimpleNamespace as NS
 from uuid import UUID, uuid4
 
@@ -32,6 +32,64 @@ def drain(factory, settings):
             install_signal_handlers=False,
             delete_jobs="never",
         )
+
+
+@contextmanager
+def diagnose_first_rd_drain(factory, engine, workflow_id):
+    """Best-effort closed diagnostics; never replace or retry the worker call."""
+    run_id = None
+    observers = ExitStack()
+    try:
+        from backend.app.rdagent_workflow_models import FactorWorkflowSubmission
+
+        with factory() as session:
+            ids = session.scalars(
+                select(FactorWorkflowSubmission.run_id)
+                .filter_by(workflow_id=workflow_id)
+                .limit(2)
+            ).all()
+        if len(ids) == 1 and isinstance(ids[0], UUID):
+            run_id = ids[0]
+    except Exception:  # noqa: BLE001, S110 -- no identities or raw diagnostic errors
+        pass
+    try:
+        from rd_pg_diagnostic import diagnose_provider_functions
+
+        observers.enter_context(
+            diagnose_provider_functions(engine, stage="workflow_first")
+        )
+    except Exception:  # noqa: BLE001, S110 -- observations cannot block execution
+        pass
+    try:
+        from rd_lease_diagnostic import diagnose_attempt_lease
+
+        observers.enter_context(diagnose_attempt_lease())
+    except Exception:  # noqa: BLE001, S110 -- observations cannot block execution
+        pass
+    if run_id is not None:
+        try:
+            from rd_rpc_diagnostic import diagnose_rd_queue
+
+            observers.enter_context(diagnose_rd_queue(factory, run_id))
+        except Exception:  # noqa: BLE001, S110 -- retain the original drain behavior
+            pass
+    try:
+        yield
+    finally:
+        try:
+            observers.close()
+        except Exception:  # noqa: BLE001, S110 -- never replace the worker exception
+            pass
+        if run_id is not None:
+            try:
+                from normal_rd_fixture_diagnostic import report_normal_rd_state
+
+                from backend.app.models import ResearchRun
+
+                with factory() as session:
+                    report_normal_rd_state(session, session.get(ResearchRun, run_id))
+            except Exception:  # noqa: BLE001, S110 -- never log unsanitized state/errors
+                pass
 
 
 def command(client, headers, workflow_id, action, *, revision=None):
@@ -328,7 +386,8 @@ def run_bridge(env, engine, tmp_path):
         drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid).state
         == "child_queued"
     )
-    drain(env.factory, env.settings)
+    with diagnose_first_rd_drain(env.factory, engine, wid):
+        drain(env.factory, env.settings)
     assert (
         drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid).state
         == "waiting_release"

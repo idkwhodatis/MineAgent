@@ -121,6 +121,7 @@ def graph():
 
 def test_complete_initial_boundary():
     validate_controller_links(*graph())
+    _workflow_controller_requires_explicit_successor_and_provider_protocol()
 
 
 @pytest.mark.parametrize(
@@ -184,6 +185,7 @@ def test_shared_or_profile_drift(mutation):
 
 
 def test_cold_graph_fixture_fields_match_frozen_inventories():
+    _controller_workflow_dispatch_is_closed_to_exact_source_successors()
     from backend.app.rdagent_backup import FIELDS as RD_FIELDS
     from backend.app.research_backup import FIELDS_V4 as RESEARCH_FIELDS
     from backend.app.research_broker_models import (
@@ -260,3 +262,77 @@ def test_fixture_profile_cannot_select_provider_protocol():
     )
     with pytest.raises(ValueError):
         validate_controller_links(idx, shared, configs)
+
+
+def _workflow_controller_requires_explicit_successor_and_provider_protocol():
+    idx, shared, configs = graph()
+    configs["run"].model_profile = "workflow.rdagent.v1"
+    configs["run"].controller_profile = "mineagent.rdagent-orchestrator.v3"
+    shared["research_process_admissions"]["admission"]["profile"] = configs[
+        "run"
+    ].controller_profile
+    idx["factor_generation_model_operations"]["member"]["protocol"] = (
+        "mineagent.rdagent-provider-embedding.v1"
+    )
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs)
+    with pytest.raises(ValueError):
+        validate_controller_links(idx, shared, configs, workflow=False)
+    validate_controller_links(idx, shared, configs, workflow=True)
+    for profile in (None, "workflow.rdagent.v2", "future.rdagent.v1"):
+        changed = deepcopy(configs)
+        changed["run"].model_profile = profile
+        with pytest.raises(ValueError):
+            validate_controller_links(idx, shared, changed, workflow=True)
+    for invalid in (None, 1, "true"):
+        with pytest.raises(ValueError, match="Explicit workflow"):
+            validate_controller_links(idx, shared, configs, workflow=invalid)
+    for table, key, field, value in (
+        (
+            "factor_generation_model_operations",
+            "member",
+            "protocol",
+            "mineagent.rdagent-embedding.v1",
+        ),
+        ("factor_generation_observations", "observation", "decision_sha256", "0" * 64),
+        ("factor_generation_boundaries", "boundary", "next_logical_step", 1),
+    ):
+        changed = deepcopy(idx)
+        changed[table][key][field] = value
+        with pytest.raises(ValueError):
+            validate_controller_links(changed, shared, configs, workflow=True)
+    for table, key, field, value in (
+        ("research_model_transports", "transport", "operation_id", "foreign"),
+        ("research_model_outcomes", "response", "run_id", "foreign"),
+        ("research_process_receipts", "child", "owner_id", "foreign"),
+    ):
+        changed = deepcopy(shared)
+        changed[table][key][field] = value
+        with pytest.raises(ValueError):
+            validate_controller_links(idx, changed, configs, workflow=True)
+
+
+def _controller_workflow_dispatch_is_closed_to_exact_source_successors():
+    import ast
+    import inspect
+
+    from backend.app import rdagent_backup as backup
+
+    tree = ast.parse(inspect.getsource(backup.validate_closure))
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "validate_controller_links"
+    ]
+    assert len(calls) == 1
+    assert [keyword.arg for keyword in calls[0].keywords] == ["workflow"]
+    expression = ast.Expression(calls[0].keywords[0].value)
+    for version in range(1, 13):
+        closure = {"schema_version": f"mineagent.rd-source-restore-closure.v{version}"}
+        assert eval(
+            compile(expression, "<source-schema-gate>", "eval"),
+            vars(backup),
+            {"closure": closure},
+        ) is (version in {9, 10, 11})

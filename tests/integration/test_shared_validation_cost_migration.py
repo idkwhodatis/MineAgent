@@ -9,6 +9,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy.exc import DBAPIError
 
+from tests.integration.sql_candidate_predecessor import select_predecessor
+
 pytestmark = pytest.mark.postgres
 ROOT = Path(__file__).resolve().parents[2]
 CURRENT = "032f_shared_validation_cost"
@@ -103,6 +105,7 @@ def test_frozen_shared_migration_roundtrip_preserves_all_graph_contracts(
                 + connection.exec_driver_sql("SELECT current_schema()").scalar_one()
                 + '"'
             )
+            select_predecessor(connection)
             config = configuration(connection)
             before = state(connection)
             assert_bodies(connection, value.UPGRADE_SQL, schema)
@@ -142,6 +145,8 @@ def test_shared_migration_refuses_nonquiescent_upgrade_and_downgrade(
 ):
     # Each direction starts at its genuine predecessor/current revision. A
     # failed migration must preserve both the complete schema and its head.
+    with migrated_engine.begin() as connection:
+        select_predecessor(connection)
     for direction, target in (("downgrade", PREVIOUS), ("upgrade", CURRENT)):
         with migrated_engine.connect() as inspect:
             before = state(inspect)

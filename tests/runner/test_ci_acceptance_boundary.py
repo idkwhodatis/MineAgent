@@ -319,6 +319,31 @@ def _assert_actual_runtime_partition():
             environment = {}
             names = set(required)
             if group == "mineagent-configured-analysis.yml":
+                # This helper models XML cases, not actual native proof files.
+                # Pin the exact additional artifact gate structurally, then omit
+                # only those three statements from synthetic XML execution.
+                # Its real execution remains mandatory in the actual workflow.
+                proof_checks = ast.parse(
+                    "import json\n"
+                    "proof=json.loads(Path('var/numeric-proof/rd-completed-v2-proof.json').read_text())\n"
+                    "assert proof=={'schema':'mineagent.completed-rd-v2-baseline.v1',"
+                    "'revision':'032g_schema_keyset_cost','completed_runs':2,"
+                    "'timestamp_rollback_cases':2,'identity_rejection_cases':2,"
+                    "'nowait_contention_cases':4,'candidate_activated':False}\n"
+                ).body
+                assert [ast.dump(node) for node in checks[1:4]] == [
+                    ast.dump(node) for node in proof_checks
+                ]
+                assert any(
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "pathlib"
+                    and any(
+                        alias.name == "Path" and alias.asname in (None, "Path")
+                        for alias in node.names
+                    )
+                    for node in body[:start]
+                )
+                checks = checks[:1] + checks[4:]
                 # The same gate also retains twenty PostgreSQL-only cases.
                 repair = (
                     root / "tests/integration/test_seed_parent_contract_migration.py"
@@ -418,7 +443,13 @@ def test_research_notes_require_actual_postgres_without_filtered_acceptance():
     )
     assert 'TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"' in postgres
     assert 'TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"' in postgres
-    modules = _assert_actual_runtime_partition()
+    from script.experimental_integration_partition import validate, verify_v1_additions
+
+    original_modules = _assert_actual_runtime_partition()
+    experiments = validate()
+    assert set(original_modules).isdisjoint(experiments)
+    modules = original_modules + experiments
+    verify_v1_additions()
     assert re.findall(r"--ignore(?:-glob)?(?:=|\s+)(\S+)", postgres) == modules
     assert postgres.split("run: >-", 1)[1].split() == [
         ".venv-data/bin/python",

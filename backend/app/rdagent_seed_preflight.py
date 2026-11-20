@@ -138,6 +138,7 @@ def seeded_preflight(session, owner_id, request, settings):
             ["032d_rd_validation_cost"],
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
+            ["032g_schema_keyset_cost"],
         ) and (
             profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -157,6 +158,7 @@ def seeded_preflight(session, owner_id, request, settings):
                 ["032d_rd_validation_cost"],
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
+                ["032g_schema_keyset_cost"],
             )
         ):
             available = True

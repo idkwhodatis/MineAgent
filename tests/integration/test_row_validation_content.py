@@ -19,6 +19,7 @@ from backend.app import row_validation_content_sql as m
 from backend.app import row_validation_invariant_sql as base
 from packages.factors.contracts import canonical_bytes
 from script.sql_candidate_proof import export_component_measurements
+from tests.integration.sql_candidate_predecessor import select_predecessor
 from tests.integration.test_row_validation_invariants import (
     call_outcome,
     catalog,
@@ -48,6 +49,7 @@ def test_full_schema_minimal_and_extended_roundtrips_are_independently_selectabl
     migrated_engine,
 ):
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         before = catalog(c)
         execute_sql(c, base.render_candidate_sql())
         minimal = catalog(c)
@@ -92,6 +94,7 @@ def test_full_schema_minimal_and_extended_roundtrips_are_independently_selectabl
 
 def test_full_schema_all_missing_roots_and_scope_preflight_preserved(migrated_engine):
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         args = [None, str(UUID(int=987654321))]
         before = {
             (name, arg): call_outcome(c, name, arg)

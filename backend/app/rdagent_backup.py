@@ -2301,7 +2301,12 @@ def validate_closure(
     }:
         from backend.app.rdagent_controller_cold_links import validate_controller_links
 
-        validate_controller_links(idx, shared, configs)
+        validate_controller_links(
+            idx,
+            shared,
+            configs,
+            workflow=closure["schema_version"] in {SCHEMA_V9, SCHEMA_V10, SCHEMA_V11},
+        )
     return True
 
 

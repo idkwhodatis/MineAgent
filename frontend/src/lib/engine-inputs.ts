@@ -38,7 +38,17 @@ export const engineInputsOptions = (run: string, offset = 0) =>
         `/engine-runs/${encodeURIComponent(run)}/inputs?offset=${offset}`,
         { signal },
       ),
-    retry: false,
+    // Only transient native-fence contention is retryable. Each attempt is a
+    // fresh owner-checked GET; corruption, auth and other failures stay visible.
+    retry: (count, error) => {
+      const failure = error as { status?: number; code?: string } | null;
+      return (
+        count < 3 &&
+        failure?.status === 503 &&
+        failure.code === "input_history_busy"
+      );
+    },
+    retryDelay: 250,
   });
 
 export function groupWorkflowInputs(inputs: ResolvedInputVersion[]) {

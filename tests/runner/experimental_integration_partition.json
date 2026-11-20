@@ -1,0 +1,318 @@
+{
+  "scope": "Additional isolated experiments only, never replacement acceptance",
+  "pre_experiment_commit": "ea0cacabd8a4e1da06324746d5c34b3655a5f927",
+  "pre_existing_modules": [
+    "tests/integration/test_backup_restore.py",
+    "tests/integration/test_benchmark_admission.py",
+    "tests/integration/test_cold_retention_barrier.py",
+    "tests/integration/test_cold_retention_cleanup.py",
+    "tests/integration/test_combined_publication_scope.py",
+    "tests/integration/test_comparison_algorithm_compatibility.py",
+    "tests/integration/test_comparison_api.py",
+    "tests/integration/test_comparison_final_api.py",
+    "tests/integration/test_comparison_portable_api.py",
+    "tests/integration/test_configured_analysis_restore.py",
+    "tests/integration/test_data_imports.py",
+    "tests/integration/test_data_universes.py",
+    "tests/integration/test_declared_upload_persistence.py",
+    "tests/integration/test_declared_upload_publication.py",
+    "tests/integration/test_declared_upload_research_flow.py",
+    "tests/integration/test_direct_analysis_persistence.py",
+    "tests/integration/test_engine_history_reads.py",
+    "tests/integration/test_execution_snapshot_persistence.py",
+    "tests/integration/test_factor_library.py",
+    "tests/integration/test_factor_migrations.py",
+    "tests/integration/test_factor_restore.py",
+    "tests/integration/test_final_evaluations.py",
+    "tests/integration/test_independent_api.py",
+    "tests/integration/test_independent_final_api.py",
+    "tests/integration/test_legacy_provenance.py",
+    "tests/integration/test_lifecycle.py",
+    "tests/integration/test_migrations.py",
+    "tests/integration/test_model_broker_accounting.py",
+    "tests/integration/test_named_list_queries.py",
+    "tests/integration/test_native_research_fixture_api.py",
+    "tests/integration/test_native_storage_persistence.py",
+    "tests/integration/test_neutral_lifecycle.py",
+    "tests/integration/test_neutral_migration.py",
+    "tests/integration/test_neutral_objects.py",
+    "tests/integration/test_neutral_restore.py",
+    "tests/integration/test_normal_oe_note_persistence.py",
+    "tests/integration/test_note_pin_migration.py",
+    "tests/integration/test_numeric_persisted_runtime.py",
+    "tests/integration/test_numeric_process_persistence.py",
+    "tests/integration/test_oe_outbox_guard.py",
+    "tests/integration/test_oe_structured_normal_flow.py",
+    "tests/integration/test_openevolve_identity_postgres.py",
+    "tests/integration/test_openevolve_initial_runtime.py",
+    "tests/integration/test_openevolve_native_runtime.py",
+    "tests/integration/test_operations_observations.py",
+    "tests/integration/test_operator_model_profiles.py",
+    "tests/integration/test_outbox.py",
+    "tests/integration/test_ownership.py",
+    "tests/integration/test_process_admission_ddl_draft.py",
+    "tests/integration/test_process_versioning.py",
+    "tests/integration/test_provider_completion_http.py",
+    "tests/integration/test_provider_connections.py",
+    "tests/integration/test_provider_material_sql_postgres.py",
+    "tests/integration/test_rd_controller_persistence.py",
+    "tests/integration/test_rd_controller_v3_predicates.py",
+    "tests/integration/test_rd_provider_predicates.py",
+    "tests/integration/test_rd_source_persistence.py",
+    "tests/integration/test_rd_v3_invariant_probe.py",
+    "tests/integration/test_rd_v3_queued_graph_probe.py",
+    "tests/integration/test_rd_workflow_config_predicate.py",
+    "tests/integration/test_rd_workflow_declaration_graph.py",
+    "tests/integration/test_rd_workflow_provider_dispatch.py",
+    "tests/integration/test_rdagent_actual_controller.py",
+    "tests/integration/test_rdagent_canonical_postgres.py",
+    "tests/integration/test_rdagent_configured_analysis.py",
+    "tests/integration/test_rdagent_controller_recovery.py",
+    "tests/integration/test_rdagent_execution_restore.py",
+    "tests/integration/test_rdagent_identity_postgres.py",
+    "tests/integration/test_rdagent_provider_rejection.py",
+    "tests/integration/test_rdagent_provider_user_flow.py",
+    "tests/integration/test_rdagent_source_backup_postgres.py",
+    "tests/integration/test_rdagent_submission_postgres.py",
+    "tests/integration/test_rdagent_user_flow.py",
+    "tests/integration/test_rdagent_validation_performance.py",
+    "tests/integration/test_rdagent_workflow_cost.py",
+    "tests/integration/test_rdagent_workflow_user_flow.py",
+    "tests/integration/test_replay_api.py",
+    "tests/integration/test_research_lifecycle.py",
+    "tests/integration/test_research_notes_api.py",
+    "tests/integration/test_research_notes_control_api.py",
+    "tests/integration/test_research_notes_final_api.py",
+    "tests/integration/test_research_process_recovery.py",
+    "tests/integration/test_research_supervisor_isolation.py",
+    "tests/integration/test_research_view_http.py",
+    "tests/integration/test_result_exploration_http.py",
+    "tests/integration/test_result_read_fences.py",
+    "tests/integration/test_retention_preview.py",
+    "tests/integration/test_row_validation_content.py",
+    "tests/integration/test_row_validation_invariants.py",
+    "tests/integration/test_row_validation_oe_032g.py",
+    "tests/integration/test_run_identity.py",
+    "tests/integration/test_schema_keyset_admin_proof.py",
+    "tests/integration/test_schema_keyset_candidate.py",
+    "tests/integration/test_schema_keyset_cost_migration.py",
+    "tests/integration/test_schema_reference_cost.py",
+    "tests/integration/test_seed_parent_contract_migration.py",
+    "tests/integration/test_seeded_controller_v4_sql.py",
+    "tests/integration/test_shared_validation_cost_migration.py",
+    "tests/integration/test_sql_candidate_catalog.py",
+    "tests/integration/test_strategy_declarations.py",
+    "tests/integration/test_strategy_packages.py",
+    "tests/integration/test_strategy_versions.py",
+    "tests/integration/test_structured_factor_persistence.py",
+    "tests/integration/test_structured_factor_restore.py",
+    "tests/integration/test_structured_factor_runtime.py",
+    "tests/integration/test_structured_raw_cost.py",
+    "tests/integration/test_submission.py",
+    "tests/integration/test_trace_api.py",
+    "tests/integration/test_workbench_api.py",
+    "tests/integration/test_workflow_oe_persistence.py",
+    "tests/integration/test_workflow_structured_stage_flow.py",
+    "tests/integration/test_workflow_terminal_repair.py",
+    "tests/integration/test_workspace_settings.py"
+  ],
+  "original_runtime_helper_sha256": "7fe2a3351350bc2f6e4d63cbfde4f6c6c0ae86592fbbb822aea950304cd7757b",
+  "v1_original_sha256": "0a4e24333da711e37e4f1d767ec523e30e668effde5614526020681d4665bf20",
+  "experiments": [
+    {
+      "module": "tests/integration/test_heartbeat_graph_inventory.py",
+      "nodes": [
+        "tests/integration/test_heartbeat_graph_inventory.py::test_installed_heartbeat_inventory_read_only_and_unchanged"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-sql-candidates.yml",
+          "step": "Require read-only installed heartbeat catalog evidence without equivalence claims",
+          "sha256": "840b2e7f72835ee5ac9ff8691d719ab6437118bef7e4b17660ed457765399312",
+          "group": "heartbeat_inventory"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_oe_trigger_target_probe.py",
+      "nodes": [
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_duplicate_targets_and_no_transaction_cache[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_duplicate_targets_and_no_transaction_cache[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_duplicate_targets_and_no_transaction_cache[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_insert_delete_and_missing_target[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_insert_delete_and_missing_target[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_insert_delete_and_missing_target[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_non_read_committed_rejected[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_non_read_committed_rejected[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_non_read_committed_rejected[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_rejection_rolls_back_event_and_observations[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_rejection_rolls_back_event_and_observations[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_rejection_rolls_back_event_and_observations[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_retains_both_old_and_new_direct_and_reverse_targets[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_retains_both_old_and_new_direct_and_reverse_targets[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_retains_both_old_and_new_direct_and_reverse_targets[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_reverse_bound_not_deduplicated_away[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_two_connections_preserve_nowait_lock[baseline]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_two_connections_preserve_nowait_lock[candidate]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_dispatch_two_connections_preserve_nowait_lock[restored]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_catalog_roundtrip",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_preflight_is_atomic[advisory]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_preflight_is_atomic[drift]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_preflight_is_atomic[isolation]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_preflight_is_atomic[table]",
+        "tests/integration/test_oe_trigger_target_probe.py::test_installed_trigger_repeat_install_fails_atomically"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-sql-candidates.yml",
+          "step": "Require isolated per-event trigger dispatch proof without native claims",
+          "sha256": "eb7508facb1db03135533158025d103fe734a1398b692358348bb4a4fddaaa54",
+          "group": "trigger"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_rd_admission_expiry_observation.py",
+      "nodes": [
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[031]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_readonly_isolation_settings_apply_then_restore[032g]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[031-cancel]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[031-token]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[032g-cancel]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_rejects_committed_fence_or_cancellation_change[032g-token]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_uses_only_committed_renewals_and_old_ticket_never_refreshes[031]",
+        "tests/integration/test_rd_admission_expiry_observation.py::test_observation_uses_only_committed_renewals_and_old_ticket_never_refreshes[032g]"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require isolated committed expiry observation evidence",
+          "sha256": "a4f93b31c1afda5e13c789d0a233508a6ddd1760a0edba0608b02bcf6983dbf3",
+          "group": "heartbeat_observation"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_rd_admission_expiry_roles.py",
+      "nodes": [
+        "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[031-cancel_requested]",
+        "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[031-pause_requested]",
+        "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[032g-cancel_requested]",
+        "tests/integration/test_rd_admission_expiry_roles.py::test_observation_role_preserves_original_pulse_cancel_and_pause[032g-pause_requested]"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require original heartbeat cancellation role evidence",
+          "sha256": "c4ff691c91ade348155b7c6970f46e30272b2a8b705d8e5d1c7095e136632661",
+          "group": "heartbeat_roles"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_reverse_heartbeat_candidate.py",
+      "nodes": [
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_never_bypasses_original_attempt_run_fk[032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[immediate-032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[revert-032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[savepoint-032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[status-032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_preserves_other_events_and_transaction_boundaries[token-032g]",
+        "tests/integration/test_reverse_heartbeat_candidate.py::test_candidate_pure_timestamp_commit_and_exact_original_restore[032g]"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require isolated reverse heartbeat event candidate",
+          "sha256": "4a8b5b77b8cb27f63176131c81372604e9863daede86a56bce6449667cec68c1",
+          "group": "reverse_heartbeat"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_workflow_current_head_baseline.py",
+      "nodes": [
+        "tests/integration/test_workflow_current_head_baseline.py::test_actual_current032g_workflow_completes_with_readonly_graph_checks"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require actual current032g finite workflow baseline",
+          "sha256": "db12d2e56e647cdc4844b45224ac09df335f0cb8c266173bad7bd67a5ca1a4e8",
+          "group": null
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_workflow_heartbeat_admission_candidate.py",
+      "nodes": [
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[031-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[031-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[032g-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_preserves_external_process_contention_failure[032g-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[031-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[031-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[032g-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_serializes_original_transactions_through_commit[032g-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-expiry-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-expiry-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-token-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[031-token-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-expiry-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-expiry-neutral]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-heartbeat]",
+        "tests/integration/test_workflow_heartbeat_admission_candidate.py::test_candidate_wait_never_replaces_live_fence[032g-token-neutral]"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require isolated local admission candidate evidence",
+          "sha256": "f657948fae8d6f56d294a9dc06bb8003d43fc4acc09225015ad282402e179ee1",
+          "group": "heartbeat_admission"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_workflow_heartbeat_lock_order.py",
+      "nodes": [
+        "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[031]",
+        "tests/integration/test_workflow_heartbeat_lock_order.py::test_real_workflow_heartbeat_crossed_owner_lock_fails_closed[032g]"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require real finite workflow heartbeat lock order evidence",
+          "sha256": "28930724a412b8d910f6b1f2be9aa63c7d3af73853f97ccd1a2f759c874f86a7",
+          "group": "heartbeat_order"
+        }
+      ]
+    },
+    {
+      "module": "tests/integration/test_workflow_ticketed_admission_trial.py",
+      "nodes": [
+        "tests/integration/test_workflow_ticketed_admission_trial.py::test_actual_current032g_workflow_with_ticketed_admission_trial"
+      ],
+      "coverage": [
+        {
+          "workflow": "mineagent-workflow-populated-proof.yml",
+          "step": "Require isolated actual workflow scheduling trial",
+          "sha256": "3234f5709140df2f4f01eb9dff0c90fb13762f78778057c19ad25aa0bd6d0384",
+          "group": "heartbeat_native"
+        }
+      ]
+    }
+  ],
+  "sql_original_sha256": "aeb4e222dd4dbc65869ba4fd0726343a95acffc50aaaa4e6f4fcae082cd66850",
+  "sql_added_paths": [
+    ".github/workflows/v1-validation.yml",
+    "script/experimental_integration_partition.py",
+    "tests/runner/experimental_integration_partition.json",
+    "tests/runner/test_experimental_integration_partition.py",
+    "tests/runner/test_ci_acceptance_boundary.py",
+    "tests/integration/test_direct_analysis_persistence.py"
+  ],
+  "sql_partition_step": "      - name: Require exact four experimental partition contracts separately\n        timeout-minutes: 3\n        shell: bash\n        run: |\n          set -euo pipefail\n          python -m pytest tests/runner/test_experimental_integration_partition.py -q -p no:cacheprovider --junitxml=\"$RUNNER_TEMP/sql-candidate-private/partition.xml\"\n          python - <<'PYPARTITION'\n          import os\n          from pathlib import Path\n          from xml.etree import ElementTree as ET\n          source=Path(os.environ['RUNNER_TEMP'])/'sql-candidate-private/partition.xml'\n          cases=list(ET.parse(source).getroot().iter('testcase'))\n          assert len(cases)==4\n          assert {case.get('name') for case in cases}=={'test_each_dedicated_experimental_group_requires_exact_successful_junit', 'test_partition_rejects_preexisting_exclusions_missing_nodes_or_changed_gates', 'test_experimental_partition_preserves_original_modules_and_full_collection', 'test_current_head_baseline_exact_inline_xml_gate_still_rejects_bad_results'}\n          assert not any(case.find(tag) is not None for case in cases for tag in ('failure','error','skipped'))\n          PYPARTITION\n",
+  "sql_dataset_admission_step": "      - name: Require five baseline dataset admission concurrency cases\n        if: ${{ !cancelled() && steps.source_contracts.outcome == 'success' && steps.candidate_postgres.outcome == 'success' }}\n        timeout-minutes: 5\n        shell: bash\n        run: |\n          set -euo pipefail\n          cases=(\n            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_update_conflicts_with_actual_uncommitted_submission\n            tests/integration/test_direct_analysis_persistence.py::test_dataset_identity_writer_blocks_actual_submission_and_rolls_back_all_graph_rows\n            tests/integration/test_direct_analysis_persistence.py::test_dataset_serial_identity_corruption_rejected_by_original_plan_guard\n            tests/integration/test_direct_analysis_persistence.py::test_dataset_nonkey_name_update_remains_concurrent_and_graph_valid\n            tests/integration/test_direct_analysis_persistence.py::test_dataset_graph_fk_lock_is_released_only_after_admission_savepoint_rollback\n          )\n          python -m pytest \"${cases[@]}\" --collect-only -q -p no:cacheprovider > \"$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt\"\n          python -m pytest \"${cases[@]}\" -q -p no:cacheprovider --junitxml=\"$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml\"\n          python script/sql_candidate_proof.py --group dataset_admission --collection \"$RUNNER_TEMP/sql-candidate-private/dataset-admission-collection.txt\" --junit \"$RUNNER_TEMP/sql-candidate-private/dataset-admission.xml\" --output var/sql-candidate-proof/dataset-admission-outcomes.json\n"
+}

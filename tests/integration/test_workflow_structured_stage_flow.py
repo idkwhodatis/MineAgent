@@ -1,7 +1,8 @@
 """Required actual031 HTTP-created RD→released checkpoint→OE→cold restore gate.
 
 After that proof, the same real graph is upgraded to032 for typed notes and a
-second fresh restore; no extra model/engine calls. The successful root is browser-created. Runtime tests never skip when their mandatory flag or
+second fresh restore, followed by032f outbox guards and the same graph upgraded
+to032g with a third independent restore; no extra model/engine calls. The successful root is browser-created. Runtime tests never skip when their mandatory flag or
 pinned images/SDK are absent. Local collection is not execution acceptance.
 """
 
@@ -27,8 +28,18 @@ def note_restore_databases():
     yield from drill_databases.__wrapped__()
 
 
+@pytest.fixture
+def keyset_restore_databases():
+    """A third independent destination, never either historical restore DB."""
+    yield from drill_databases.__wrapped__()
+
+
 def test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore(
-    drill_databases, note_restore_databases, tmp_path, monkeypatch
+    drill_databases,
+    note_restore_databases,
+    keyset_restore_databases,
+    tmp_path,
+    monkeypatch,
 ):
     if os.environ.get("MINEAGENT_WORKFLOW_STRUCTURED_FLOW_REQUIRED") != "1":
         pytest.fail("Explicit actual031 workflow/OE gate required", pytrace=False)
@@ -99,6 +110,29 @@ def test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore(
 
             legacy._upgrade(source, "032f_shared_validation_cost")
             assert_native_workflow_outbox_retained(source, completed.oe_run_id)
+            assert (len(env.rd_calls), len(env.oe_calls)) == call_counts
+            from workflow_keyset_upgrade import assert_upgrade_and_restore
+
+            assert (
+                len(
+                    {
+                        drill_databases.restored,
+                        note_restore_databases.restored,
+                        keyset_restore_databases.restored,
+                    }
+                )
+                == 3
+            )
+            keyset_root = tmp_path / "keyset-workflow-roundtrip"
+            keyset_root.mkdir(mode=0o700)
+            assert_upgrade_and_restore(
+                replace(keyset_restore_databases, source=drill_databases.source),
+                keyset_root,
+                source,
+                env,
+                completed,
+                notes,
+            )
             assert (len(env.rd_calls), len(env.oe_calls)) == call_counts
     finally:
         source.dispose()

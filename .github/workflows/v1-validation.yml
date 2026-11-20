@@ -134,8 +134,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --name tradegrad-ci-postgres \
-            --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
+          mkdir -p var/numeric-private
+          docker run --detach --name tradegrad-ci-postgres --cidfile "$GITHUB_WORKSPACE/var/numeric-private/postgres.cid" \
+            --label io.mineagent.ci=v1-application-postgres --label io.tradegrad.ci=postgres --publish 127.0.0.1:5432:5432 \
             --env POSTGRES_USER --env POSTGRES_PASSWORD --env POSTGRES_DB \
             --tmpfs /var/lib/postgresql:rw,size=2g,nosuid \
             --health-cmd 'pg_isready -h 127.0.0.1 -U tradegrad_ci -d tradegrad_ci' \
@@ -201,6 +202,7 @@ jobs:
         run: python -m pytest backend/tests tests/runner tests/operations tests/system/test_final_workbench_contract.py --ignore=tests/runner/test_research_result_protocol.py -q --junitxml=m1-supervisor-junit.xml
       - name: Validate real PostgreSQL transactions and Procrastinate schema
         env:
+          MINEAGENT_KEYSET_ADMIN_PROOF: owned-v1-postgres
           TRADEGRAD_TRACE_POSTGRES_REQUIRED: "1"
           TRADEGRAD_WORKBENCH_POSTGRES_REQUIRED: "1"
           TRADEGRAD_REPLAY_POSTGRES_REQUIRED: "1"
@@ -208,8 +210,9 @@ jobs:
           TRADEGRAD_INDEPENDENT_POSTGRES_REQUIRED: "1"
           TRADEGRAD_NOTES_POSTGRES_REQUIRED: "1"
           TRADEGRAD_RESEARCH_FIXTURE_POSTGRES_REQUIRED: "1"
-        # These exact runtime modules run on this same head in the dedicated
-        # image-building workflows; no PostgreSQL-only module is excluded.
+        # Original17 runtime modules retain their mandatory image-building gates.
+        # Nine later experiment modules run only in separately inventoried proof
+        # steps; all96 pre-existing generic PostgreSQL modules remain here.
         run: >-
           .venv-data/bin/python -m pytest tests/integration --maxfail=1 -q
           --ignore=tests/integration/test_openevolve_initial_runtime.py
@@ -229,6 +232,15 @@ jobs:
           --ignore=tests/integration/test_rdagent_workflow_user_flow.py
           --ignore=tests/integration/test_declared_upload_research_flow.py
           --ignore=tests/integration/test_workflow_structured_stage_flow.py
+          --ignore=tests/integration/test_heartbeat_graph_inventory.py
+          --ignore=tests/integration/test_oe_trigger_target_probe.py
+          --ignore=tests/integration/test_rd_admission_expiry_observation.py
+          --ignore=tests/integration/test_rd_admission_expiry_roles.py
+          --ignore=tests/integration/test_reverse_heartbeat_candidate.py
+          --ignore=tests/integration/test_workflow_current_head_baseline.py
+          --ignore=tests/integration/test_workflow_heartbeat_admission_candidate.py
+          --ignore=tests/integration/test_workflow_heartbeat_lock_order.py
+          --ignore=tests/integration/test_workflow_ticketed_admission_trial.py
           --junitxml=m1-m2-postgres-junit.xml
       - name: Require real provider material differential proof without skips
         run: |

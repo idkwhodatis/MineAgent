@@ -21,6 +21,7 @@ from sqlalchemy.exc import DBAPIError
 from backend.app import row_validation_invariant_sql as m
 from packages.factors.contracts import canonical_bytes
 from script.sql_candidate_proof import export_component_measurements
+from tests.integration.sql_candidate_predecessor import select_predecessor
 
 pytestmark = pytest.mark.postgres
 
@@ -77,6 +78,7 @@ def bodies(connection, expected):
 
 def test_full_schema_catalog_roundtrip_and_exact_new_checks(migrated_engine):
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         before = catalog(c)
         bodies(c, m.original)
         execute_sql(c, m.render_candidate_sql())
@@ -135,6 +137,7 @@ def call_outcome(c, name, argument):
 
 def test_full_schema_missing_row_and_null_uuid_behavior_is_identical(migrated_engine):
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         args = [None, str(UUID(int=987654321))]
         old = {
             (name, arg): call_outcome(c, name, arg)
@@ -157,6 +160,8 @@ def test_full_schema_missing_row_and_null_uuid_behavior_is_identical(migrated_en
     "blocker", ["isolation", "advisory", "table", "helper", "default"]
 )
 def test_full_schema_preflight_failure_is_atomic(migrated_engine, blocker):
+    with migrated_engine.begin() as c:
+        select_predecessor(c)
     with migrated_engine.connect() as held, held.begin():
         if blocker == "advisory":
             held.exec_driver_sql("SELECT pg_advisory_xact_lock(1413960260,1129270340)")
@@ -196,6 +201,7 @@ def test_full_schema_pending_root_prefix_and_savepoint(migrated_engine):
     from tests.integration.workflow_oe_sql_fixture import declaration_statements
 
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         before_triggers = catalog(c)[2]
         execute_sql(c, m.render_candidate_sql())
         statements = declaration_statements()
@@ -322,6 +328,7 @@ def test_full_schema_workflow_corpus_matches_installed_contract_before_candidate
 
     _, _, oe = row_corpus()
     with migrated_engine.connect() as c, c.begin():
+        select_predecessor(c)
         for phase in ("before", "after"):
             if phase == "after":
                 execute_sql(c, m.render_candidate_sql())
@@ -737,7 +744,7 @@ def queued_provider_request(dataset, policy, owner_id, settings, monkeypatch):
 
 
 def test_full_schema_scan_admitted_queued_row_and_state_only_dml(
-    api, migrated_engine, settings, owner, monkeypatch
+    api, migrated_engine, settings, make_account, monkeypatch
 ):
     """Actual historical queued declaration, full production triggers, no Docker.
 
@@ -751,6 +758,14 @@ def test_full_schema_scan_admitted_queued_row_and_state_only_dml(
     from rd_submission_fixture import body, login, profile, submit
     from sqlalchemy.orm import sessionmaker
 
+    # Account, dataset and both submissions must originate under032f. Pinning
+    # after admission would silently test a different historical graph.
+    with migrated_engine.begin() as c:
+        select_predecessor(c)
+        assert c.exec_driver_sql("SELECT version_num FROM alembic_version").all() == [
+            ("032f_shared_validation_cost",)
+        ]
+    owner = make_account("owner")
     factory = sessionmaker(migrated_engine, expire_on_commit=False)
     dataset, _source, policy = persist_configured_dataset(
         factory, owner.user.id, settings
