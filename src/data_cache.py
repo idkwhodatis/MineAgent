@@ -20,7 +20,12 @@ except ImportError:
     from resources import bounded_workers
 
 TRANSFORM_VERSION = "tradegrad-csv-v3"
-CACHE_DTYPES = {"object", "float64", "float32", "int64", "int32", "uint64", "bool", "datetime64[ns]"}
+# Pandas 3 may infer microsecond dates and the new str dtype; the v3
+# payload still records the exact inferred dtype for each column.
+CACHE_DATETIME_DTYPES = {"datetime64[ns]", "datetime64[us]"}
+CACHE_DTYPES = {
+    "object", "str", "float64", "float32", "int64", "int32", "uint64", "bool",
+} | CACHE_DATETIME_DTYPES
 
 
 def localize_market_dates(data: dict[str, pd.DataFrame], timezone: str) -> dict[str, pd.DataFrame]:
@@ -117,8 +122,8 @@ def _decode_frame(encoded: dict) -> pd.DataFrame:
         raise ValueError("unsupported cache dtype")
     frame = pd.DataFrame(encoded["data"], columns=encoded["columns"])
     for column, dtype in dtypes.items():
-        if dtype == "datetime64[ns]":
-            frame[column] = pd.to_datetime(frame[column])
+        if dtype in CACHE_DATETIME_DTYPES:
+            frame[column] = pd.to_datetime(frame[column], format="ISO8601")
         frame[column] = frame[column].astype(dtype)
     return frame
 

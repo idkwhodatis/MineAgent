@@ -19,13 +19,49 @@ def csv_data(tmp_path,monkeypatch):
     return root,path
 
 
-def test_cache_round_trips_exact_numeric_data(csv_data):
+def test_warm_cache_round_trips_exact_values_and_dtypes_without_reparsing(csv_data, monkeypatch):
     root,_=csv_data
     first=load_data(str(root),symbols=["ABC"])["ABC"]
+
+    def unexpected_parse(_source):
+        pytest.fail("An unchanged CSV must be decoded from the warm cache")
+
+    monkeypatch.setattr(data_cache, "_read_one_csv", unexpected_parse)
     second=load_data(str(root),symbols=["ABC"])["ABC"]
     pd.testing.assert_frame_equal(first,second,check_exact=True)
     assert first.loc[0,"close"] == 1.234567891234566
     assert _cache_path(str(root),["ABC"]).suffix == ".json"
+
+
+def test_decode_legacy_v3_cache_preserves_nanosecond_dates_and_object_symbols():
+    decoded = data_cache._decode_frame({
+        "columns": ["date", "symbol"],
+        "dtypes": {"date": "datetime64[ns]", "symbol": "object"},
+        "data": {"date": ["2024-01-02T00:00:00.123456789"], "symbol": ["ABC"]},
+    })
+    assert str(decoded["date"].dtype) == "datetime64[ns]"
+    assert decoded["date"].iloc[0].value == 1704153600123456789
+    assert str(decoded["symbol"].dtype) == "object"
+    assert decoded["symbol"].tolist() == ["ABC"]
+
+
+def test_decode_v3_cache_preserves_microseconds_with_mixed_fraction_lengths():
+    decoded = data_cache._decode_frame({
+        "columns": ["date"],
+        "dtypes": {"date": "datetime64[us]"},
+        "data": {"date": ["2024-01-02T00:00:00", "2024-01-03T00:00:00.123456"]},
+    })
+    assert str(decoded["date"].dtype) == "datetime64[us]"
+    assert decoded["date"].dt.microsecond.tolist() == [0, 123456]
+
+
+def test_decode_v3_cache_rejects_dtypes_outside_the_allowlist():
+    with pytest.raises(ValueError, match="unsupported cache dtype"):
+        data_cache._decode_frame({
+            "columns": ["symbol"],
+            "dtypes": {"symbol": "category"},
+            "data": {"symbol": ["ABC"]},
+        })
 
 
 def test_content_not_path_or_mtime_is_cache_identity(csv_data,tmp_path):
