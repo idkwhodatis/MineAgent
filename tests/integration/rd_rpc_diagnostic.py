@@ -1,9 +1,21 @@
-"""Test-only bounded timings around unchanged actual RD RPC/commit boundaries."""
+"""Test-only timings around unchanged RD RPC/commit boundaries.
+
+Only synchronous ancestry is attributed; another thread's SQL is not included.
+Units are ancestry labels, not exclusive timings: a provider SDK callback may
+perform database work. Fenced ownership is confirmed only after neutral entry
+yields its session; lock or admission failure before that remains unconfirmed.
+Transaction begin is SQLAlchemy logical start, not proof of a PostgreSQL BEGIN.
+Commit intervals include Python/ORM/DB overhead, not exclusive SQL CPU time.
+Ordinals are observer-local (RPC, then session and transaction within RPC).
+"""
 
 import json
 import math
 from collections import deque
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from contextvars import ContextVar
+from itertools import count
+from threading import get_ident
 from time import monotonic
 from unittest.mock import patch
 from weakref import WeakKeyDictionary
@@ -20,6 +32,12 @@ def _milliseconds(value):
 
 @contextmanager
 def diagnose_rd_rpc():
+    from backend.app import rdagent_operational_broker as fixture_broker
+    from backend.app import rdagent_provider_broker as provider_broker
+    from backend.app import rdagent_provider_handler as provider_handler
+    from backend.app import research_lifecycle as lifecycle
+    from backend.app.rdagent_operational_handler import OperationalHandler
+    from packages.research_runtime.resource_scopes import SCOPES
     from runtimes.rdagent_operational import rpc
     from tests.integration.rd_analysis_stage_diagnostic import diagnose_analysis_stages
     from workers.research import rdagent_operational as worker
@@ -30,42 +48,58 @@ def diagnose_rd_rpc():
         rpc.send,
     )
     tail = deque(maxlen=64)
+    transactions = deque(maxlen=128)
     failures = []
     totals = {}
-    current = {"method": "unknown", "sequence": 0, "deadline": None}
-    commits = WeakKeyDictionary()
+    transaction_counts = {"tail_evictions": 0, "rpc_budget_omissions": 0}
+    active = ContextVar("rd_rpc_diagnostic", default=None)
+    unit = ContextVar("rd_rpc_unit", default="outside_callback")
+    ordinals = count(1)
 
-    def record(stage, start, ok):
-        deadline = current["deadline"]
-        if deadline is None:
-            return
-        now = monotonic()
-        elapsed = max(0, _milliseconds(now - start))
-        key = (current["method"], stage)
-        count, total, maximum = totals.get(key, (0, 0, 0))
-        totals[key] = (
-            count + 1,
-            min(3_600_000, total + elapsed),
-            max(maximum, elapsed),
-        )
-        tail.append(
-            {
-                "method": current["method"],
-                "sequence": current["sequence"],
-                "stage": stage,
-                "elapsed_ms": elapsed,
-                "remaining_ms": _milliseconds(deadline - now),
-                "ok": ok,
-            }
-        )
+    def current():
+        value = active.get()
+        return value if value is not None and value["thread"] == get_ident() else None
+
+    def record(stage, start, ok, *, ended=None, **fields):
+        try:
+            rpc_state = current()
+            if rpc_state is None:
+                return
+            now = monotonic() if ended is None else ended
+            elapsed = max(0, _milliseconds(now - start))
+            key = (rpc_state["method"], stage)
+            previous, total, maximum = totals.get(key, (0, 0, 0))
+            totals[key] = (
+                min(1_000_000, previous + 1),
+                min(3_600_000, total + elapsed),
+                max(maximum, elapsed),
+            )
+            tail.append(
+                {
+                    "method": rpc_state["method"],
+                    "sequence": rpc_state["sequence"],
+                    "rpc_ordinal": rpc_state["ordinal"],
+                    "stage": stage,
+                    "elapsed_ms": elapsed,
+                    "remaining_ms": _milliseconds(rpc_state["deadline"] - now),
+                    "ok": ok,
+                    **fields,
+                }
+            )
+        except BaseException:  # noqa: BLE001, S110 - diagnostics cannot change execution
+            pass
 
     def timed(stage, call, *args, **kwargs):
+        rpc_state = current()
+        if rpc_state is None:
+            return call(*args, **kwargs)
+        token = unit.set({"auth": "outer_auth", "handle": "handler"}.get(stage, stage))
         start, ok = monotonic(), False
         try:
             result = call(*args, **kwargs)
             if stage == "read" and type(result) is dict:
                 name = result.get("method")
-                current["method"] = (
+                rpc_state["method"] = (
                     name if type(name) is str and name in rpc.METHODS else "invalid"
                 )
             ok = True
@@ -73,15 +107,14 @@ def diagnose_rd_rpc():
         except BaseException as error:
             if stage == "handle" and len(failures) < 8:
                 # Observe the same handler exception before controller cleanup
-                # replaces it with a whole-attempt containment failure. Snapshot
-                # only closed metadata, never retain/render frames or payloads.
+                # replaces it with a whole-attempt containment failure.
                 try:
                     failure = _rpc_failure_chain(error)
                 except BaseException:  # noqa: BLE001 - diagnostics cannot mask failure
                     failure = {"status": "diagnostic_unavailable"}
                 failures.append(
                     {
-                        "method": current["method"],
+                        "method": rpc_state["method"],
                         "boundary": "handle_exception",
                         **failure,
                     }
@@ -89,6 +122,7 @@ def diagnose_rd_rpc():
             raise
         finally:
             record(stage, start, ok)
+            unit.reset(token)
 
     def receive(*args, **kwargs):
         return timed("read", original_receive, *args, **kwargs)
@@ -97,7 +131,24 @@ def diagnose_rd_rpc():
         return timed("send", original_send, *args, **kwargs)
 
     def serve(channel, *, sequence, deadline, authenticate, handle):
-        current.update(method="unknown", sequence=sequence, deadline=deadline)
+        token = active.set(
+            {
+                "method": "unknown",
+                "sequence": sequence
+                if type(sequence) is int and 0 <= sequence <= 1_000_000
+                else None,
+                "deadline": deadline,
+                "ordinal": next(ordinals),
+                "thread": get_ident(),
+                "binding": (handle.factory, handle.fence)
+                if isinstance(handle, OperationalHandler)
+                else None,
+                "sessions": WeakKeyDictionary(),
+                "open": {},
+                "next_session": 0,
+                "next_transaction": 0,
+            }
+        )
         try:
             return original_serve(
                 channel,
@@ -107,41 +158,192 @@ def diagnose_rd_rpc():
                 handle=lambda *a: timed("handle", handle, *a),
             )
         finally:
-            current["deadline"] = None
+            active.reset(token)
+
+    def on_start(session, transaction):
+        try:
+            rpc_state = current()
+            if rpc_state is None or transaction.parent is not None:
+                return
+            if rpc_state["next_transaction"] >= 128:
+                transaction_counts["rpc_budget_omissions"] = min(
+                    1_000_000, transaction_counts["rpc_budget_omissions"] + 1
+                )
+                return
+            sid = rpc_state["sessions"].get(session)
+            if sid is None:
+                rpc_state["next_session"] += 1
+                sid = rpc_state["sessions"][session] = rpc_state["next_session"]
+            rpc_state["next_transaction"] += 1
+            now = monotonic()
+            rpc_state["open"][transaction] = {
+                "session_ordinal": sid,
+                "transaction_ordinal": rpc_state["next_transaction"],
+                "ownership": "unconfirmed",
+                "unit": unit.get(),
+                "resource_scope": "unconfirmed",
+                "begin_remaining_ms": _milliseconds(rpc_state["deadline"] - now),
+                "begin_time": now,
+                "commit_time": None,
+                "completion": "end_unclassified",
+                "finished_time": None,
+            }
+        except BaseException:  # noqa: BLE001, S110 - test observer is best effort
+            pass
+
+    original_neutral = lifecycle._neutral_transaction_once
+
+    @contextmanager
+    def neutral(factory, fence, *, resource_scope="none"):
+        with original_neutral(factory, fence, resource_scope=resource_scope) as session:
+            try:
+                rpc_state = current()
+                binding = rpc_state["binding"] if rpc_state is not None else None
+                if (
+                    binding is not None
+                    and factory is binding[0]
+                    and fence == binding[1]
+                ):
+                    transaction = session.get_transaction()
+                    observed = rpc_state["open"].get(transaction)
+                    state = session.info.get(lifecycle._NEUTRAL_KEY)
+                    if (
+                        observed is not None
+                        and type(resource_scope) is str
+                        and resource_scope in SCOPES
+                        and type(state) is dict
+                        and state.get("transaction") is transaction
+                        and state.get("fence") == binding[1]
+                        and state.get("resource_scope") == resource_scope
+                    ):
+                        observed["ownership"] = "rpc_fenced_neutral"
+                        observed["resource_scope"] = resource_scope
+            except BaseException:  # noqa: BLE001, S110 - never alter transaction outcome
+                pass
+            yield session
+
+    def observation(session):
+        rpc_state = current()
+        if rpc_state is None or session.in_nested_transaction():
+            return None
+        return rpc_state["open"].get(session.get_transaction())
 
     def before_commit(session):
-        if current["deadline"] is not None:
-            commits[session] = monotonic()
+        try:
+            row = observation(session)
+            if row is not None:
+                row["commit_time"] = monotonic()
+        except BaseException:  # noqa: BLE001, S110
+            pass
 
-    def finish_commit(session, ok):
-        start = commits.pop(session, None)
-        if start is not None:
-            record("commit", start, ok)
+    def mark_completion(session, completion):
+        try:
+            row = observation(session)
+            if row is not None:
+                row["completion"] = completion
+                row["finished_time"] = monotonic()
+        except BaseException:  # noqa: BLE001, S110
+            pass
 
-    def after_commit(session):
-        finish_commit(session, True)
+    def on_end(session, transaction):
+        try:
+            rpc_state = current()
+            if rpc_state is None or transaction.parent is not None:
+                return
+            row = rpc_state["open"].pop(transaction, None)
+            if row is None:
+                return
+            now = monotonic()
+            start, commit = row.pop("begin_time"), row.pop("commit_time")
+            finished = row.pop("finished_time")
+            if finished is None:
+                finished = now
+            row["transaction_ms"] = max(0, _milliseconds(now - start))
+            row["commit_elapsed_ms"] = (
+                None if commit is None else max(0, _milliseconds(finished - commit))
+            )
+            row["commit_begin_remaining_ms"] = (
+                None
+                if commit is None
+                else _milliseconds(rpc_state["deadline"] - commit)
+            )
+            if len(transactions) == transactions.maxlen:
+                transaction_counts["tail_evictions"] = min(
+                    1_000_000, transaction_counts["tail_evictions"] + 1
+                )
+            transactions.append(
+                {
+                    "method": rpc_state["method"],
+                    "sequence": rpc_state["sequence"],
+                    "rpc_ordinal": rpc_state["ordinal"],
+                    "remaining_ms": _milliseconds(rpc_state["deadline"] - now),
+                    "transaction_completion_remaining_ms": _milliseconds(
+                        rpc_state["deadline"] - finished
+                    ),
+                    **row,
+                }
+            )
+            if commit is not None:
+                record(
+                    "commit",
+                    commit,
+                    row["completion"] == "commit",
+                    ended=finished,
+                    ownership=row["ownership"],
+                    unit=row["unit"],
+                    resource_scope=row["resource_scope"],
+                    session_ordinal=row["session_ordinal"],
+                    transaction_ordinal=row["transaction_ordinal"],
+                )
+        except BaseException:  # noqa: BLE001, S110 - observer cannot change execution
+            pass
 
-    def after_rollback(session):
-        finish_commit(session, False)
+    def phase(original, label):
+        def wrapped(*args, **kwargs):
+            if current() is None:
+                return original(*args, **kwargs)
+            token = unit.set(label)
+            try:
+                return original(*args, **kwargs)
+            finally:
+                unit.reset(token)
+
+        return wrapped
 
     callbacks = (
+        ("after_transaction_create", on_start),
         ("before_commit", before_commit),
-        ("after_commit", after_commit),
-        ("after_rollback", after_rollback),
+        ("after_commit", lambda session: mark_completion(session, "commit")),
+        ("after_rollback", lambda session: mark_completion(session, "rollback")),
+        ("after_transaction_end", on_end),
     )
-    for name, callback in callbacks:
-        event.listen(Session, name, callback)
+    phases = (
+        (OperationalHandler, "_authorize", "handler_authorize"),
+        (fixture_broker, "submit_fixture_request", "fixture_broker"),
+        (provider_handler, "submit_provider_request", "provider_broker"),
+        (provider_broker, "_publish", "provider_publication"),
+        (provider_broker, "_retain_receipt", "provider_receipt"),
+        (provider_broker, "execute", "provider_sdk"),
+    )
     try:
-        with (
-            diagnose_analysis_stages(),
-            patch.object(worker, "serve_one", serve),
-            patch.object(rpc, "receive", receive),
-            patch.object(rpc, "send", send),
-        ):
+        with ExitStack() as stack:
+            for name, callback in callbacks:
+                event.listen(Session, name, callback)
+                stack.callback(event.remove, Session, name, callback)
+            stack.enter_context(diagnose_analysis_stages())
+            for obj, name, replacement in (
+                (worker, "serve_one", serve),
+                (rpc, "receive", receive),
+                (rpc, "send", send),
+                (lifecycle, "_neutral_transaction_once", neutral),
+            ):
+                stack.enter_context(patch.object(obj, name, replacement))
+            for obj, name, label in phases:
+                stack.enter_context(
+                    patch.object(obj, name, phase(getattr(obj, name), label))
+                )
             yield
     finally:
-        for name, callback in callbacks:
-            event.remove(Session, name, callback)
         if totals:
             summary = [
                 {
@@ -153,7 +355,12 @@ def diagnose_rd_rpc():
                 }
                 for (method, stage), (count, total, maximum) in sorted(totals.items())
             ]
-            report = {"summary": summary, "tail": list(tail)}
+            report = {
+                "summary": summary,
+                "tail": list(tail),
+                "transactions": list(transactions),
+                "transaction_counts": transaction_counts,
+            }
             if failures:
                 report["failures"] = failures
             try:
