@@ -153,7 +153,7 @@ class AKShareProvider:
                 source = provenance(
                     "akshare",
                     "eastmoney",
-                    "stock_zh_a_hist",
+                    "stock_zh_a_hist_em",
                     request.model_dump(mode="json", exclude={"listings"}),
                     params,
                     self.mode,
@@ -161,7 +161,7 @@ class AKShareProvider:
                     note="SDK table preserved; upstream volume lots multiplied by 100 for shares",
                 )
                 result.provenance.append(source)
-                frame = self._call("stock_zh_a_hist", params)
+                frame = self._call("stock_zh_a_hist_em", params)
                 source = source.model_copy(update={"fetched_at": utc_now()})
                 result.provenance[-1] = source
                 result.raw.append(

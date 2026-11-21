@@ -116,7 +116,7 @@ jobs:
         run: python -m pip install --require-hashes -r backend/requirements.lock
       - name: Verify bounded workflow browser HTTP diagnostics
         run: python -m pytest tests/runner/test_workflow_browser_http_diagnostic.py -q
-      - name: Install isolated host SDK from the exact existing RD dependency pins
+      - name: Install isolated host SDK from its exact dependency pins
         shell: bash
         run: |
           set -euo pipefail

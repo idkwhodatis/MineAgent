@@ -10,10 +10,10 @@ seam; the sealed fixture OE image must never be substituted for it.
 
 `infra/application.Dockerfile` builds a separate hash-locked SDK interpreter at
 `/opt/mineagent-provider/bin/python` and copies it into API and research images.
-Their existing system dependency closures remain separate and unchanged. API
-admission checks the interpreter locally, so copying it only to the worker is
-insufficient. The locked child checks OpenAI 2.54.0/httpx 0.28.1; the old research
-OpenAI 2.6.0 is not a fallback. No host `.venv` is mounted.
+Their system dependency closures remain separate. API admission checks the
+interpreter locally, so copying it only to the worker is insufficient. The
+locked child checks OpenAI 3.57.0 and HTTPX2 2.16.2. The research interpreter is
+not a fallback, even if it runs the same SDK version. No host `.venv` is mounted.
 
 The full Compose profile forwards the same `RDAGENT_*` declarations only to API,
 research-dispatcher, research-worker and recovery reconciler. Dispatcher requires

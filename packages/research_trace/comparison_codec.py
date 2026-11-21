@@ -219,7 +219,7 @@ def unsafe_numeric_sql():
     fixed = r"-?(?:[1-9][0-9]{0,15}\.[0-9]+|0\.0|0\.0{0,3}[1-9][0-9]*)"
     return (
         f"len(list_filter(regexp_extract_all(regexp_replace(payload, '{strings}', '', 'g'), '{number}'), "
-        f"number -> (contains(number, '.') OR contains(number, 'e') OR contains(number, 'E')) AND NOT regexp_full_match(number, '(?:{fixed}|{scientific})'))) > 0"
+        f"lambda number: (contains(number, '.') OR contains(number, 'e') OR contains(number, 'E')) AND NOT regexp_full_match(number, '(?:{fixed}|{scientific})'))) > 0"
     )
 
 

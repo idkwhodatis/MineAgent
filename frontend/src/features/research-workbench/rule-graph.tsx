@@ -3,11 +3,11 @@ import {
   Background,
   Controls,
   ReactFlow,
-  type NodeChange,
+  type NodeChangeset,
   type Node,
   type Edge,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import "@xyflow/react/style.css";
 import type { StrategySpec, DecisionDetail } from "@/client/types.gen";
 import { ruleObservation } from "@/lib/workbench-evidence";
 
@@ -103,11 +103,13 @@ export function RuleGraph({
     [onSelect],
   );
   const changes = useCallback(
-    (values: NodeChange[]) => {
-      const selected = values.find(
-        (value) => value.type === "select" && value.selected,
-      );
-      if (selected?.type === "select") onSelect(selected.id);
+    (values: NodeChangeset) => {
+      for (const change of values) {
+        if (change.type === "select" && change.selected) {
+          onSelect(change.id);
+          break;
+        }
+      }
     },
     [onSelect],
   );
@@ -133,6 +135,7 @@ export function RuleGraph({
           nodesConnectable={false}
           edgesReconnectable={false}
           nodesFocusable
+          forceColorMode="light"
           edgesFocusable={false}
           deleteKeyCode={null}
           multiSelectionKeyCode={null}

@@ -10,13 +10,13 @@ import subprocess
 from pathlib import Path
 
 SDK_PYTHON = Path("/opt/mineagent-provider/bin/python")
-SDK_VERSIONS = {"openai": "2.54.0", "httpx": "0.28.1"}
+SDK_VERSIONS = {"openai": "3.57.0", "httpx2": "2.16.2"}
 
 
 def verify_sdk(executable):
     if Path(executable) != SDK_PYTHON or not SDK_PYTHON.is_file():
         raise ValueError("Require the packaged isolated provider SDK interpreter")
-    code = "import importlib.metadata as m,json; print(json.dumps({n:m.version(n) for n in ('openai','httpx')}))"
+    code = "import importlib.metadata as m,json; print(json.dumps({n:m.version(n) for n in ('openai','httpx2')}))"
     result = subprocess.run(
         [str(SDK_PYTHON), "-I", "-B", "-c", code],
         env={

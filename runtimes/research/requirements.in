@@ -1,5 +1,5 @@
-# Trusted research coordination only; no engine/provider SDKs in this runtime.
+# Trusted research coordination only; no evaluator engine or market-data SDKs in this runtime.
 -r ../../backend/requirements.in
 -c ../../backend/requirements.lock
-numpy==2.3.4
-openai==2.6.0
+numpy==2.5.5
+openai==3.57.0

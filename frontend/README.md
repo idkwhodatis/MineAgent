@@ -50,9 +50,12 @@ or provider-refresh source.
 
 ## Development
 
-Use Node >=22.12 (validated on Node 24.19) and npm. Versions and transitive integrities
-are fixed in `package-lock.json`. TypeScript 6.0.3 matches openapi-ts 0.99.0.
-The scoped TanStack Table v8 API is pinned to 8.21.3. Lightweight Charts is 5.1.0.
+Use Node 22.18+ on the 22 line, Node 24, or Node 26+ with npm. Versions and
+transitive integrities are fixed in `package-lock.json`. The native TypeScript 7
+CLI runs typecheck and build. The `typescript` dependency aliases Microsoft's
+TypeScript 6 compatibility package because openapi-ts still imports the
+JavaScript compiler API. TanStack Table v9 uses only its core row model; the
+server still owns filtering and pagination.
 
 ```sh
 npm ci

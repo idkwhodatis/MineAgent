@@ -520,7 +520,7 @@ def test_child_absolute_watchdog_stops_without_parent_timeout():
 
 @pytest.mark.parametrize(
     "name,version",
-    [("openai", "2.53.0"), ("httpx", "0.27.0"), ("openai", None), ("httpx", None)],
+    [("openai", "2.54.0"), ("httpx2", "2.12.0"), ("openai", None), ("httpx2", None)],
 )
 def test_sdk_version_drift_fails_before_import_or_network(monkeypatch, name, version):
     import importlib.metadata
@@ -582,7 +582,7 @@ def test_sdk_dispatch_does_not_initialize_unrelated_resource_models(kind):
     }
     script = """
 import importlib.util, json, sys
-import httpx
+import httpx2
 spec = importlib.util.spec_from_file_location("sdk_process", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -590,8 +590,8 @@ value = json.load(sys.stdin)
 calls = []
 def respond(request):
     calls.append({"path": request.url.path, "body": json.loads(request.content)})
-    return httpx.Response(200, json=value["response"])
-result = module.sdk_call(value["payload"], transport=httpx.MockTransport(respond))
+    return httpx2.Response(200, json=value["response"])
+result = module.sdk_call(value["payload"], transport=httpx2.MockTransport(respond))
 print(json.dumps({"calls": calls, "result": result,
     "resource_modules": [name for name in sys.modules
         if name == "openai.resources" or name.startswith("openai.resources.")]}))

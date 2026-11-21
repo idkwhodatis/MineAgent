@@ -13,8 +13,8 @@ pwdlib[argon2]>=0.2,<1
 python-multipart>=0.0.20,<1
 email-validator>=2.2,<3
 httpx>=0.28,<1
-pytest==8.4.2
+pytest==9.2.0
 ruff>=0.13,<1
 
 # Bounded research-evidence Parquet query/writer; no separate analytics service.
-duckdb==1.4.5
+duckdb==2.0.1

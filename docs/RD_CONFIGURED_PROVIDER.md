@@ -18,7 +18,7 @@ an operator enables it. Local SDK-double tests are not live-provider acceptance.
   request timeout <=8 seconds and 262144-byte request/response limits), plus
   embedding model/dimensions, JSON-object support and declared price bounds.
 - `RDAGENT_PROVIDER_PYTHON` must identify an explicit absolute executable host
-  interpreter. The SDK child checks installed OpenAI 2.54.0 and httpx 0.28.1
+  interpreter. The SDK child checks installed OpenAI 3.57.0 and HTTPX2 2.16.2
   after containment and before SDK/network work. No fallback to the API Python.
 - `RDAGENT_SYNTHETIC_PROVIDER_ENABLED` and `RDAGENT_LIVE_PROVIDER_ENABLED` are
   separate, default-false transport switches. Synthetic declarations and usage

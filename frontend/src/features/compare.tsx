@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
 import type {
   ComparisonDifference,
   ResultComparePublic,
@@ -9,7 +8,7 @@ import type {
 } from "@/client/types.gen";
 import { ErrorState, Loading, PageHeader, Panel } from "@/components/common";
 import { Field, JsonDetails, Metadata } from "@/components/data-common";
-import { DataTable } from "@/components/data-table";
+import { DataTable, type ColumnDef } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { comparisonOptions } from "@/lib/research-api";

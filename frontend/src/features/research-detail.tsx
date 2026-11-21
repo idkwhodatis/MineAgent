@@ -6,7 +6,6 @@ import { FreezeCandidatePanel } from "@/features/final-tests/freeze-selection";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowLeft, Download, Pause, RotateCcw, Square } from "lucide-react";
 import type {
   ArtifactPublic,
@@ -24,7 +23,8 @@ import {
   Status,
 } from "@/components/common";
 import { JsonDetails, Metadata, Pagination } from "@/components/data-common";
-import { DataTable } from "@/components/data-table";
+import { DataTable, type ColumnDef } from "@/components/data-table";
+import type { RowData } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { getArtifact } from "@/lib/api";
 import { datasetOptions } from "@/lib/data-api";
@@ -776,7 +776,7 @@ function ResearchContent({ run }: { run: ResearchRunDetail }) {
     </>
   );
 }
-function PagedResearch<T>({
+function PagedResearch<T extends RowData>({
   title,
   query,
   columns,

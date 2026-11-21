@@ -261,7 +261,7 @@ def test_upstream_single_listing_failure_and_schema_drift_are_partial_not_filled
     marker = secrets.token_hex(32)
 
     class Client:
-        def stock_zh_a_hist(self, **kwargs):
+        def stock_zh_a_hist_em(self, **kwargs):
             if kwargs["symbol"] == "000001":
                 raise TimeoutError(f"secret token={marker}")
             return akshare_bars("600000", "", kwargs["start_date"], kwargs["end_date"])
@@ -274,7 +274,7 @@ def test_upstream_single_listing_failure_and_schema_drift_are_partial_not_filled
     assert sorted(c.status for c in result.coverage) == ["complete", "failed"]
     assert marker not in result.model_dump_json()
     client = SimpleNamespace(
-        stock_zh_a_hist=lambda **kwargs: pd.DataFrame({"renamed": [1]})
+        stock_zh_a_hist_em=lambda **kwargs: pd.DataFrame({"renamed": [1]})
     )
     drift = AKShareProvider(mode="fixture", client=client, policy=FAST).fetch_bars(req)
     assert all(c.error_code == "upstream_schema_changed" for c in drift.coverage)
@@ -478,7 +478,7 @@ def test_akshare_wrong_response_symbol_is_not_attributed_to_requested_listing():
     provider = AKShareProvider(mode="fixture", policy=FAST)
     req = request(provider.resolve_instruments(["600000"]).data)
     data = akshare_bars("000001", "", "20240102", "20240105")
-    client = SimpleNamespace(stock_zh_a_hist=lambda **kwargs: data)
+    client = SimpleNamespace(stock_zh_a_hist_em=lambda **kwargs: data)
     result = AKShareProvider(mode="fixture", client=client, policy=FAST).fetch_bars(req)
     assert result.coverage[0].error_code == "upstream_symbol_mismatch"
     assert result.raw and not result.data

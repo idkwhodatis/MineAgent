@@ -1,11 +1,12 @@
 import { createElement, type KeyboardEvent } from "react";
 import { renderToString } from "react-dom/server";
 import { expect, it, vi } from "vitest";
-import type { ReactFlowProps } from "@xyflow/react";
+import { NodeChangeset, type ReactFlowProps } from "@xyflow/react";
 import { spec } from "./workbench-fixtures";
 let props: ReactFlowProps;
 let controls: { showInteractive?: boolean };
-vi.mock("@xyflow/react", () => ({
+vi.mock("@xyflow/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@xyflow/react")>()),
   ReactFlow: (value: ReactFlowProps) => {
     props = value;
     return createElement(
@@ -49,12 +50,16 @@ it("locks every mutation control while retaining accessible rule selection", asy
     expect(edge.reconnectable).toBe(false);
     expect(edge.deletable).toBe(false);
   }
-  props.onNodesChange!([{ type: "select", id: "rank", selected: true }]);
+  const selection = new NodeChangeset();
+  selection.add({ type: "select", id: "rank", selected: true });
+  props.onNodesChange!(selection);
   expect(select).toHaveBeenCalledExactlyOnceWith("rank");
-  props.onNodesChange!([
+  const mutations = new NodeChangeset();
+  mutations.add([
     { type: "position", id: "rank", position: { x: 999, y: 999 } },
     { type: "remove", id: "filter" },
   ]);
+  props.onNodesChange!(mutations);
   expect(select).toHaveBeenCalledTimes(1);
   expect(props.nodes![1].position).toEqual({ x: 260, y: 0 });
   // Exercise the application's actual capture handler, not ReactFlow's mock

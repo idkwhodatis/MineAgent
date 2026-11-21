@@ -9,12 +9,7 @@ import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download } from "lucide-react";
-import {
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-} from "@tanstack/react-table";
+import { flexRender, useTable } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
   ResultMetric,
@@ -28,7 +23,11 @@ import {
   Metadata,
   Pagination,
 } from "@/components/data-common";
-import { DataTable } from "@/components/data-table";
+import {
+  DataTable,
+  serverPageFeatures,
+  type ColumnDef,
+} from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { datasetOptions } from "@/lib/data-api";
@@ -732,11 +731,10 @@ function VirtualResultTable({
 }) {
   const viewport = useRef<HTMLDivElement>(null);
   const [showAll, setShowAll] = useState(false);
-  const table = useReactTable({
+  const table = useTable({
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
+    features: serverPageFeatures,
   });
   const rows = table.getRowModel().rows;
   const virtualizer = useVirtualizer({
@@ -823,7 +821,7 @@ function VirtualResultTable({
                     ref={virtualizer.measureElement}
                     aria-rowindex={index + 2}
                   >
-                    {row.getVisibleCells().map((cell) => (
+                    {row.getAllCells().map((cell) => (
                       <td key={cell.id}>
                         {flexRender(
                           cell.column.columnDef.cell,

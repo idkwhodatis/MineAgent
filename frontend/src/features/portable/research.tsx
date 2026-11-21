@@ -5,7 +5,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import type { ColumnDef } from "@tanstack/react-table";
 import type {
   CandidatePublic,
   CheckpointPublic,
@@ -21,7 +20,8 @@ import {
   Status,
 } from "@/components/common";
 import { JsonDetails, Metadata, Pagination } from "@/components/data-common";
-import { DataTable } from "@/components/data-table";
+import { DataTable, type ColumnDef } from "@/components/data-table";
+import type { RowData } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { currentUserOptions } from "@/lib/api";
 import {
@@ -537,7 +537,7 @@ export function PortableResearchContent({
     </>
   );
 }
-function Paged<T>({
+function Paged<T extends RowData>({
   query,
   columns,
   label,

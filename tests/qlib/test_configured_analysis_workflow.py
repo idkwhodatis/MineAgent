@@ -149,7 +149,7 @@ def test_real_http_outbox_task_flow_is_required_without_fixture_shortcut():
     assert "test_queued_cancel_is_authenticated_and_cannot_create_attempt" in text
 
 
-def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
+def test_provider_gate_uses_normal_entry_and_exact_isolated_sdk_lock():
     workflow = Path(".github/workflows/mineagent-configured-analysis.yml").read_text()
     assert 'MINEAGENT_RD_PROVIDER_FLOW_REQUIRED: "1"' in workflow
     assert (
@@ -173,7 +173,6 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
         "test_actual_identity_callback_precedes_request_and_matches_result" in workflow
     )
     assert "--require-hashes -r runtimes/rdagent_provider/requirements.lock" in workflow
-    existing = set(Path("runtimes/rdagent/requirements.lock").read_text().splitlines())
     sdk = [
         line
         for line in Path("runtimes/rdagent_provider/requirements.lock")
@@ -181,6 +180,12 @@ def test_provider_gate_uses_normal_entry_and_exact_existing_sdk_lock_subset():
         .splitlines()
         if line and not line.startswith("#")
     ]
-    assert len(sdk) == 16 and set(sdk) <= existing
-    assert any(line.startswith("openai==2.54.0 ") for line in sdk)
-    assert any(line.startswith("httpx==0.28.1 ") for line in sdk)
+    assert len(sdk) == 15
+    assert {line.split()[0] for line in sdk} >= {
+        "openai==3.57.0",
+        "httpx2==2.16.2",
+        "httpcore2==2.16.2",
+        "truststore==0.10.5",
+    }
+    assert all(" --hash=sha256:" in line for line in sdk)
+    assert not any(line.startswith(("httpx==", "httpcore==")) for line in sdk)

@@ -32,7 +32,8 @@ def test_sdk_is_separate_pinned_stage_in_both_admission_and_worker_images():
             in stage
         )
         assert f"validate_runtime_split --runtime {role}" in stage
-    assert "openai==2.6.0" in (ROOT / "runtimes/research/requirements.in").read_text()
+    # The host research SDK is distinct from the provider SDK in the stage above.
+    assert "openai==3.57.0" in (ROOT / "runtimes/research/requirements.in").read_text()
 
 
 def test_optional_profiles_are_identical_in_admission_dispatch_worker_and_recovery():
@@ -89,7 +90,7 @@ def test_sdk_probe_uses_isolated_interpreter_no_credentials_or_network_code(
 
     def run(command, **kwargs):
         calls.append((command, kwargs))
-        return NS(stdout=b'{"openai":"2.54.0","httpx":"0.28.1"}')
+        return NS(stdout=b'{"openai":"3.57.0","httpx2":"2.16.2"}')
 
     monkeypatch.setattr(subprocess, "run", run)
     runtime.verify_sdk(runtime.SDK_PYTHON)

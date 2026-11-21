@@ -35,7 +35,7 @@ def strict_json(raw):
     return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
 
 
-SDK_VERSIONS = {"openai": "2.54.0", "httpx": "0.28.1"}
+SDK_VERSIONS = {"openai": "3.57.0", "httpx2": "2.16.2"}
 
 
 def require_sdk_versions():
@@ -52,10 +52,13 @@ def sdk_call(payload, *, transport=None):
     # Containment is armed in main before this check or any SDK import/network.
     require_sdk_versions()
     # Delayed imports keep process containment ahead of SDK initialization.
-    import httpx
+    import ssl
+
+    import certifi
+    import httpx2
     from openai import OpenAI
 
-    class BoundedTransport(httpx.BaseTransport):
+    class BoundedTransport(httpx2.BaseTransport):
         def __init__(self, inner):
             self.inner, self.document = inner, None
 
@@ -91,7 +94,7 @@ def sdk_call(payload, *, transport=None):
                     raise RejectedResponse("redirect_response")
                 if response.status_code == 200:
                     self.document = strict_json(raw)
-                return httpx.Response(
+                return httpx2.Response(
                     response.status_code,
                     headers=response.headers,
                     content=raw,
@@ -103,12 +106,15 @@ def sdk_call(payload, *, transport=None):
         def close(self):
             self.inner.close()
 
-    bounded = BoundedTransport(
-        transport or httpx.HTTPTransport(retries=0, trust_env=False)
-    )
+    if transport is None:
+        # Preserve the previous pinned certifi roots instead of inheriting
+        # HTTPX2's system trust store; neither path uses environment proxies.
+        verify = ssl.create_default_context(cafile=certifi.where())
+        transport = httpx2.HTTPTransport(retries=0, trust_env=False, verify=verify)
+    bounded = BoundedTransport(transport)
     request = payload["request"]
     with (
-        httpx.Client(
+        httpx2.Client(
             transport=bounded,
             trust_env=False,
             follow_redirects=False,
@@ -149,7 +155,7 @@ def sdk_call(payload, *, transport=None):
         client.post(
             endpoint,
             body=options,
-            cast_to=httpx.Response,
+            cast_to=httpx2.Response,
             options={"timeout": payload["timeout_seconds"]},
         )
     # Inspect original JSON primitives, not SDK-coerced bool/string token counts.

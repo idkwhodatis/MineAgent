@@ -9,7 +9,7 @@ COPY runtimes/rdagent_provider/requirements.lock /tmp/provider-requirements.lock
 RUN python -m venv --copies /opt/mineagent-provider \
     && /opt/mineagent-provider/bin/python -m pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/provider-requirements.lock \
     && /opt/mineagent-provider/bin/python -m pip check \
-    && /opt/mineagent-provider/bin/python -I -c 'import importlib.metadata as m; assert m.version("openai") == "2.54.0"; assert m.version("httpx") == "0.28.1"' \
+    && /opt/mineagent-provider/bin/python -I -c 'import importlib.metadata as m; assert m.version("openai") == "3.57.0"; assert m.version("httpx2") == "2.16.2"' \
     && rm /tmp/provider-requirements.lock
 
 FROM ${PYTHON_IMAGE} AS source

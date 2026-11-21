@@ -1,0 +1,18 @@
+{
+  "commit": "73448d715968b3578d8458b16295e827edd2b6bf",
+  "files": 66,
+  "inventory_sha256": "90e1b4cd0be518455482799ac0fad23befd4030d61886b66007ba1a7d2d77627",
+  "locks": {
+    "build-requirements.lock": "0a33866a02ba2cd6d0a1388faa6a10bab86b8e234c2e3b5fefe474be390a542d",
+    "requirements.lock": "c351f13fcbcdc43610d3b0b4846223e58440abb6301fe855a7cba548bee711f6"
+  },
+  "python": "3.12.14",
+  "repository": "https://github.com/algorithmicsuperintelligence/openevolve.git",
+  "source_date_epoch": 1793601078,
+  "tree": "04b5a0a4a215c59b4b9be44dba0226c3235f08d6",
+  "version": "0.4.1",
+  "wheel": {
+    "filename": "openevolve-0.4.1-py3-none-any.whl",
+    "sha256": "e785dd697b41f2a747c06f5ff4e43f39c9b10e02bfcf9d5f83f4c97c8390ed0e"
+  }
+}

@@ -3,8 +3,8 @@
 from .contracts import Capability
 
 LOCKED_VERSIONS = {
-    "akshare": "1.19.1",
-    "yfinance": "1.7.0",
+    "akshare": "1.20.65",
+    "yfinance": "1.8.0",
     "openbb-core": "2.0.1",
     "openbb-nasdaq": "2.0.0",
 }
@@ -18,7 +18,7 @@ def documented_capabilities(connector: str) -> list[Capability]:
     definitions = {
         "akshare": (
             "eastmoney",
-            "stock_zh_a_hist",
+            "stock_zh_a_hist_em",
             "https://akshare.akfamily.xyz/data/stock/stock.html",
             ["akshare"],
         ),

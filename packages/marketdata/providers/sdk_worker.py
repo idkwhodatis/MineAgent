@@ -16,8 +16,20 @@ def frame_json(frame):
 def execute(operation, params):
     if operation == "akshare_bars":
         import akshare as ak
+        from akshare.utils.context import get_timeout, set_timeout
 
-        return frame_json(ak.stock_zh_a_hist(**params))
+        # The renamed Eastmoney endpoint uses SDK-wide HTTP configuration.
+        # This worker is a disposable, single-call process; keep the original
+        # HTTP timeout in addition to the parent's hard wall-clock deadline.
+        timeout = params.get("timeout")
+        args = {key: value for key, value in params.items() if key != "timeout"}
+        previous_timeout = get_timeout()
+        try:
+            if timeout is not None:
+                set_timeout(timeout)
+            return frame_json(ak.stock_zh_a_hist_em(**args))
+        finally:
+            set_timeout(previous_timeout)
     if operation == "akshare_resolve":
         import akshare as ak
 

@@ -25,14 +25,14 @@
     "sha256": "709b13e43d705ea4ecae6da8c3903899dc51b306c953b0a29bfc5d0f94dc882c"
   },
   "commit": "484776c211e4fbbeef03e0ec00d6bbee7362a4f4",
-  "dependency_lock_sha256": "3bedebb0bf60663d69f0e3e35d0b18be94bb69639b6a8d069d6366360f33009c",
+  "dependency_lock_sha256": "1b501f92ed15e20f25f15b4a6e4ee83a71285ed49cd73fbd14b624f5c33a2c9b",
   "recipe_sha256": "c9b794296fb09dfeaabdd7c528f3da56c7d1f6c5c61d5bcc21b5b516058a971f",
   "schema": "mineagent.rdagent-wheel-build.v1",
   "upstream": {
     "filename": "mineagent_rdagent_upstream_profile-0.1.0-py3-none-any.whl",
     "files": {
-      "mineagent_rdagent_upstream_profile-0.1.0.dist-info/METADATA": "4ab1c96689743a09e6093e7b713bee274202f2202b0d7e71ca72835076639f6d",
-      "mineagent_rdagent_upstream_profile-0.1.0.dist-info/RECORD": "fac0c15c6156987936bb68ee0ab61272cc3420a87e1183f1f524d5fe436f9aa0",
+      "mineagent_rdagent_upstream_profile-0.1.0.dist-info/METADATA": "392fee64ed248e2fcd347a851c9f46a352decb4b80c36ef23948c086ea16a83b",
+      "mineagent_rdagent_upstream_profile-0.1.0.dist-info/RECORD": "66aff88ac9bcc209205adf0e528be317d200230b0f312bfd58e0d3477c72eb3c",
       "mineagent_rdagent_upstream_profile-0.1.0.dist-info/WHEEL": "45b761468dfa526077fbe2cd363ba5be540d04801e63a8fced51dbb9a3344961",
       "mineagent_rdagent_upstream_profile-0.1.0.dist-info/licenses/LICENSE.rdagent": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
       "rdagent/app/CI/prompts.yaml": "6741ab67218622c94e010b43d3d175cf7719383747a022cc3f348e1398520a00",
@@ -189,6 +189,6 @@
       "rdagent/utils/workflow/misc.py": "1f3d90a432cf76445efc1bfab7259c431c7eb20e38c308b653161ead49227cea",
       "rdagent/utils/workflow/tracking.py": "b3b96dfdb4a2353177504474a0e562b2ce8cd390ebb5f0e80eacde5ca00b2379"
     },
-    "sha256": "08d419422e97cec8af618655f99e918e659c79d011fadd85e68bd29335bfc76f"
+    "sha256": "74fb5615677643b1d8ea3a37aff76c79ca34d40683a67e754d02df7f45180706"
   }
 }

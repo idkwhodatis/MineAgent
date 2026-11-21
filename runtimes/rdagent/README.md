@@ -7,7 +7,7 @@ stand-ins. No generated source is executed by these probes.
 
 ## Source and packaging
 
-Upstream: Microsoft/RD-Agent commit
+Upstream: [Microsoft/RD-Agent 1.0.0](https://github.com/microsoft/RD-Agent/releases/tag/v1.0.0), commit
 `484776c211e4fbbeef03e0ec00d6bbee7362a4f4` (MIT, preserved in LICENSE.rdagent).
 `source-inventory.json` hashes the original tracked rdagent subtree. Original
 `pyproject.toml` declares `packages=["rdagent"]`; a pristine local build produced
@@ -47,6 +47,22 @@ cd /tmp
 Both probes passed from installed wheels under `-I`, with no source checkout or
 working directory on the import path. The CoSTEER probe asserts imported adapter,
 bootstrap and upstream module paths are installed site-packages paths.
+
+## 1.0.0 features used here
+
+MineAgent was already on the upstream 1.0.0 code. It uses the selected factor
+CoSTEER and RAGEvoAgent generation, feedback/repair and embedding/retrieval
+paths, through its own host broker and original execution controls. Installed
+probes exercise those paths without running generated source. This refresh
+updates LiteLLM to 1.110.2, NumPy to 2.5.5 and pandas to 3.1.1 in that reduced
+profile without changing upstream source or enabling unbrokered model calls.
+
+The upstream Web UI and upload/auth flow, Context7/MCP, AutoRL, fine-tuning and
+data-science trace schedulers are not enabled as part of this refresh. They are
+separate execution or ingress paths and are not covered by the factor probes.
+The broker's live-provider SDK is a separate interpreter, now using OpenAI 3
+and HTTPX2. It retains the existing wire contracts. The reduced CoSTEER lock
+keeps its original OpenAI pin.
 
 ## Actual behavior and explicit seams
 

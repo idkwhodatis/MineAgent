@@ -1,13 +1,22 @@
 import {
   flexRender,
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
+  tableFeatures,
+  useTable,
+  type ColumnDef as TanStackColumnDef,
+  type RowData,
 } from "@tanstack/react-table";
+
+// Use only the core row model. Server endpoints own paging and filtering,
+// including for the separate virtualized presentation.
+export const serverPageFeatures = tableFeatures({});
+export type ColumnDef<T extends RowData> = TanStackColumnDef<
+  typeof serverPageFeatures,
+  T
+>;
 
 // Server endpoints own filtering and paging. At most one bounded page enters the
 // table; don't download an entire history to paginate it in the browser.
-export function DataTable<T>({
+export function DataTable<T extends RowData>({
   data,
   columns,
   label,
@@ -18,11 +27,10 @@ export function DataTable<T>({
   label: string;
   empty?: string;
 }) {
-  const table = useReactTable({
+  const table = useTable({
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    manualPagination: true,
+    features: serverPageFeatures,
   });
   return (
     <div className="table-scroll" tabIndex={0} role="region" aria-label={label}>
@@ -47,7 +55,7 @@ export function DataTable<T>({
         <tbody>
           {table.getRowModel().rows.map((row) => (
             <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
+              {row.getAllCells().map((cell) => (
                 <td key={cell.id}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>

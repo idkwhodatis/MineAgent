@@ -434,10 +434,13 @@ def test_source_reuse_preserves_pydantic_depth_boundary_exactly(monkeypatch, dep
     value, source = source_record(payload)
     if depth == 255:
         assert len(source.raw) == 1016
-        with pytest.raises(ValueError, match="Circular reference detected") as baseline:
+        with pytest.raises(
+            ValueError, match="Maximum serialization depth exceeded"
+        ) as baseline:
             encode_record(value)
-        with pytest.raises(type(baseline.value), match="Circular reference detected"):
+        with pytest.raises(type(baseline.value)) as candidate:
             encode_record(value, shared_json_sides=True, shared_source=source)
+        assert str(candidate.value) == str(baseline.value)
     else:
         try:
             expected = encode_record(value)

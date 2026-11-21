@@ -603,6 +603,6 @@ def test_hosted_compose_is_independent_after_baseline_and_keeps_bounded_evidence
 
 def test_compose_yaml_parser_dependency_is_test_only_and_hash_locked():
     lock = (ROOT / "tests/compose/requirements.lock").read_text()
-    assert "PyYAML==6.0.3 --hash=sha256:" in lock
+    assert "PyYAML==6.0.4 --hash=sha256:" in lock
     for location in ("backend", "runtimes/research", "runtimes/data"):
         assert "PyYAML" not in (ROOT / location / "requirements.lock").read_text()

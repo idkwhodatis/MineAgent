@@ -15,38 +15,48 @@ from packages.marketdata.providers import common, sdk_worker
 
 
 def test_installed_akshare_parser_preserves_modes_and_documented_lots(monkeypatch):
-    import akshare as ak
     import requests
+    from akshare.utils.context import get_timeout
 
     seen = []
 
-    def response(url, **kwargs):
+    def response(method, url, **kwargs):
+        assert method == "get"
+        assert url == "https://push2his.eastmoney.com/api/qt/stock/kline/get"
         seen.append(kwargs)
         return SimpleNamespace(
+            status_code=200,
             json=lambda: {
                 "data": {
                     "klines": [
                         "2024-01-02,10,11,12,9,1000,1000000,3,2,1,0.5",
                     ]
                 }
-            }
+            },
         )
 
-    monkeypatch.setattr(requests, "get", response)
+    monkeypatch.setattr(requests, "request", response)
+    original_timeout = get_timeout()
     frames = [
-        ak.stock_zh_a_hist(
-            symbol="600000",
-            start_date="20240102",
-            end_date="20240102",
-            adjust=mode,
-            timeout=2,
+        common.restore_frame(
+            sdk_worker.execute(
+                "akshare_bars",
+                {
+                    "symbol": "600000",
+                    "start_date": "20240102",
+                    "end_date": "20240102",
+                    "adjust": mode,
+                    "timeout": 2,
+                },
+            )
         )
         for mode in ["", "qfq", "hfq"]
     ]
+    assert get_timeout() == original_timeout
     assert all(frame.iloc[0]["成交量"] == 1000 for frame in frames)
     assert [call["params"]["fqt"] for call in seen] == ["0", "1", "2"]
     assert all(call["timeout"] == 2 for call in seen)
-    assert frames[0].iloc[0]["日期"].isoformat() == "2024-01-02"
+    assert pd.Timestamp(frames[0].iloc[0]["日期"]).date().isoformat() == "2024-01-02"
 
 
 def test_installed_yfinance_history_parser_preserves_adjclose_events(monkeypatch):
