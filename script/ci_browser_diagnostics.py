@@ -303,6 +303,66 @@ def _note_http_diagnostics(text):
     return [values[key] for key in sorted(values)]
 
 
+REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V1:"
+_REPLAY_PRESENCE = {"missing", "single", "multiple"}
+_REPLAY_TARGET = {
+    "not_unique",
+    "not_visible",
+    "disabled",
+    "outside_viewport",
+    "center_hits_button",
+    "center_blocked",
+}
+
+
+def _replay_marker_diagnostics(text):
+    values = {}
+    for count, match in enumerate(re.finditer(re.escape(REPLAY_MARKER_PREFIX), text)):
+        if count >= 32:
+            break
+        payload = text[match.end() : match.end() + 385].split("\n", 1)[0]
+        if len(payload) > 384:
+            continue
+        try:
+            record = json.loads(payload, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError):
+            continue
+        if type(record) is not dict or set(record) != {
+            "table",
+            "page_matches",
+            "table_matches",
+            "listing_matches",
+            "window_matches",
+            "target",
+        }:
+            continue
+        if any(
+            type(record[key]) is not str or record[key] not in _REPLAY_PRESENCE
+            for key in ("table", "page_matches")
+        ):
+            continue
+        scoped = record["table_matches"]
+        if record["table"] == "single":
+            if type(scoped) is not str or scoped not in _REPLAY_PRESENCE:
+                continue
+        elif scoped is not None:
+            continue
+        if any(
+            record[key] is not None and type(record[key]) is not bool
+            for key in ("listing_matches", "window_matches")
+        ):
+            continue
+        target = record["target"]
+        if (
+            type(target) is not str
+            or target not in _REPLAY_TARGET
+            or ((scoped == "single") == (target == "not_unique"))
+        ):
+            continue
+        values[json.dumps(record, sort_keys=True)] = record
+    return [values[key] for key in sorted(values)[:2]]
+
+
 @contextmanager
 def private_browser_report(root: Path):
     """Keep raw browser evidence outside uploaded paths and delete it on exit."""
@@ -398,6 +458,7 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
             ):
                 token_diagnostics[json.dumps(diagnostic, sort_keys=True)] = diagnostic
         comparison_diagnostics = {}
+        replay_marker_diagnostics = {}
         if source_suite == "e2e":
             # Only failed-case per-test stdout; never suite output or raw text.
             for output in case.findall("system-out")[:4]:
@@ -407,6 +468,12 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
                     comparison_diagnostics[json.dumps(diagnostic, sort_keys=True)] = (
                         diagnostic
                     )
+                for diagnostic in _replay_marker_diagnostics(
+                    (output.text or "")[:65536]
+                ):
+                    replay_marker_diagnostics[
+                        json.dumps(diagnostic, sort_keys=True)
+                    ] = diagnostic
         result.append(
             {
                 "case_index": index,
@@ -421,6 +488,16 @@ def failure_sites(source: Path, root: Path, *, source_suite="e2e") -> list[dict]
                     else {}
                 ),
                 "outcome": "failed",
+                **(
+                    {
+                        "replay_marker_diagnostics": [
+                            replay_marker_diagnostics[key]
+                            for key in sorted(replay_marker_diagnostics)[:2]
+                        ]
+                    }
+                    if replay_marker_diagnostics
+                    else {}
+                ),
                 **(
                     {
                         "token_diagnostics": [

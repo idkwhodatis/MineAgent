@@ -101,7 +101,19 @@ def test_valid_full_normalized_config(identity_db):
     assert sql_accepts(identity_db, "config", value) is True
 
 
-@pytest.mark.parametrize(("path", "replacement"), CORPUS.CONFIG_CASES)
+@pytest.mark.parametrize(
+    ("path", "replacement"),
+    [
+        # Keep the exact profile independent of pytest's auto-ID length limit;
+        # the shared corpus still supplies the unmodified oversized value.
+        pytest.param(path, replacement, id="overlong-task-description")
+        if path == ("task", "description")
+        and isinstance(replacement, str)
+        and len(replacement) > 8000
+        else (path, replacement)
+        for path, replacement in CORPUS.CONFIG_CASES
+    ],
+)
 def test_config_negative_differential(identity_db, path, replacement):
     value = CORPUS.canonical_config()
     node = value

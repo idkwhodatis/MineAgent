@@ -1,4 +1,5 @@
 import { exerciseCandidateQueries } from "./named-list-queries";
+import { withReplayMarkerFailureDiagnostic } from "./replay-marker-diagnostics";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import {
@@ -1464,12 +1465,13 @@ test("persisted execution replay, declared indicators, monthly analysis and serv
   await expect(
     page.getByRole("table", { name: "Monthly return values and coverage" }),
   ).toContainText("partial_period");
-  await page
-    .getByRole("button", {
-      name: `Select ${replay.markers[0].id}`,
-      exact: true,
-    })
-    .click();
+  const firstMarkerName = `Select ${replay.markers[0].id}`;
+  await withReplayMarkerFailureDiagnostic(
+    page,
+    { name: firstMarkerName, listing, start: replay.start, end: replay.end },
+    () =>
+      page.getByRole("button", { name: firstMarkerName, exact: true }).click(),
+  );
   await expect(
     page.getByRole("region", { name: "Selected execution details" }),
   ).toContainText(replay.markers[0].timestamp);
