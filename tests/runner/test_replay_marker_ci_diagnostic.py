@@ -16,6 +16,9 @@ _SAMPLE = {
     "window_matches": True,
     "listing_matches": False,
     "target": "center_blocked",
+    "viewport_edge": None,
+    "table_center_clipped": True,
+    "click_report": "intercepted",
 }
 
 
@@ -34,6 +37,12 @@ def test_replay_marker_projection_is_closed_bounded_and_consistent():
         {**_SAMPLE, "target": "not_unique"},
         {**_SAMPLE, "window_matches": 1},
         {**_SAMPLE, "listing_matches": "private"},
+        {**_SAMPLE, "viewport_edge": "below"},
+        {**_SAMPLE, "target": "outside_viewport"},
+        {**_SAMPLE, "table_center_clipped": 1},
+        {**_SAMPLE, "target": "disabled"},
+        {**_SAMPLE, "click_report": "private"},
+        {**_SAMPLE, "click_report": []},
     ):
         assert _replay_marker_diagnostics(_marker(invalid)) == []
     assert _replay_marker_diagnostics(REPLAY_MARKER_PREFIX + "x" * 385) == []
@@ -46,6 +55,13 @@ def test_replay_marker_projection_is_closed_bounded_and_consistent():
         )
         == []
     )
+    outside = {
+        **_SAMPLE,
+        "target": "outside_viewport",
+        "viewport_edge": "below",
+        "table_center_clipped": False,
+    }
+    assert _replay_marker_diagnostics(_marker(outside)) == [outside]
     duplicate = _marker(_SAMPLE).replace('"table":', '"table":"single","table":', 1)
     assert _replay_marker_diagnostics(duplicate) == []
 

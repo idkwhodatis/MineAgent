@@ -79,7 +79,10 @@ def create_portable_source(session, owner_id, body, key):
         session.scalar(
             insert(StrategyVersion)
             .values(**values)
-            .on_conflict_do_nothing(index_elements=[StrategyVersion.id])
+            # The OE foreign-key support key (owner_id, id, content_sha256)
+            # also conflicts in an identical concurrent insert. Include every
+            # unique arbiter, then verify ownership and exact replay below.
+            .on_conflict_do_nothing()
             .returning(StrategyVersion.id)
         )
         is not None

@@ -5,14 +5,23 @@ import hashlib
 import json
 from datetime import date
 from pathlib import Path
-from uuid import UUID
+from types import SimpleNamespace
+from unittest.mock import Mock
+from uuid import UUID, uuid5
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.dialects import postgresql
 
-from backend.app.portable_authoring import normalized_source
+from backend.app.portable_authoring import (
+    NAMESPACE,
+    create_portable_source,
+    normalized_source,
+)
 from backend.app.portable_schemas import PortableSourceCreate
+from backend.app.services import DomainError
 from backend.app.strategy_schemas import StrategyCreate
+from backend.app.strategy_services import submission_id
 from packages.strategy_sdk import (
     StateCodec,
     StateField,
@@ -113,6 +122,40 @@ def portable_body():
             ).model_dump(mode="json"),
         },
     }
+
+
+def test_portable_insert_admits_all_unique_arbiters_and_returns_only_exact_replay():
+    owner, key = UUID(int=11), "portable-race-fixture"
+    identifier = uuid5(NAMESPACE, str(submission_id(owner, key)))
+    body = PortableSourceCreate.model_validate(portable_body())
+    manifest = normalized_source(body, identifier)
+    winner = SimpleNamespace(
+        id=identifier,
+        owner_id=owner,
+        name=body.name,
+        task=body.task,
+        mode="portable",
+        code=body.code,
+        parent_id=body.parent_id,
+        content_sha256=manifest["code_sha256"],
+        manifest=manifest,
+        parameters=body.parameters,
+    )
+    session = Mock()
+    session.scalar.side_effect = [None, winner]
+    assert create_portable_source(session, owner, body, key) == (winner, False)
+    write, replay = [call.args[0] for call in session.scalar.call_args_list]
+    dialect = postgresql.dialect()
+    assert "ON CONFLICT DO NOTHING RETURNING" in str(write.compile(dialect=dialect))
+    lookup = replay.compile(dialect=dialect)
+    assert "strategy_versions.owner_id =" in str(lookup)
+    assert "strategy_versions.id =" in str(lookup)
+    assert set(lookup.params.values()) == {owner, identifier}
+
+    winner.code += "# different source"
+    session.scalar.side_effect = [None, winner]
+    with pytest.raises(DomainError, match="different immutable"):
+        create_portable_source(session, owner, body, key)
 
 
 def test_legacy_native_hash_and_source_bytes_unchanged():

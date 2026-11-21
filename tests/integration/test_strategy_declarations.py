@@ -1,11 +1,13 @@
 """Real PostgreSQL/HTTP authoring/preflight acceptance. Collect only without services."""
 
 import copy
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import event
 
 from backend.tests.test_strategy_authoring_contracts import declaration, portable_body
 from tests.integration import test_research_lifecycle as lifecycle
@@ -69,7 +71,7 @@ def test_native_declaration_replay_conflict_and_preflight(
 
 
 def test_portable_source_owner_immutability_and_exact_idempotent_race(
-    api, owner_headers, other_headers
+    api, owner_headers, other_headers, migrated_engine
 ):
     body, key, barrier = portable_body(), uuid4().hex, Barrier(3)
 
@@ -81,9 +83,37 @@ def test_portable_source_owner_immutability_and_exact_idempotent_race(
             json=body,
         )
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        responses = list(pool.map(create, range(3)))
-    assert sorted(response.status_code for response in responses) == [200, 200, 201]
+    # The public error envelope deliberately hides SQL details. Record only
+    # closed labels in this test's failure output, not SQL, IDs or parameters.
+    db_error_tags = deque(maxlen=3)
+
+    def observe_db_error(context):
+        error = context.original_exception
+        state = getattr(error, "sqlstate", None)
+        constraint = getattr(getattr(error, "diag", None), "constraint_name", None)
+        db_error_tags.append(
+            (
+                state
+                if state in {"23505", "23503", "40001", "40P01", "55P03", "57014"}
+                else "other",
+                constraint
+                if constraint
+                in {"strategy_versions_pkey", "oe024_uq_strategy_versions"}
+                else "other",
+            )
+        )
+
+    event.listen(migrated_engine, "handle_error", observe_db_error)
+    try:
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            responses = list(pool.map(create, range(3)))
+    finally:
+        event.remove(migrated_engine, "handle_error", observe_db_error)
+    assert sorted(response.status_code for response in responses) == [
+        200,
+        200,
+        201,
+    ], tuple(sorted(db_error_tags))
     item = responses[0].json()
     assert all(response.json() == item for response in responses)
     assert item["code"] == body["code"]

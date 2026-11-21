@@ -303,7 +303,7 @@ def _note_http_diagnostics(text):
     return [values[key] for key in sorted(values)]
 
 
-REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V1:"
+REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V2:"
 _REPLAY_PRESENCE = {"missing", "single", "multiple"}
 _REPLAY_TARGET = {
     "not_unique",
@@ -312,6 +312,22 @@ _REPLAY_TARGET = {
     "outside_viewport",
     "center_hits_button",
     "center_blocked",
+}
+
+
+_REPLAY_VIEWPORT_EDGES = {"above", "below", "left", "right", "both_axes"}
+_REPLAY_CLICK_REPORTS = {
+    "unreported",
+    "strict_locator",
+    "waiting_for_locator",
+    "waiting_for_actionability",
+    "detached",
+    "outside_viewport",
+    "intercepted",
+    "scroll_pending",
+    "scrolled",
+    "performing_click",
+    "click_performed",
 }
 
 
@@ -334,6 +350,9 @@ def _replay_marker_diagnostics(text):
             "listing_matches",
             "window_matches",
             "target",
+            "viewport_edge",
+            "table_center_clipped",
+            "click_report",
         }:
             continue
         if any(
@@ -357,6 +376,26 @@ def _replay_marker_diagnostics(text):
             type(target) is not str
             or target not in _REPLAY_TARGET
             or ((scoped == "single") == (target == "not_unique"))
+        ):
+            continue
+        edge = record["viewport_edge"]
+        table_center_clipped = record["table_center_clipped"]
+        click_report = record["click_report"]
+        if (
+            (
+                (type(edge) is not str or edge not in _REPLAY_VIEWPORT_EDGES)
+                if target == "outside_viewport"
+                else edge is not None
+            )
+            or (
+                table_center_clipped is not None
+                and (
+                    type(table_center_clipped) is not bool
+                    or target in {"not_unique", "not_visible", "disabled"}
+                )
+            )
+            or type(click_report) is not str
+            or click_report not in _REPLAY_CLICK_REPORTS
         ):
             continue
         values[json.dumps(record, sort_keys=True)] = record

@@ -24,11 +24,23 @@ function page({
   table = true,
   blocked = false,
   listing = expected.listing,
+  x = 5,
+  y = 5,
+  tableWidth = 1200,
+  tableHeight = 800,
 } = {}) {
+  const region = {
+    getBoundingClientRect: () => ({ x: 0, y: 0 }),
+    clientLeft: 0,
+    clientTop: 0,
+    clientWidth: tableWidth,
+    clientHeight: tableHeight,
+  };
   const button = {
     getAttribute: () => null,
     textContent: `  ${expected.name}  `,
-    getBoundingClientRect: () => ({ x: 5, y: 5, width: 10, height: 8 }),
+    getBoundingClientRect: () => ({ x, y, width: 10, height: 8 }),
+    closest: () => region,
     matches: () => false,
     contains: (hit: unknown) => hit === button,
   };
@@ -69,6 +81,8 @@ it("reports post-failure DOM geometry and only equality booleans for private val
     listing_matches: false,
     window_matches: true,
     target: "center_blocked",
+    viewport_edge: null,
+    table_center_clipped: false,
   });
   expect(JSON.stringify(result)).not.toMatch(/private|different|2026/);
 });
@@ -127,6 +141,9 @@ it("logs closed evidence once and keeps the identical original failure", async (
         listing_matches: true,
         window_matches: true,
         target: "center_hits_button",
+        viewport_edge: null,
+        table_center_clipped: false,
+        click_report: "unreported",
       }),
   );
 });
@@ -152,3 +169,61 @@ it("bounds a wedged snapshot without retrying or replacing the failure", async (
   expect(log).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it.each([
+  [{ x: 10, y: 820, tableHeight: 1000 }, "below", false],
+  [{ x: 1250, y: 10 }, "right", true],
+  [{ x: -100, y: 900 }, "both_axes", true],
+  [{ x: 12, y: 12, tableWidth: 10 }, null, true],
+] as const)(
+  "distinguishes viewport edge and table center clipping %j",
+  async (geometry, edge, clipped) => {
+    expect(
+      await replayMarkerDiagnostic(page(geometry), expected),
+    ).toMatchObject({
+      viewport_edge: edge,
+      table_center_clipped: clipped,
+    });
+  },
+);
+
+it.each([
+  [
+    "locator.click: Error: strict mode violation: private descriptor",
+    "strict_locator",
+  ],
+  [
+    "locator.click: Timeout private-number\nCall log:\n  - waiting for getByRole(private-locator)",
+    "waiting_for_locator",
+  ],
+  [
+    "locator.click: Timeout private-number\nCall log:\n  - waiting for getByRole(private-locator)\n    - waiting for element to be visible, enabled and stable",
+    "waiting_for_actionability",
+  ],
+  [
+    "locator.click: Timeout private-number\nCall log:\n\u001b[2m  - waiting for getByRole(private-locator)\n    15 × element is outside of the viewport\n    - scrolling into view if needed\n    - done scrolling\u001b[22m",
+    "outside_viewport",
+  ],
+  [
+    "locator.click: Timeout private-number\nCall log:\n  - waiting for getByRole(private-locator)\n    - <div>private-target</div> intercepts pointer events",
+    "intercepted",
+  ],
+  [
+    "locator.click: Timeout private-number\nCall log:\n  - waiting for getByRole(private-locator)\n    - performing click action\n    - click action done",
+    "click_performed",
+  ],
+] as const)(
+  "publishes only a bounded Playwright state %#",
+  async (message, report) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const original = new Error(message);
+    await expect(
+      withReplayMarkerFailureDiagnostic(page(), expected, async () => {
+        throw original;
+      }),
+    ).rejects.toBe(original);
+    const [logged] = log.mock.calls[0];
+    expect(logged).toContain(`"click_report":"${report}"`);
+    expect(logged).not.toContain("private");
+  },
+);
