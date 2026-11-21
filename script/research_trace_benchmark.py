@@ -1131,7 +1131,32 @@ def validate_source(source):
     require(source["relevant_tree_sha256"] == digest(files), "invalid_source_tree_hash")
 
 
+def locked_duckdb_version():
+    pins = re.findall(
+        r"^duckdb==([0-9]+\.[0-9]+\.[0-9]+)(?=\s|$)",
+        (ROOT / "backend/requirements.lock").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    require(len(pins) == 1, "missing_unique_locked_duckdb")
+    return pins[0]
+
+
+def validate_duckdb(environment, expected):
+    require(
+        isinstance(expected, str)
+        and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", expected)
+        and environment["packages"]["duckdb"] == expected,
+        "unpinned_duckdb",
+    )
+
+
 def validate_report(report, *, require_clean=False):
+    return _validate_report(
+        report, expected_duckdb=locked_duckdb_version(), require_clean=require_clean
+    )
+
+
+def _validate_report(report, *, expected_duckdb, require_clean=False):
     require(
         report["schema_version"] == REPORT_VERSION
         and report["fixture_version"] == FIXTURE_VERSION
@@ -1159,7 +1184,7 @@ def validate_report(report, *, require_clean=False):
         == report["source_end"]["relevant_files_sha256"],
         "source_changed_during_measurement",
     )
-    require(report["environment"]["packages"]["duckdb"] == "1.4.5", "unpinned_duckdb")
+    validate_duckdb(report["environment"], expected_duckdb)
     require(report["environment"]["reference"] == REFERENCE, "reference_changed")
     if require_clean:
         require(
@@ -1521,11 +1546,20 @@ def freeze_budget(report, report_path):
 
 def validate_budget(report, budget, baseline):
     validate_report(report)
-    validate_report(baseline)
     require(
         budget["schema_version"] == BUDGET_VERSION
         and budget["fixture_version"] == FIXTURE_VERSION,
         "invalid_budget",
+    )
+    # The CLI already verifies the frozen baseline's file digest. Its recorded
+    # package pin applies only to that baseline, never to the report being gated.
+    require(
+        budget["baseline_environment"] == baseline["environment"],
+        "baseline_environment_mismatch",
+    )
+    _validate_report(
+        baseline,
+        expected_duckdb=budget["baseline_environment"]["packages"]["duckdb"],
     )
     require(budget["baseline_metrics"] == metric_values(baseline), "unmeasured_budget")
     require(
@@ -1591,6 +1625,7 @@ def run(args):
     marker = work / "benchmark-owner.json"
     current = source_evidence()
     environment = environment_evidence(work)
+    validate_duckdb(environment, locked_duckdb_version())
     if marker.exists():
         require(args.resume, "work_directory_already_used")
         admit_resume(read_json(marker), current, environment)

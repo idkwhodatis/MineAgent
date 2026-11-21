@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,7 +40,7 @@ def contract_report():
         "source_start": deepcopy(source),
         "source_end": deepcopy(source),
         "environment": {
-            "packages": {"duckdb": "1.4.5"},
+            "packages": {"duckdb": benchmark.locked_duckdb_version()},
             "reference": benchmark.REFERENCE,
         },
         "collection": [],
@@ -227,6 +228,7 @@ def test_validator_accepts_complete_contract_only():
         lambda r: r["profile"].update(features_per_listing=0),
         lambda r: r["source_end"].update(relevant_files_sha256={}),
         lambda r: r["environment"]["packages"].update(duckdb="1.4.4"),
+        lambda r: r["queries"][0]["environment"]["packages"].update(duckdb="1.4.4"),
         lambda r: r["collection"].pop(),
         lambda r: r["collection"][0].update(elapsed_seconds=float("inf")),
         lambda r: r["audits"][0]["physical_tables"]["features"].update(
@@ -283,6 +285,41 @@ def test_budget_is_derived_from_baseline_and_fail_closed(tmp_path):
     slower["collection"][0]["elapsed_seconds"] = 2.01
     with pytest.raises(ValueError, match="regression"):
         benchmark.validate_budget(slower, budget, report)
+
+
+def test_budget_validates_historical_baseline_without_admitting_stale_current_report():
+    baseline_path = (
+        benchmark.ROOT / "docs/evidence/research-trace-capacity-baseline-20261023.json"
+    )
+    budget = benchmark.read_json(
+        benchmark.ROOT / "docs/evidence/research-trace-capacity-budget.v1.json"
+    )
+    assert benchmark.sha(baseline_path) == budget["baseline_report_sha256"]
+    baseline = benchmark.read_json(baseline_path)
+    assert baseline["environment"]["packages"]["duckdb"] == "1.4.5"
+    # Synthetic current report exercises only the version policy, not performance.
+    report = deepcopy(baseline)
+    version = benchmark.locked_duckdb_version()
+    report["environment"]["packages"]["duckdb"] = version
+    for phase in ("collection", "audits", "queries", "comparisons"):
+        for item in report[phase]:
+            item["environment"]["packages"]["duckdb"] = version
+    benchmark.validate_budget(report, budget, baseline)
+    with pytest.raises(ValueError, match="unpinned_duckdb"):
+        benchmark.validate_budget(baseline, budget, baseline)
+    wrong_budget = deepcopy(budget)
+    wrong_budget["baseline_environment"]["packages"]["duckdb"] = "0.0.0"
+    with pytest.raises(ValueError, match="baseline_environment_mismatch"):
+        benchmark.validate_budget(report, wrong_budget, baseline)
+
+
+def test_wrong_runtime_rejected_before_measurement(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        benchmark, "environment_evidence", lambda _: {"packages": {"duckdb": "0.0.0"}}
+    )
+    with pytest.raises(ValueError, match="unpinned_duckdb"):
+        benchmark.run(SimpleNamespace(work_dir=tmp_path))
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_regression_multiplier_never_relaxes_production_comparison_deadline(tmp_path):
@@ -380,7 +417,10 @@ def test_driver_rejects_stale_clean_resume_before_any_worker(tmp_path, monkeypat
     previous = deepcopy(current)
     previous["relevant_files_sha256"]["packages/research_trace/storage.py"] = "b" * 64
     current["dirty"] = False
-    environment = {"packages": {"duckdb": "1.4.5"}, "python": "3.12.0"}
+    environment = {
+        "packages": {"duckdb": benchmark.locked_duckdb_version()},
+        "python": "3.12.0",
+    }
     owner = {
         "fixture_version": benchmark.FIXTURE_VERSION,
         "resume_identity": benchmark.resume_identity(previous, environment),
