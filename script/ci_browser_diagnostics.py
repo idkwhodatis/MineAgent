@@ -303,7 +303,7 @@ def _note_http_diagnostics(text):
     return [values[key] for key in sorted(values)]
 
 
-REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V3:"
+REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V4:"
 _REPLAY_PRESENCE = {"missing", "single", "multiple"}
 _REPLAY_TARGET = {
     "not_unique",
@@ -344,7 +344,8 @@ _REPLAY_CLICK_ERRORS = {
     "target_closed",
     "test_ended",
 }
-_REPLAY_CLICK_FIELDS = {"click_report", "click_error"}
+_REPLAY_CLICK_FLAGS = {"actionability_passed_observed", "scrolling_observed"}
+_REPLAY_CLICK_FIELDS = {"click_report", "click_error"} | _REPLAY_CLICK_FLAGS
 _REPLAY_DOM_FIELDS = {
     "table",
     "page_matches",
@@ -357,13 +358,45 @@ _REPLAY_DOM_FIELDS = {
 }
 
 
+_REPLAY_MOTION_BUCKETS = ("none", "single", "few", "many")
+_REPLAY_MOTION_FLAGS = {
+    "marker_presence_changed",
+    "marker_node_changed",
+    "client_x_changed",
+    "client_y_changed",
+    "document_x_changed",
+    "document_y_changed",
+    "marker_size_changed",
+    "late_client_change",
+    "chart_height_changed",
+    "chart_height_tracks_marker_y",
+    "panel_document_y_changed",
+    "panel_y_tracks_marker_y",
+    "document_scroll_changed",
+    "region_scroll_changed",
+    "fonts_status_changed",
+}
+
+
+def _valid_replay_motion(motion):
+    return (
+        type(motion) is dict
+        and set(motion) == {"samples", "matched_samples"} | _REPLAY_MOTION_FLAGS
+        and motion["samples"] in _REPLAY_MOTION_BUCKETS
+        and motion["matched_samples"] in _REPLAY_MOTION_BUCKETS
+        and _REPLAY_MOTION_BUCKETS.index(motion["matched_samples"])
+        <= _REPLAY_MOTION_BUCKETS.index(motion["samples"])
+        and all(type(motion[key]) is bool for key in _REPLAY_MOTION_FLAGS)
+    )
+
+
 def _replay_marker_diagnostics(text):
     values = {}
     for count, match in enumerate(re.finditer(re.escape(REPLAY_MARKER_PREFIX), text)):
         if count >= 32:
             break
-        payload = text[match.end() : match.end() + 385].split("\n", 1)[0]
-        if len(payload) > 384:
+        payload = text[match.end() : match.end() + 1025].split("\n", 1)[0]
+        if len(payload) > 1024:
             continue
         try:
             record = json.loads(payload, object_pairs_hook=_unique_object)
@@ -375,11 +408,14 @@ def _replay_marker_diagnostics(text):
             not in (
                 _REPLAY_CLICK_FIELDS,
                 _REPLAY_CLICK_FIELDS | _REPLAY_DOM_FIELDS,
+                _REPLAY_CLICK_FIELDS | _REPLAY_DOM_FIELDS | {"motion"},
             )
+            or ("motion" in record and not _valid_replay_motion(record["motion"]))
             or type(record["click_report"]) is not str
             or record["click_report"] not in _REPLAY_CLICK_REPORTS
             or type(record["click_error"]) is not str
             or record["click_error"] not in _REPLAY_CLICK_ERRORS
+            or any(type(record[key]) is not bool for key in _REPLAY_CLICK_FLAGS)
         ):
             continue
         if set(record) == _REPLAY_CLICK_FIELDS:

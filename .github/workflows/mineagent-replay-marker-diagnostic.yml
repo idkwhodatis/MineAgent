@@ -102,7 +102,7 @@ jobs:
         run: |
           npm ci --prefix frontend
           npm run typecheck --prefix frontend
-          npm test --prefix frontend -- --run tests/unit/replay-marker-diagnostics.test.ts
+          npm test --prefix frontend -- --run tests/unit/replay-marker-diagnostics.test.ts tests/unit/replay-marker-motion.test.ts
       - name: Install matched Chromium
         working-directory: frontend
         run: npx playwright install --with-deps chromium

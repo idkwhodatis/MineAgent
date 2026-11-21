@@ -185,6 +185,8 @@ def node_environment(source, mode):
             "1" if acceptance_stage(source) == "completion" else "0"
         ),
     )
+    if diagnostic_target(source) == "replay-marker":
+        result["E2E_REPLAY_MOTION"] = "1"
     return result
 
 

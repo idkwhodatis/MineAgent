@@ -144,6 +144,8 @@ it("logs closed evidence once and keeps the identical original failure", async (
         viewport_edge: null,
         table_center_clipped: false,
         click_report: "unreported",
+        actionability_passed_observed: false,
+        scrolling_observed: false,
         click_error: "other",
       }),
   );
@@ -169,7 +171,12 @@ it("bounds a wedged snapshot without retrying or replacing the failure", async (
   expect(p.evaluate).toHaveBeenCalledTimes(1);
   expect(log).toHaveBeenCalledExactlyOnceWith(
     replayMarkerPrefix +
-      JSON.stringify({ click_report: "unreported", click_error: "other" }),
+      JSON.stringify({
+        click_report: "unreported",
+        actionability_passed_observed: false,
+        scrolling_observed: false,
+        click_error: "other",
+      }),
   );
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -286,3 +293,19 @@ it.each([
     expect(logged).not.toMatch(/360000|private-message/);
   },
 );
+
+it("retains a missing-state observation without implying the click never scrolled", async () => {
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  const original = new Error(
+    "locator.click: Timeout 15000ms exceeded.\nCall log:\n  - element is not stable\n  - element is visible, enabled and stable\n  - scrolling into view if needed",
+  );
+  await expect(
+    withReplayMarkerFailureDiagnostic(page(), expected, async () => {
+      throw original;
+    }),
+  ).rejects.toBe(original);
+  const [logged] = log.mock.calls[0];
+  expect(logged).toContain('"click_report":"not_stable"');
+  expect(logged).toContain('"actionability_passed_observed":true');
+  expect(logged).toContain('"scrolling_observed":true');
+});

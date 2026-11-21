@@ -4,6 +4,7 @@ import json
 from xml.etree import ElementTree as ET
 
 from script.ci_browser_diagnostics import (
+    _REPLAY_MOTION_FLAGS,
     REPLAY_MARKER_PREFIX,
     _replay_marker_diagnostics,
     failure_sites,
@@ -20,6 +21,8 @@ _SAMPLE = {
     "table_center_clipped": True,
     "click_report": "intercepted",
     "click_error": "action_timeout",
+    "actionability_passed_observed": True,
+    "scrolling_observed": True,
 }
 
 
@@ -50,7 +53,7 @@ def test_replay_marker_projection_is_closed_bounded_and_consistent():
         {"click_report": "not_stable", "target": "center_blocked"},
     ):
         assert _replay_marker_diagnostics(_marker(invalid)) == []
-    assert _replay_marker_diagnostics(REPLAY_MARKER_PREFIX + "x" * 385) == []
+    assert _replay_marker_diagnostics(REPLAY_MARKER_PREFIX + "x" * 1025) == []
     assert _replay_marker_diagnostics(
         REPLAY_MARKER_PREFIX + "bad\n" + _marker(_SAMPLE)
     ) == [_SAMPLE]
@@ -100,6 +103,29 @@ def test_replay_diagnostic_only_failed_e2e_case_stdout_is_published(tmp_path):
 
 
 def test_replay_projection_preserves_closed_error_when_dom_snapshot_is_unavailable():
-    unavailable = {"click_report": "not_stable", "click_error": "action_timeout"}
+    unavailable = {
+        "click_report": "not_stable",
+        "click_error": "action_timeout",
+        "actionability_passed_observed": False,
+        "scrolling_observed": False,
+    }
     assert _replay_marker_diagnostics(_marker(unavailable)) == [unavailable]
     assert _replay_marker_diagnostics(_marker({**unavailable, "table": "single"})) == []
+
+
+def test_motion_parser_accepts_only_closed_geometry_aggregates():
+    motion = {
+        "samples": "many",
+        "matched_samples": "few",
+        **dict.fromkeys(_REPLAY_MOTION_FLAGS, False),
+    }
+    assert _replay_marker_diagnostics(_marker({**_SAMPLE, "motion": motion})) == [
+        {**_SAMPLE, "motion": motion}
+    ]
+    for invalid in (
+        {**motion, "raw_coordinate": 10.5},
+        {**motion, "samples": "private"},
+        {**motion, "samples": "none"},
+        {**motion, "document_y_changed": 1},
+    ):
+        assert _replay_marker_diagnostics(_marker({**_SAMPLE, "motion": invalid})) == []

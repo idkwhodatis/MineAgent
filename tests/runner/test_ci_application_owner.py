@@ -57,6 +57,7 @@ def source(root, mode="fixture"):
         "NODE_OPTIONS": "must-not-be-inherited",
         "PYTHONPATH": "must-not-be-inherited",
         "VITE_PRIVATE": "must-not-be-inherited",
+        "E2E_REPLAY_MOTION": "must-not-be-inherited",
         "DOCKER_HOST": "must-not-be-inherited",
     }
 
@@ -422,6 +423,7 @@ def test_replay_diagnostic_selects_one_real_case_without_acceptance_benchmarks(
     assert command[-2] == "--grep"
     assert re.fullmatch(command[-1], gate.REPLAY_DIAGNOSTIC_CASE)
     assert opts["env"]["E2E_LIVE_PROVIDERS"] == opts["env"]["E2E_MODEL_PROFILES"] == "0"
+    assert opts["env"]["E2E_REPLAY_MOTION"] == "1"
     assert "DATABASE_URL" not in opts["env"]
     assert Path(opts["env"]["PLAYWRIGHT_JUNIT_OUTPUT_FILE"]).parent == private
 

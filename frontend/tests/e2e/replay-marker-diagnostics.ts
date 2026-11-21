@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
+import { startReplayMotion } from "./replay-marker-motion";
 
-export const replayMarkerPrefix = "REPLAY_MARKER_DIAGNOSTIC_V3:";
+export const replayMarkerPrefix = "REPLAY_MARKER_DIAGNOSTIC_V4:";
 
 type ReplayMarkerExpectation = {
   name: string;
@@ -30,13 +31,18 @@ function clickError(error: unknown) {
 
 // Project Playwright's existing call log into fixed labels; never print it. A
 // millisecond budget, locator, hit target or exception text cannot escape.
-function clickReport(error: unknown) {
-  if (!(error instanceof Error)) return "unreported";
+function clickEvidence(error: unknown) {
+  const observed = {
+    actionability_passed_observed: false,
+    scrolling_observed: false,
+  };
+  const evidence = (click_report: string) => ({ click_report, ...observed });
+  if (!(error instanceof Error)) return evidence("unreported");
   const message = error.message.slice(0, 16384);
   if (/^locator\.click: (?:Error: )?strict mode violation:/.test(message))
-    return "strict_locator";
+    return evidence("strict_locator");
   const callLog = message.split(/^Call log:\r?$/m, 2)[1];
-  if (!callLog) return "unreported";
+  if (!callLog) return evidence("unreported");
   let report = "unreported";
   for (const entry of callLog.split(/\r?\n/, 192)) {
     const line = entry
@@ -60,6 +66,7 @@ function clickReport(error: unknown) {
     } else if (line === "- element is inert") {
       report = "inert";
     } else if (line === "- element is visible, enabled and stable") {
+      observed.actionability_passed_observed = true;
       if (report === "waiting_for_actionability" || report === "unreported")
         report = "actionability_passed";
     } else if (line === "- element was detached from the DOM, retrying") {
@@ -72,6 +79,7 @@ function clickReport(error: unknown) {
     ) {
       report = "intercepted";
     } else if (line === "- scrolling into view if needed") {
+      observed.scrolling_observed = true;
       if (
         report === "actionability_passed" ||
         report === "waiting_for_actionability" ||
@@ -87,7 +95,7 @@ function clickReport(error: unknown) {
       report = "click_performed";
     }
   }
-  return report;
+  return evidence(report);
 }
 
 // A snapshot after the original click fails, not a replacement for Playwright's
@@ -114,7 +122,9 @@ export function replayMarkerDiagnostic(
     const listing = document.querySelectorAll<HTMLSelectElement>(
       "select#replay-listing",
     );
-    const window = document.querySelectorAll('[data-testid="replay-window"]');
+    const replayWindow = document.querySelectorAll(
+      '[data-testid="replay-window"]',
+    );
     const point = inTable?.length === 1 ? inTable[0] : null;
     let target = "not_unique";
     let viewportEdge = null;
@@ -163,6 +173,8 @@ export function replayMarkerDiagnostic(
         }
       }
     }
+    const motion = globalThis.window?.__mineagentReplayMotion;
+    motion?.stop();
     return {
       table: presence(tables.length),
       page_matches: presence(onPage.length),
@@ -170,14 +182,15 @@ export function replayMarkerDiagnostic(
       listing_matches:
         listing.length === 1 ? listing[0].value === expected.listing : null,
       window_matches:
-        window.length === 1
-          ? (window[0].textContent ?? "").startsWith(
+        replayWindow.length === 1
+          ? (replayWindow[0].textContent ?? "").startsWith(
               `Replay window [${expected.start}, ${expected.end})`,
             )
           : null,
       target,
       viewport_edge: viewportEdge,
       table_center_clipped: tableCenterClipped,
+      ...(motion ? { motion: motion.report } : {}),
     };
   }, expected);
 }
@@ -187,8 +200,19 @@ export async function withReplayMarkerFailureDiagnostic(
   expected: ReplayMarkerExpectation,
   click: () => Promise<void>,
 ) {
+  const collectMotion = process.env.E2E_REPLAY_MOTION === "1";
+  if (collectMotion) {
+    // Queue a read-only frame observer immediately, without waiting for it to
+    // observe a frame or become ready before attempting the original click.
+    void startReplayMotion(page, expected.name).catch(() => {});
+  }
   try {
     await click();
+    if (collectMotion) {
+      void page
+        .evaluate(() => window.__mineagentReplayMotion?.stop())
+        .catch(() => {});
+    }
   } catch (error) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let diagnostic: Awaited<ReturnType<typeof replayMarkerDiagnostic>> | null =
@@ -212,7 +236,7 @@ export async function withReplayMarkerFailureDiagnostic(
         replayMarkerPrefix +
           JSON.stringify({
             ...diagnostic,
-            click_report: clickReport(error),
+            ...clickEvidence(error),
             click_error: clickError(error),
           }),
       );
