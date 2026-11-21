@@ -1102,6 +1102,13 @@ input {
   height: 320px;
   min-width: 0;
 }
+/* Lightweight Charts observes its host's size. Its internal table must not
+   define the same height, or resizing can keep pushing the controls below it. */
+.trade-price-chart-viewport {
+  width: 100%;
+  min-width: 0;
+  height: 480px;
+}
 textarea {
   font: inherit;
   min-height: 110px;

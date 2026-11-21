@@ -142,6 +142,7 @@ export default function TradePriceChart({
     <figure className="m-0">
       <div
         ref={container}
+        className="trade-price-chart-viewport"
         role="img"
         aria-label="Pinned OHLCV, actual execution markers and declared recorded indicators"
       />

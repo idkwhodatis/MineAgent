@@ -156,7 +156,11 @@ export function PriceReplayPanel({
             )}
             {data.bars.length ? (
               <Suspense
-                fallback={<Loading text="Loading persisted price replay…" />}
+                fallback={
+                  <div className="trade-price-chart-viewport grid place-items-center">
+                    <Loading text="Loading persisted price replay…" />
+                  </div>
+                }
               >
                 <TradePriceChart
                   data={data}
