@@ -1,0 +1,18 @@
+name: MineAgent Qlib RPC cost diagnostic ONLY
+
+# This isolated diagnostic ref reuses all Qlib fixture gates unchanged.
+on:
+  push:
+    branches: ["chatgpt-dot/qlib-rpc-cost-20261121"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mineagent-qlib-rpc-cost-diagnostic
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    if: github.repository == 'idkwhodatis/MineAgent'
+    uses: ./.github/workflows/mineagent-configured-analysis.yml

@@ -31,7 +31,7 @@ def _milliseconds(value):
 
 
 @contextmanager
-def diagnose_rd_rpc():
+def diagnose_rd_rpc(*, qlib_scope=None):
     from backend.app import rdagent_operational_broker as fixture_broker
     from backend.app import rdagent_provider_broker as provider_broker
     from backend.app import rdagent_provider_handler as provider_handler
@@ -48,6 +48,7 @@ def diagnose_rd_rpc():
         rpc.send,
     )
     tail = deque(maxlen=64)
+    qlib_costs = deque(maxlen=6)
     transactions = deque(maxlen=128)
     failures = []
     totals = {}
@@ -96,7 +97,11 @@ def diagnose_rd_rpc():
         token = unit.set({"auth": "outer_auth", "handle": "handler"}.get(stage, stage))
         start, ok = monotonic(), False
         try:
-            result = call(*args, **kwargs)
+            result = (
+                with_qlib_cost(rpc_state, call, *args, **kwargs)
+                if stage == "handle" and qlib_scope is not None
+                else call(*args, **kwargs)
+            )
             if stage == "read" and type(result) is dict:
                 name = result.get("method")
                 rpc_state["method"] = (
@@ -123,6 +128,32 @@ def diagnose_rd_rpc():
         finally:
             record(stage, start, ok)
             unit.reset(token)
+
+    def with_qlib_cost(rpc_state, call, *args, **kwargs):
+        binding = rpc_state["binding"]
+        method = rpc_state["method"]
+        if method not in {"generation_boundary", "submit_chat"} or binding is None:
+            return call(*args, **kwargs)
+        with ExitStack() as stack:
+            try:
+                run, owner, policy, child = qlib_scope
+                if (binding[1].run_id, binding[1].owner_id) == (run, owner):
+                    from tests.integration.rd_qlib_cost_diagnostic import QlibCost
+
+                    cost = QlibCost(
+                        binding[0].kw["bind"],
+                        observation,
+                        method=method,
+                        policy=policy,
+                        child=child,
+                        ordinal=rpc_state["ordinal"],
+                    )
+                    stack.enter_context(cost.installed())
+                    rpc_state["qlib_cost"] = cost
+                    qlib_costs.append(cost)
+            except Exception:  # noqa: BLE001, S110 -- diagnostic only
+                pass
+            return call(*args, **kwargs)
 
     def receive(*args, **kwargs):
         return timed("read", original_receive, *args, **kwargs)
@@ -233,6 +264,9 @@ def diagnose_rd_rpc():
             row = observation(session)
             if row is not None:
                 row["commit_time"] = monotonic()
+                cost = current().get("qlib_cost")
+                if cost is not None:
+                    cost.prepare_commit(session, row)
         except BaseException:  # noqa: BLE001, S110
             pass
 
@@ -267,6 +301,12 @@ def diagnose_rd_rpc():
                 if commit is None
                 else _milliseconds(rpc_state["deadline"] - commit)
             )
+            cost = rpc_state.get("qlib_cost")
+            if cost is not None:
+                try:
+                    cost.end(row)
+                except BaseException:  # noqa: BLE001, S110 -- retain original observer
+                    pass
             if len(transactions) == transactions.maxlen:
                 transaction_counts["tail_evictions"] = min(
                     1_000_000, transaction_counts["tail_evictions"] + 1
@@ -344,6 +384,15 @@ def diagnose_rd_rpc():
                 )
             yield
     finally:
+        for cost in qlib_costs:
+            try:
+                print(
+                    "RD_QLIB_COST_V1:"
+                    + json.dumps(cost.report(), sort_keys=True, separators=(",", ":")),
+                    flush=True,
+                )
+            except BaseException:  # noqa: BLE001, S110 -- do not mask original work
+                pass
         if totals:
             summary = [
                 {
@@ -780,7 +829,7 @@ def _queue_state(factory, run_id):
 
 
 @contextmanager
-def diagnose_rd_queue(factory, run_id):
+def diagnose_rd_queue(factory, run_id, *, qlib_fixture=None):
     """Observe the original queue callback; retain its exception and retry policy."""
     from workers.research import rdagent_queue
 
@@ -813,7 +862,12 @@ def diagnose_rd_queue(factory, run_id):
             raise
 
     try:
-        with diagnose_rd_rpc(), patch.object(rdagent_queue, "execute", execute):
+        with (
+            diagnose_rd_rpc(
+                qlib_scope=(run_id, *qlib_fixture) if qlib_fixture is not None else None
+            ),
+            patch.object(rdagent_queue, "execute", execute),
+        ):
             yield
     finally:
         try:

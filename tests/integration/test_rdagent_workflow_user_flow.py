@@ -46,6 +46,8 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
 ):
     if os.environ.get("MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED") != "1":
         pytest.fail("Explicit032c actual workflow runtime gate required", pytrace=False)
+    qlib_cost = os.environ.get("MINEAGENT_QLIB_RPC_COST") == "1"
+    cost_policy = "explicit_opt_in" if allow_feedback_release else "default_off"
     import test_backup_restore as legacy
 
     from backend.app.core.security import get_password_hash
@@ -593,7 +595,13 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 queue = create_queue_app(settings)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_first"),
-                    diagnose_rd_queue(factory, rid),
+                    diagnose_rd_queue(
+                        factory,
+                        rid,
+                        qlib_fixture=(user.id, cost_policy, "first")
+                        if qlib_cost
+                        else None,
+                    ),
                     queue.open(),
                 ):
                     queue.run_worker(
@@ -959,7 +967,13 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 assert_stalled_delivery_recovers(factory, second_id)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_seeded"),
-                    diagnose_rd_queue(factory, second_id),
+                    diagnose_rd_queue(
+                        factory,
+                        second_id,
+                        qlib_fixture=(user.id, cost_policy, "seeded")
+                        if qlib_cost
+                        else None,
+                    ),
                     queue.open(),
                 ):
                     queue.run_worker(
