@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-export const replayMarkerPrefix = "REPLAY_MARKER_DIAGNOSTIC_V2:";
+export const replayMarkerPrefix = "REPLAY_MARKER_DIAGNOSTIC_V3:";
 
 type ReplayMarkerExpectation = {
   name: string;
@@ -8,6 +8,25 @@ type ReplayMarkerExpectation = {
   start: string;
   end: string;
 };
+
+function clickError(error: unknown) {
+  if (!(error instanceof Error)) return "other";
+  const firstLine = error.message.slice(0, 256).split("\n", 1)[0];
+  if (/\bTest timeout of \d+ms exceeded\b/.test(firstLine))
+    return "test_timeout";
+  if (/^locator\.click: Timeout \d+ms exceeded\b/.test(firstLine))
+    return "action_timeout";
+  if (error.name === "TimeoutError") return "timeout_unattributed";
+  if (
+    error.name === "TargetClosedError" ||
+    /^locator\.click: Target page, context or browser has been closed\b/.test(
+      firstLine,
+    )
+  )
+    return "target_closed";
+  if (/^locator\.click: Test ended\b/.test(firstLine)) return "test_ended";
+  return "other";
+}
 
 // Project Playwright's existing call log into fixed labels; never print it. A
 // millisecond budget, locator, hit target or exception text cannot escape.
@@ -32,6 +51,17 @@ function clickReport(error: unknown) {
     ) {
       if (report === "waiting_for_locator" || report === "unreported")
         report = "waiting_for_actionability";
+    } else if (line === "- element is not stable") {
+      report = "not_stable";
+    } else if (line === "- element is not visible") {
+      report = "not_visible";
+    } else if (line === "- element is not enabled") {
+      report = "not_enabled";
+    } else if (line === "- element is inert") {
+      report = "inert";
+    } else if (line === "- element is visible, enabled and stable") {
+      if (report === "waiting_for_actionability" || report === "unreported")
+        report = "actionability_passed";
     } else if (line === "- element was detached from the DOM, retrying") {
       report = "detached";
     } else if (line === "- element is outside of the viewport") {
@@ -42,7 +72,11 @@ function clickReport(error: unknown) {
     ) {
       report = "intercepted";
     } else if (line === "- scrolling into view if needed") {
-      if (report === "waiting_for_actionability" || report === "unreported")
+      if (
+        report === "actionability_passed" ||
+        report === "waiting_for_actionability" ||
+        report === "unreported"
+      )
         report = "scroll_pending";
     } else if (line === "- done scrolling") {
       if (report === "scroll_pending" || report === "unreported")
@@ -157,23 +191,33 @@ export async function withReplayMarkerFailureDiagnostic(
     await click();
   } catch (error) {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let diagnostic: Awaited<ReturnType<typeof replayMarkerDiagnostic>> | null =
+      null;
     try {
       // Cap only the optional post-failure snapshot, not the real click.
       const ceiling = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error("diagnostic_timeout")), 250);
       });
-      const diagnostic = await Promise.race([
+      diagnostic = await Promise.race([
         replayMarkerDiagnostic(page, expected),
         ceiling,
       ]);
-      console.log(
-        replayMarkerPrefix +
-          JSON.stringify({ ...diagnostic, click_report: clickReport(error) }),
-      );
     } catch {
-      // Preserve the original click failure even if observation fails.
+      // The original Playwright outcome is available even if DOM observation fails.
     } finally {
       clearTimeout(timer);
+    }
+    try {
+      console.log(
+        replayMarkerPrefix +
+          JSON.stringify({
+            ...diagnostic,
+            click_report: clickReport(error),
+            click_error: clickError(error),
+          }),
+      );
+    } catch {
+      // Diagnostics must not replace the original failure.
     }
     throw error;
   }

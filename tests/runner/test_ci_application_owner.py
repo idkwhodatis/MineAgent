@@ -2,6 +2,7 @@
 
 import ast
 import json
+import re
 import signal
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +74,30 @@ def test_source_requires_disposable_exact_database_and_explicit_mode(tmp_path, m
         ("DATA_PROVIDER_MODE", "invalid"),
         ("SECRET_KEY", "not-generated"),
         ("STORAGE_ROOT", "/outside"),
+    ):
+        with pytest.raises(ValueError):
+            gate.validate_source({**env, key: bad}, tmp_path)
+
+
+def replay_source(root):
+    return {
+        **source(root),
+        "GITHUB_EVENT_NAME": "push",
+        "GITHUB_REF": gate.REPLAY_DIAGNOSTIC_REF,
+        "TRADEGRAD_APPLICATION_STAGE": "m5",
+        "TRADEGRAD_BROWSER_DIAGNOSTIC": "replay-marker",
+    }
+
+
+def test_replay_profile_cannot_be_live_full_or_run_from_another_ref(tmp_path):
+    env = replay_source(tmp_path)
+    assert gate.validate_source(env, tmp_path) == "fixture"
+    for key, bad in (
+        ("GITHUB_EVENT_NAME", "pull_request"),
+        ("GITHUB_REF", "refs/heads/master"),
+        ("DATA_PROVIDER_MODE", "live"),
+        ("TRADEGRAD_APPLICATION_STAGE", "completion"),
+        ("TRADEGRAD_BROWSER_DIAGNOSTIC", "arbitrary"),
     ):
         with pytest.raises(ValueError):
             gate.validate_source({**env, key: bad}, tmp_path)
@@ -365,6 +390,64 @@ def test_fixture_preserves_every_gate_live_is_explicit_and_never_falls_back(
         assert browser[-2:] == ["--grep", "@provider-flow"]
         assert len(value.ran) == 1
         assert not (tmp_path / "var/ci-evidence").exists()
+
+
+def test_replay_diagnostic_selects_one_real_case_without_acceptance_benchmarks(
+    tmp_path, monkeypatch
+):
+    class ReplayOwner(FakeOwner):
+        def run(self, arguments, **kwargs):
+            self.ran.append((arguments, kwargs))
+            report = ET.Element("testsuite")
+            ET.SubElement(
+                report,
+                "testcase",
+                name=gate.REPLAY_DIAGNOSTIC_CASE,
+                classname=gate.REPLAY_DIAGNOSTIC_SPEC,
+            )
+            ET.ElementTree(report).write(kwargs["env"]["PLAYWRIGHT_JUNIT_OUTPUT_FILE"])
+
+    private = tmp_path / "private"
+    private.mkdir()
+    value = ReplayOwner()
+    monkeypatch.setattr(gate, "wait_ready", lambda _: None)
+    gate.exercise(
+        value, tmp_path, replay_source(tmp_path), private, "/usr/bin/node", "fixture"
+    )
+    assert len(value.spawned) == 7
+    assert len(value.ran) == 1
+    command, opts = value.ran[0]
+    assert command[3] == "tests/e2e/configured-research.spec.ts"
+    assert "--retries=0" in command and "--forbid-only" in command
+    assert command[-2] == "--grep"
+    assert re.fullmatch(command[-1], gate.REPLAY_DIAGNOSTIC_CASE)
+    assert opts["env"]["E2E_LIVE_PROVIDERS"] == opts["env"]["E2E_MODEL_PROFILES"] == "0"
+    assert "DATABASE_URL" not in opts["env"]
+    assert Path(opts["env"]["PLAYWRIGHT_JUNIT_OUTPUT_FILE"]).parent == private
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["name", "classname", "duplicate", "failure", "skipped"]
+)
+def test_replay_report_requires_exactly_one_executed_success(tmp_path, mismatch):
+    report = ET.Element("testsuite")
+    expected = {
+        "name": gate.REPLAY_DIAGNOSTIC_CASE,
+        "classname": gate.REPLAY_DIAGNOSTIC_SPEC,
+    }
+    case = ET.SubElement(report, "testcase", **expected)
+    if mismatch in expected:
+        case.set(mismatch, "private")
+    elif mismatch == "duplicate":
+        ET.SubElement(report, "testcase", **expected)
+    else:
+        ET.SubElement(case, mismatch).text = "private"
+    raw = tmp_path / "raw.xml"
+    public = tmp_path / "safe.xml"
+    ET.ElementTree(report).write(raw)
+    with pytest.raises(ValueError):
+        gate.export_junit(raw, public, require_replay_diagnostic=True)
+    assert "private" not in public.read_text()
 
 
 def test_no_group_pid_shell_or_external_dependency_escape_in_owner_sources():

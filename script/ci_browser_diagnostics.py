@@ -303,7 +303,7 @@ def _note_http_diagnostics(text):
     return [values[key] for key in sorted(values)]
 
 
-REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V2:"
+REPLAY_MARKER_PREFIX = "REPLAY_MARKER_DIAGNOSTIC_V3:"
 _REPLAY_PRESENCE = {"missing", "single", "multiple"}
 _REPLAY_TARGET = {
     "not_unique",
@@ -321,6 +321,11 @@ _REPLAY_CLICK_REPORTS = {
     "strict_locator",
     "waiting_for_locator",
     "waiting_for_actionability",
+    "actionability_passed",
+    "not_stable",
+    "not_visible",
+    "not_enabled",
+    "inert",
     "detached",
     "outside_viewport",
     "intercepted",
@@ -328,6 +333,27 @@ _REPLAY_CLICK_REPORTS = {
     "scrolled",
     "performing_click",
     "click_performed",
+}
+
+
+_REPLAY_CLICK_ERRORS = {
+    "other",
+    "action_timeout",
+    "test_timeout",
+    "timeout_unattributed",
+    "target_closed",
+    "test_ended",
+}
+_REPLAY_CLICK_FIELDS = {"click_report", "click_error"}
+_REPLAY_DOM_FIELDS = {
+    "table",
+    "page_matches",
+    "table_matches",
+    "listing_matches",
+    "window_matches",
+    "target",
+    "viewport_edge",
+    "table_center_clipped",
 }
 
 
@@ -343,17 +369,22 @@ def _replay_marker_diagnostics(text):
             record = json.loads(payload, object_pairs_hook=_unique_object)
         except (ValueError, RecursionError):
             continue
-        if type(record) is not dict or set(record) != {
-            "table",
-            "page_matches",
-            "table_matches",
-            "listing_matches",
-            "window_matches",
-            "target",
-            "viewport_edge",
-            "table_center_clipped",
-            "click_report",
-        }:
+        if (
+            type(record) is not dict
+            or set(record)
+            not in (
+                _REPLAY_CLICK_FIELDS,
+                _REPLAY_CLICK_FIELDS | _REPLAY_DOM_FIELDS,
+            )
+            or type(record["click_report"]) is not str
+            or record["click_report"] not in _REPLAY_CLICK_REPORTS
+            or type(record["click_error"]) is not str
+            or record["click_error"] not in _REPLAY_CLICK_ERRORS
+        ):
+            continue
+        if set(record) == _REPLAY_CLICK_FIELDS:
+            # A closed click-only record is useful if the page evaluation wedged.
+            values[json.dumps(record, sort_keys=True)] = record
             continue
         if any(
             type(record[key]) is not str or record[key] not in _REPLAY_PRESENCE
@@ -380,22 +411,16 @@ def _replay_marker_diagnostics(text):
             continue
         edge = record["viewport_edge"]
         table_center_clipped = record["table_center_clipped"]
-        click_report = record["click_report"]
         if (
-            (
-                (type(edge) is not str or edge not in _REPLAY_VIEWPORT_EDGES)
-                if target == "outside_viewport"
-                else edge is not None
+            (type(edge) is not str or edge not in _REPLAY_VIEWPORT_EDGES)
+            if target == "outside_viewport"
+            else edge is not None
+        ) or (
+            table_center_clipped is not None
+            and (
+                type(table_center_clipped) is not bool
+                or target in {"not_unique", "not_visible", "disabled"}
             )
-            or (
-                table_center_clipped is not None
-                and (
-                    type(table_center_clipped) is not bool
-                    or target in {"not_unique", "not_visible", "disabled"}
-                )
-            )
-            or type(click_report) is not str
-            or click_report not in _REPLAY_CLICK_REPORTS
         ):
             continue
         values[json.dumps(record, sort_keys=True)] = record

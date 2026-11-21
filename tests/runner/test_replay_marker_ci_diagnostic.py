@@ -19,6 +19,7 @@ _SAMPLE = {
     "viewport_edge": None,
     "table_center_clipped": True,
     "click_report": "intercepted",
+    "click_error": "action_timeout",
 }
 
 
@@ -43,6 +44,10 @@ def test_replay_marker_projection_is_closed_bounded_and_consistent():
         {**_SAMPLE, "target": "disabled"},
         {**_SAMPLE, "click_report": "private"},
         {**_SAMPLE, "click_report": []},
+        {**_SAMPLE, "click_error": "private"},
+        {**_SAMPLE, "click_error": []},
+        {**_SAMPLE, "click_error": None},
+        {"click_report": "not_stable", "target": "center_blocked"},
     ):
         assert _replay_marker_diagnostics(_marker(invalid)) == []
     assert _replay_marker_diagnostics(REPLAY_MARKER_PREFIX + "x" * 385) == []
@@ -92,3 +97,9 @@ def test_replay_diagnostic_only_failed_e2e_case_stdout_is_published(tmp_path):
         "replay_marker_diagnostics"
         not in failure_sites(path, tmp_path, source_suite="engine-results")[0]
     )
+
+
+def test_replay_projection_preserves_closed_error_when_dom_snapshot_is_unavailable():
+    unavailable = {"click_report": "not_stable", "click_error": "action_timeout"}
+    assert _replay_marker_diagnostics(_marker(unavailable)) == [unavailable]
+    assert _replay_marker_diagnostics(_marker({**unavailable, "table": "single"})) == []

@@ -144,6 +144,7 @@ it("logs closed evidence once and keeps the identical original failure", async (
         viewport_edge: null,
         table_center_clipped: false,
         click_report: "unreported",
+        click_error: "other",
       }),
   );
 });
@@ -166,7 +167,10 @@ it("bounds a wedged snapshot without retrying or replacing the failure", async (
   await checked;
   expect(click).toHaveBeenCalledTimes(1);
   expect(p.evaluate).toHaveBeenCalledTimes(1);
-  expect(log).not.toHaveBeenCalled();
+  expect(log).toHaveBeenCalledExactlyOnceWith(
+    replayMarkerPrefix +
+      JSON.stringify({ click_report: "unreported", click_error: "other" }),
+  );
   expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -225,5 +229,60 @@ it.each([
     const [logged] = log.mock.calls[0];
     expect(logged).toContain(`"click_report":"${report}"`);
     expect(logged).not.toContain("private");
+  },
+);
+
+it.each([
+  ["element is not stable", "not_stable"],
+  ["element is not visible", "not_visible"],
+  ["element is not enabled", "not_enabled"],
+  ["element is inert", "inert"],
+  ["element is visible, enabled and stable", "actionability_passed"],
+] as const)(
+  "separates actionability outcome %s from the click timeout",
+  async (line, expectedReport) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const original = new Error(
+      `locator.click: Timeout 15000ms exceeded.\nCall log:\n  - waiting for element to be visible, enabled and stable\n    15 × ${line}`,
+    );
+    await expect(
+      withReplayMarkerFailureDiagnostic(page(), expected, async () => {
+        throw original;
+      }),
+    ).rejects.toBe(original);
+    const [logged] = log.mock.calls[0];
+    expect(logged).toContain(`"click_report":"${expectedReport}"`);
+    expect(logged).toContain('"click_error":"action_timeout"');
+    expect(logged).not.toContain("15000");
+  },
+);
+
+it.each([
+  [
+    "locator.click: Test timeout of 360000ms exceeded.",
+    "Error",
+    "test_timeout",
+  ],
+  ["locator.click: Test ended.", "Error", "test_ended"],
+  [
+    "locator.click: Target page, context or browser has been closed",
+    "Error",
+    "target_closed",
+  ],
+  ["private-message", "TimeoutError", "timeout_unattributed"],
+] as const)(
+  "publishes a closed failure class %#",
+  async (message, name, label) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const original = new Error(message);
+    original.name = name;
+    await expect(
+      withReplayMarkerFailureDiagnostic(page(), expected, async () => {
+        throw original;
+      }),
+    ).rejects.toBe(original);
+    const [logged] = log.mock.calls[0];
+    expect(logged).toContain(`"click_error":"${label}"`);
+    expect(logged).not.toMatch(/360000|private-message/);
   },
 );

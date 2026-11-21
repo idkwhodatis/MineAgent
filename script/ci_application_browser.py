@@ -41,6 +41,12 @@ FRONTEND = "http://127.0.0.1:5173"
 TOTAL_SECONDS = 3600
 DOCKER_SECONDS = 90
 MAX_REPORT = 20_000_000
+REPLAY_DIAGNOSTIC_REF = "refs/heads/chatgpt-dot/replay-actionability-20261121"
+REPLAY_DIAGNOSTIC_SPEC = "configured-research.spec.ts"
+REPLAY_DIAGNOSTIC_CASE = (
+    "persisted execution replay, declared indicators, monthly analysis and "
+    "server sorts survive reload"
+)
 SERVICE_KEYS = (
     "DATABASE_URL",
     "SECRET_KEY",
@@ -68,15 +74,20 @@ def acceptance_stage(source):
 
 def diagnostic_target(source):
     value = source.get("TRADEGRAD_BROWSER_DIAGNOSTIC", "")
-    if value not in {"", "native-final"}:
+    if value not in {"", "native-final", "replay-marker"}:
         raise ValueError("Unknown browser diagnostic profile")
     if value and (
         source.get("DATA_PROVIDER_MODE") != "fixture"
         or acceptance_stage(source) != "m5"
     ):
         raise ValueError(
-            "Native final diagnostic is fixture-only and not stage acceptance"
+            "Browser diagnostics are fixture-only and not stage acceptance"
         )
+    if value == "replay-marker" and (
+        source.get("GITHUB_EVENT_NAME") != "push"
+        or source.get("GITHUB_REF") != REPLAY_DIAGNOSTIC_REF
+    ):
+        raise ValueError("Replay diagnosis requires its fixed opt-in branch")
     return value
 
 
@@ -252,7 +263,13 @@ def wait_ready(owner):
 
 
 def export_junit(
-    source, destination, *, live=False, diagnostic_root=None, require_research=False
+    source,
+    destination,
+    *,
+    live=False,
+    diagnostic_root=None,
+    require_research=False,
+    require_replay_diagnostic=False,
 ):
     """Raw private reports never enter uploaded paths. Missing/empty is failure."""
     if (
@@ -292,6 +309,13 @@ def export_junit(
         raise ValueError("Actual passing test cases are required")
     if require_research:
         require_research_cases(cases)
+    if require_replay_diagnostic and (
+        len(cases) != 1
+        or len(passed) != 1
+        or cases[0].get("classname") != REPLAY_DIAGNOSTIC_SPEC
+        or cases[0].get("name") != REPLAY_DIAGNOSTIC_CASE
+    ):
+        raise ValueError("Replay diagnostic requires exactly its fixed passed scenario")
     if live and (
         len(passed) < 3
         or len(passed) != len(cases)
@@ -360,9 +384,13 @@ def exercise(owner, root, source, private, node, mode):
         "--output",
         str(private / "browser-output"),
     ]
-    if diagnostic_target(source):
-        # Fixed repository file, never an arbitrary user-supplied selector.
+    diagnostic = diagnostic_target(source)
+    # Fixed repository selectors, never arbitrary inputs.
+    if diagnostic == "native-final":
         command[3] = "tests/e2e/final-test-workflow.spec.ts"
+    elif diagnostic == "replay-marker":
+        command[3] = f"tests/e2e/{REPLAY_DIAGNOSTIC_SPEC}"
+        command += ["--grep", re.escape(REPLAY_DIAGNOSTIC_CASE) + "$"]
     if mode == "live":
         command += ["--grep", "@provider-flow"]
     try:
@@ -380,6 +408,7 @@ def exercise(owner, root, source, private, node, mode):
             diagnostic_root=root,
             require_research=mode == "fixture"
             and acceptance_stage(source) == "completion",
+            require_replay_diagnostic=diagnostic == "replay-marker",
         )
     if mode == "live" or acceptance_stage(source) == "m5":
         return
@@ -641,12 +670,13 @@ def main():
             if os.environ["DATA_PROVIDER_MODE"] == "live"
             else "full fixture Chromium (" + acceptance_stage(os.environ) + " stage)"
         )
-        if diagnostic_target(os.environ):
-            mode = "native-final Chromium DIAGNOSTIC ONLY (NOT full stage acceptance)"
+        diagnostic = diagnostic_target(os.environ)
+        if diagnostic:
+            mode = diagnostic + " Chromium DIAGNOSTIC ONLY (NOT full stage acceptance)"
         print(
             (
                 "Hosted diagnostic passed: "
-                if diagnostic_target(os.environ)
+                if diagnostic
                 else "Hosted acceptance passed: "
             )
             + mode
