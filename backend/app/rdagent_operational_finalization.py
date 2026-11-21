@@ -1,10 +1,12 @@
 """Actual retained snapshot/feedback/adoption finalization under live controller fence."""
 
 import json
+from dataclasses import dataclass
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
+from backend.app.execution_snapshot_services import VerifiedExecutionSnapshot
 from backend.app.rdagent_boundary_services import (
     confirm_generation_boundary,
     record_generation_observation,
@@ -37,7 +39,7 @@ from backend.app.research_object_models import (
     ResearchObjectPublication,
 )
 from backend.app.research_object_services import read_research_object
-from packages.factors.contracts import canonical_bytes
+from packages.factors.contracts import SnapshotInput, canonical_bytes
 from packages.rdagent_adapter.execution_outcomes import (
     DeclaredWindow,
     RDExecutionAdoption,
@@ -48,6 +50,20 @@ from packages.rdagent_adapter.execution_outcomes import (
 from packages.rdagent_adapter.host_evidence import ObservedGenerationDecision
 from packages.research_runtime.budget_contracts import BudgetVector
 from runtimes.rdagent_operational.rpc import RPCError
+
+
+@dataclass(frozen=True)
+class _FinalizationEvidence:
+    snapshot: VerifiedExecutionSnapshot
+    inputs: SnapshotInput
+    objective_passed: bool
+    feedback_fields: dict | None = None
+
+
+def _execution_evidence(session, fence, peer, evaluation_id, settings):
+    return _FinalizationEvidence(
+        *read_evaluation_snapshot(session, fence, peer, evaluation_id, settings)
+    )
 
 
 def _common(fence, source, snapshot):
@@ -116,9 +132,8 @@ def _retain_feedback(
     settings,
     read_snapshot=None,
     feedback_type=None,
-    feedback_fields=None,
 ):
-    reader = read_snapshot or read_evaluation_snapshot
+    reader = read_snapshot or _execution_evidence
     document_type = feedback_type or RDExecutionFeedback
     if (
         type(upstream_feedback) is not dict
@@ -139,7 +154,8 @@ def _retain_feedback(
         source = _scope_row(session, FactorGenerationSource, source_id, fence)
         if source.start_id != start_id:
             raise RPCError("source_step")
-        snapshot, inp, objective = reader(session, fence, peer, evaluation_id, settings)
+        evidence = reader(session, fence, peer, evaluation_id, settings)
+        snapshot, inp = evidence.snapshot, evidence.inputs
         if snapshot.source_id != source_id or snapshot.generation_start_id != start_id:
             raise RPCError("actual_feedback_scope")
         calls = list(
@@ -173,9 +189,9 @@ def _retain_feedback(
                 start=inp.window.start, end=inp.window.end, complete=True
             ),
             **(
-                feedback_fields(session, fence, snapshot, settings)
-                if feedback_fields is not None
-                else {"objective_passed": objective}
+                evidence.feedback_fields
+                if evidence.feedback_fields is not None
+                else {"objective_passed": evidence.objective_passed}
             ),
         )
     return _publish(
@@ -204,7 +220,7 @@ def _finish_generation(
     feedback_passed=None,
     feedback_validate=None,
 ):
-    reader = read_snapshot or read_evaluation_snapshot
+    reader = read_snapshot or _execution_evidence
     passed = feedback_passed or (lambda value: value.objective_passed)
     from backend.app.execution_snapshot_models import FactorExecutionEvaluationOutcome
 
@@ -247,15 +263,16 @@ def _finish_generation(
         )
         if evaluation is None:
             raise RPCError("returned_evaluation_missing")
-        snapshot, _, objective = reader(session, fence, peer, evaluation.id, settings)
+        evidence = reader(session, fence, peer, evaluation.id, settings)
+        snapshot = evidence.snapshot
         feedback_obj, feedback = _published_feedback(
             session, fence, evaluation.id, settings, parser=feedback_parser
         )
         if feedback_validate is not None:
-            feedback_validate(session, fence, snapshot, feedback, settings)
+            feedback_validate(feedback, evidence.feedback_fields)
         common = _common(fence, source, snapshot)
         if (
-            not objective
+            not evidence.objective_passed
             or not passed(feedback)
             or json.loads(feedback.upstream_feedback)["final_decision"] is not True
             or any(getattr(feedback, k) != v for k, v in common.items())
@@ -311,16 +328,15 @@ def _finish_generation(
     )
     with snapshot_transaction(factory, fence, settings) as session:
         require_rd_controller(session, fence, peer)
-        snapshot, _, objective = reader(
-            session, fence, peer, common["evaluation_id"], settings
-        )
+        evidence = reader(session, fence, peer, common["evaluation_id"], settings)
+        snapshot = evidence.snapshot
         current_obj, current_feedback = _published_feedback(
             session, fence, common["evaluation_id"], settings, parser=feedback_parser
         )
         if feedback_validate is not None:
-            feedback_validate(session, fence, snapshot, current_feedback, settings)
+            feedback_validate(current_feedback, evidence.feedback_fields)
         if (
-            not objective
+            not evidence.objective_passed
             or current_obj.id != feedback_id
             or current_feedback != feedback
         ):
