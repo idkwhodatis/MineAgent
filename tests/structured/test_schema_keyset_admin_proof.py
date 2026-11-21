@@ -3,6 +3,7 @@
 import ast
 import copy
 import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -200,14 +201,19 @@ def test_cid_open_failure_is_sanitized(service_setup, monkeypatch):
 
 
 def test_cid_inode_change_is_rejected(service_setup, monkeypatch):
-    root, _, env, inspect = service_setup
+    root, path, env, inspect = service_setup
+    cid_stat = path.stat()
     real_fstat = os.fstat
 
     def changed(fd):
         result = real_fstat(fd)
-        return SimpleNamespace(
-            st_mode=result.st_mode, st_dev=result.st_dev, st_ino=result.st_ino + 1
-        )
+        if (result.st_dev, result.st_ino) != (cid_stat.st_dev, cid_stat.st_ino):
+            return result
+        # Keep the metadata shape and leave unrelated descriptors (including
+        # pytest's capture files) alone. Only the CID inode should differ.
+        fields = list(result)
+        fields[stat.ST_INO] += 1
+        return os.stat_result(fields)
 
     monkeypatch.setattr(os, "fstat", changed)
     with pytest.raises(proof.ProofGuardError, match="identity changed"):

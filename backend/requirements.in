@@ -7,7 +7,9 @@ sqlmodel>=0.0.24,<1
 sqlalchemy>=2.0,<3
 alembic>=1.14,<2
 psycopg[binary]>=3.2,<4
-procrastinate>=3,<4
+# Alembic 001_m1 owns the queue schema. Procrastinate 3.12 requires a
+# lock_mode column and v2 defer routines that this schema does not install.
+procrastinate==3.10.0
 pyjwt>=2.9,<3
 pwdlib[argon2]>=0.2,<1
 python-multipart>=0.0.20,<1

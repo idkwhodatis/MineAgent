@@ -653,9 +653,9 @@ pluggy==1.7.0 \
     # via
     #   -c runtimes/research/../../backend/requirements.lock
     #   pytest
-procrastinate==3.12.0 \
-    --hash=sha256:14c28c3d24bf77d4a15dfcd8053c7db4a671011eefab337e666ce69290d33932 \
-    --hash=sha256:7dc95c31fb5fa9e6d2d5d6dd9f94b54d069d7f788f6ac14f70d95348fd0ca2dc
+procrastinate==3.10.0 \
+    --hash=sha256:3668da769088682abf91b8c760de467be1203218411872f1a26ac7515d4f980d \
+    --hash=sha256:949ad25b4377c30e03a9d0e053d15dfa47ef02b3f12ae8a7f3254686183c152c
     # via
     #   -c runtimes/research/../../backend/requirements.lock
     #   -r runtimes/research/../../backend/requirements.in
@@ -1107,7 +1107,6 @@ tzdata==2026.6 \
     --hash=sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d
     # via
     #   -c runtimes/research/../../backend/requirements.lock
-    #   procrastinate
     #   python-dateutil
 uvicorn==0.54.0 \
     --hash=sha256:505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf \

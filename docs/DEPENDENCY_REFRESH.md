@@ -8,7 +8,7 @@ provider profiles have different closure and evidence requirements.
 ## Runtime changes
 
 - API: the hashed Python 3.12 lock updates FastAPI, Starlette, Pydantic,
-  SQLAlchemy, Procrastinate and their dependencies. The DuckDB 2.0.1
+  SQLAlchemy and their dependencies. The DuckDB 2.0.1
   comparison SQL uses the required `lambda` syntax and still applies the same
   numeric and decoded-size checks. Pytest 9.2.0 remains exactly pinned for
   reproducible test selection.
@@ -25,6 +25,10 @@ provider profiles have different closure and evidence requirements.
 
 ## Compatibility holds
 
+- Procrastinate remains on 3.10.0 in all queue-consuming runtimes. The
+  Alembic-managed queue schema does not have 3.12's `lock_mode` or v2
+  deferral routines. Upgrade the schema and verify the native queues before
+  changing the client pin.
 - OpenEvolve 0.4.1 is qualified in an [isolated candidate](../runtimes/openevolve_candidate/README.md).
   The patched production 0.4.0 runtime is not replaced: the 0.4.1 worker,
   database and checkpoint changes need a patch rebase and native acceptance.

@@ -232,6 +232,8 @@ class ComposeBoundaryTests(unittest.TestCase):
         )
 
     def test_image_targets_keep_installed_dependency_closures_separate(self):
+        from script.validate_runtime_split import locked_versions
+
         source = (ROOT / "infra/application.Dockerfile").read_text()
         for role, lock in (
             ("api", "backend"),
@@ -240,6 +242,9 @@ class ComposeBoundaryTests(unittest.TestCase):
         ):
             part = source.split(f"FROM source AS {role}\n")[1].split("\nFROM ")[0]
             self.assertIn(f"--require-hashes -r {lock}/requirements.lock", part)
+            # All queue consumers must speak the SQL installed by Alembic.
+            versions = locked_versions(ROOT / lock / "requirements.lock")
+            self.assertEqual(versions["procrastinate"], "3.10.0")
             self.assertIn(f"validate_runtime_split --runtime {role}", part)
             self.assertEqual("COPY --from=docker-cli" in part, role == "research")
         self.assertNotIn("COPY . .", source)

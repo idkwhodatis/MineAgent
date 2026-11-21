@@ -1698,9 +1698,9 @@ pluggy==1.7.0 \
     # via
     #   -c runtimes/data/../../backend/requirements.lock
     #   pytest
-procrastinate==3.12.0 \
-    --hash=sha256:14c28c3d24bf77d4a15dfcd8053c7db4a671011eefab337e666ce69290d33932 \
-    --hash=sha256:7dc95c31fb5fa9e6d2d5d6dd9f94b54d069d7f788f6ac14f70d95348fd0ca2dc
+procrastinate==3.10.0 \
+    --hash=sha256:3668da769088682abf91b8c760de467be1203218411872f1a26ac7515d4f980d \
+    --hash=sha256:949ad25b4377c30e03a9d0e053d15dfa47ef02b3f12ae8a7f3254686183c152c
     # via
     #   -c runtimes/data/../../backend/requirements.lock
     #   -r runtimes/data/../../backend/requirements.in
@@ -2417,7 +2417,6 @@ tzdata==2026.6 \
     # via
     #   -c runtimes/data/../../backend/requirements.lock
     #   exchange-calendars
-    #   procrastinate
     #   python-dateutil
 url-normalize==4.0.0 \
     --hash=sha256:52ad9004d6278ea4b581f1cf2f4d016c4873bf3d81fd749b7472ac0206355d05 \
