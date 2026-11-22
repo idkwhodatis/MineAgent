@@ -365,3 +365,44 @@ def test_junit_masked_fields_require_outer_code_and_consistent_causal_shape(tmp_
     assert "nested_sqlstate" not in read(masked_code, "ambiguous", "observed")
     assert "masked_code" not in read(masked_code, "unique_leaf", "no_prior_failure")
     assert "masked_state" not in read("neutral_busy", "unique_leaf", "observed")
+
+
+def test_provider_broker_boundary_requires_exact_masked_controller_deadline():
+    import json
+
+    detail = {
+        "state": "observed",
+        "chain": "single",
+        "masked_rpc_method": "submit_embedding",
+        "masked_code": "neutral_busy",
+        "masked_neutral_busy_origin": "gate_expired_controller",
+        "masked_broker_boundary": "response_publish",
+    }
+
+    def read(**overrides):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps(
+                {
+                    "code": "rd_provider_containment_unknown",
+                    "masked_controller": {**detail, **overrides},
+                }
+            )
+        )
+
+    assert read()["masked_broker_boundary"] == "response_publish"
+    for override in (
+        {"masked_broker_boundary": "private-canary"},
+        {"masked_neutral_busy_origin": "gate_expired_local"},
+        {"masked_rpc_method": "status"},
+        {"masked_code": "neutral_transaction_lost"},
+        {"chain": "ambiguous"},
+    ):
+        assert "masked_broker_boundary" not in read(**override)
+    nested = {
+        "nested_code": "neutral_busy",
+        "nested_neutral_busy_origin": "gate_expired_controller",
+        "nested_broker_boundary": "reserve",
+    }
+    assert read(chain="unique_leaf", **nested)["nested_broker_boundary"] == "reserve"
+    assert "nested_broker_boundary" not in read(**nested)

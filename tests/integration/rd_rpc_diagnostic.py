@@ -918,6 +918,7 @@ def _masked_controller_summary(original):
         "docker_operation",
         "neutral_busy_origin",
         "receipt_boundary",
+        "broker_boundary",
     )
 
     def details(error, scope):
@@ -926,9 +927,24 @@ def _masked_controller_summary(original):
             **_analysis_trace_context(error),
             **_neutral_busy_cut(error, controller_limit=_controller_limit(original)),
         }
+        if row.get(
+            "neutral_busy_origin"
+        ) == "gate_expired_controller" and _closed_trace_context(original).get(
+            "rpc_method"
+        ) in {"submit_chat", "submit_embedding"}:
+            from tests.integration.rd_broker_busy_cut import broker_busy_boundary
+
+            boundary = broker_busy_boundary(error.__traceback__)
+            if boundary is not None:
+                row["broker_boundary"] = boundary
         return {f"{scope}_{key}": row[key] for key in fields if key in row}
 
     projected = {"state": "observed", **details(original, "masked")}
+
+    def uncertain(chain):
+        projected.pop("masked_broker_boundary", None)
+        return {**projected, "chain": chain}
+
     # Traverse both explicit causes and suppressed contexts. Do not pass off a
     # traversal artifact as a root cause if there are multiple leaves/cycles.
     active, done, leaves = set(), set(), []
@@ -941,11 +957,11 @@ def _masked_controller_summary(original):
             done.add(identity)
             continue
         if identity in active:
-            return {**projected, "chain": "ambiguous"}
+            return uncertain("ambiguous")
         if identity in done:
             continue
         if len(active) + len(done) == 8:
-            return {**projected, "chain": "overflow"}
+            return uncertain("overflow")
         active.add(identity)
         children = [
             value
@@ -957,7 +973,7 @@ def _masked_controller_summary(original):
         pending.append((current, True))
         pending.extend((child, False) for child in children)
     if len(leaves) != 1:
-        return {**projected, "chain": "ambiguous"}
+        return uncertain("ambiguous")
     if leaves[0] is original:
         return {**projected, "chain": "single"}
     return {**projected, "chain": "unique_leaf", **details(leaves[0], "nested")}

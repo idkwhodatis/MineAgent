@@ -303,6 +303,18 @@ _MASKED_CONTROLLER_FIELDS = {
     "rpc_method": _DRAIN_FIELDS["rpc_method"],
     "neutral_busy_origin": _DRAIN_FIELDS["neutral_busy_origin"],
     "receipt_boundary": _DRAIN_FIELDS["receipt_boundary"],
+    "broker_boundary": frozenset(
+        {
+            "request_read",
+            "reserve",
+            "admit",
+            "intent",
+            "started",
+            "stop",
+            "response_publish",
+            "settle",
+        }
+    ),
     "analysis_stage": {
         "worker",
         "record_identity",
@@ -368,6 +380,15 @@ def _masked_controller_observation(failure):
             if (
                 key in {"neutral_busy_origin", "receipt_boundary"}
                 and detail.get(f"{scope}_code") != "neutral_busy"
+            ):
+                continue
+            if key == "broker_boundary" and (
+                chain not in {"single", "unique_leaf"}
+                or detail.get(f"{scope}_code") != "neutral_busy"
+                or detail.get(f"{scope}_neutral_busy_origin")
+                != "gate_expired_controller"
+                or detail.get("masked_rpc_method")
+                not in {"submit_chat", "submit_embedding"}
             ):
                 continue
             value = _emit_value(field, detail.get(field))
