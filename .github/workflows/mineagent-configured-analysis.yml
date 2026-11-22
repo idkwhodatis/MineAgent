@@ -498,17 +498,13 @@ jobs:
           from pathlib import Path
           from xml.etree import ElementTree as ET
           from script.summarize_ci_junit import summarize
+          from tests.sql_probes.rd_graph_canonical_candidate import project_diagnostic_cases
           source=Path('var/numeric-private/canonical-graph.xml')
           summarize(source,Path('var/numeric-proof/canonical-graph-outcomes.xml'))
-          cases=list(ET.parse(source).getroot().iter('testcase'))
-          required={'test_installed032g_request_encoding_bytes_and_errors','test_default_off_populated_rd_proposal_adoption_graph_matches_candidate'}
-          outcomes={}
-          for case in cases:
-              name=case.get('name')
-              assert name in required and name not in outcomes
-              outcomes[name]=next((tag for tag in ('failure','error','skipped') if case.find(tag) is not None),'passed')
-          assert set(outcomes)==required
-          print('QLIB_CANONICAL_GRAPH_V1 '+str(dict(sorted(outcomes.items()))))
+          diagnostics=project_diagnostic_cases(ET.parse(source).getroot())
+          outcomes={name: entry[0] for name, entry in diagnostics.items()}
+          print('QLIB_CANONICAL_GRAPH_V1 '+str(outcomes))
+          print('QLIB_CANONICAL_GRAPH_PHASE_V1 '+str(diagnostics))
           assert set(outcomes.values())=={'passed'}
           PYCANONICAL
           test "$status" = 0

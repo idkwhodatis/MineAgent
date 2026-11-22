@@ -2,6 +2,7 @@
 
 import json
 import os
+from contextlib import contextmanager
 
 import pytest
 from sqlalchemy import select, text
@@ -26,8 +27,27 @@ def _outcome(connection, sql, params):
         return ("error", error.orig.sqlstate, error.orig.diag.message_primary)
 
 
-def _temp_scope(connection):
+@contextmanager
+def _diagnostic(record_property):
+    phase = "startup"
+    ordinal = None
+
+    def mark(next_phase, *, case=None):
+        nonlocal phase, ordinal
+        phase, ordinal = next_phase, case
+
+    try:
+        yield mark
+    finally:
+        record_property("canonical_phase", phase)
+        if ordinal is not None:
+            record_property("canonical_ordinal", str(ordinal))
+
+
+def _temp_scope(connection, mark):
+    mark("installed_preflight")
     schema = probe.checked_schema(connection)
+    mark("temp_scope")
     # Initialize only a per-connection temp namespace. Outer caller rolls back
     # all helper DDL; no installed graph or encoder is modified.
     connection.exec_driver_sql(
@@ -36,7 +56,15 @@ def _temp_scope(connection):
     return schema
 
 
-def test_installed032g_request_encoding_bytes_and_errors(migrated_engine):
+def test_installed032g_request_encoding_bytes_and_errors(
+    migrated_engine, record_property
+):
+    with _diagnostic(record_property) as mark:
+        _exercise_encoder_corpus(migrated_engine, mark)
+        mark("complete")
+
+
+def _exercise_encoder_corpus(migrated_engine, mark):
     values = [
         None,
         False,
@@ -95,22 +123,25 @@ def test_installed032g_request_encoding_bytes_and_errors(migrated_engine):
             ),
             # UTF8 form fits; only true ASCII encoding crosses the bound.
             (
-                json.dumps("😀" * (_LIMIT // 12 + 1)),
+                json.dumps(["😀" * 1024] * (_LIMIT // (1024 * 12) + 1)),
                 ("error", "22023", "RD canonical metadata byte bound exceeded"),
             ),
             ('"\\u0000"', ("error", "22P05", "unsupported Unicode escape sequence")),
             ("{", ("error", "22P02", "invalid input syntax for type json")),
         ]
     )
+    mark("connect")
     with migrated_engine.connect() as connection:
         transaction = connection.begin()
         try:
-            schema = _temp_scope(connection)
+            schema = _temp_scope(connection, mark)
             for candidate in (False, True):
+                mark("temp_candidate" if candidate else "temp_baseline")
                 connection.exec_driver_sql(
                     probe.temp_bytes_source(schema, candidate=candidate)
                 )
             for index, (value, expected) in enumerate(corpus):
+                mark("corpus", case=index)
                 # No values or error diagnostics in failure output: report a case ordinal.
                 old, new = (
                     _outcome(
@@ -307,7 +338,21 @@ def _persisted_default_child(session, storage):
 
 
 def test_default_off_populated_rd_proposal_adoption_graph_matches_candidate(
-    drill_databases, tmp_path, monkeypatch
+    drill_databases, tmp_path, monkeypatch, pytestconfig, record_property
+):
+    with _diagnostic(record_property) as mark:
+        _exercise_populated_graph(
+            drill_databases=drill_databases,
+            tmp_path=tmp_path,
+            monkeypatch=monkeypatch,
+            pytestconfig=pytestconfig,
+            mark=mark,
+        )
+        mark("complete")
+
+
+def _exercise_populated_graph(
+    *, drill_databases, tmp_path, monkeypatch, pytestconfig, mark
 ):
     if os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED") != "1":
         pytest.fail(
@@ -318,10 +363,16 @@ def test_default_off_populated_rd_proposal_adoption_graph_matches_candidate(
 
     # Keep every original default-off assertion including browser/cold restore.
     # This standalone diagnostic is not the opt-in two-child or RD→OE gate.
+    mark("original_workflow")
     _unchanged_workflow(
-        drill_databases, tmp_path, monkeypatch, allow_feedback_release=False
+        drill_databases=drill_databases,
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        allow_feedback_release=False,
+        pytestconfig=pytestconfig,
     )
 
+    mark("connect")
     engine = legacy._engine(drill_databases.source)
     try:
         with engine.connect().execution_options(
@@ -329,23 +380,28 @@ def test_default_off_populated_rd_proposal_adoption_graph_matches_candidate(
         ) as connection:
             transaction = connection.begin()
             try:
-                schema = _temp_scope(connection)
+                schema = _temp_scope(connection, mark)
                 assert schema == "public"
+                mark("temp_candidate")
                 connection.exec_driver_sql(probe.temp_graph_source(schema))
+                mark("persisted_evidence")
                 with Session(bind=connection) as session:
                     rid = _persisted_default_child(
                         session, tmp_path / "workflow-provider-user-flow"
                     )
+                mark("installed_graph")
                 old = _outcome(
                     connection,
                     "SELECT public.mineagent_rd_provider_graph(:rid)",
                     {"rid": rid},
                 )
+                mark("candidate_graph")
                 new = _outcome(
                     connection,
                     "SELECT pg_temp.rd_graph_ascii_reuse(:rid)",
                     {"rid": rid},
                 )
+                mark("graph_parity")
                 if old != new or old[0] != "ok":
                     pytest.fail(
                         "Populated installed provider graph SQL outcome diverged",

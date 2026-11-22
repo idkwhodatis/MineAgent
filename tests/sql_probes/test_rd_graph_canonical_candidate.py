@@ -39,3 +39,92 @@ def test_experiment_emits_only_closed_temp_functions():
         assert value.startswith("CREATE FUNCTION pg_temp.")
         assert value.count("CREATE FUNCTION") == 1 and "CREATE OR REPLACE" not in value
         assert (probe.CANDIDATE if candidate else probe.BASELINE) in value
+
+
+def test_default_workflow_call_supplies_exact_required_inputs_by_name():
+    import ast
+    from pathlib import Path
+
+    integration = Path(__file__).parents[1] / "integration"
+    workflow = ast.parse(
+        (integration / "test_rdagent_workflow_user_flow.py").read_text()
+    )
+    experiment = ast.parse(
+        (integration / "test_rd_graph_canonical_candidate_postgres.py").read_text()
+    )
+    original = next(
+        node
+        for node in workflow.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name
+        == "test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results"
+    )
+    calls = [
+        node
+        for node in ast.walk(experiment)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_unchanged_workflow"
+    ]
+    assert len(calls) == 1 and not calls[0].args
+    args = {kw.arg: kw.value for kw in calls[0].keywords}
+    assert set(args) == {arg.arg for arg in original.args.args}
+    assert isinstance(args["allow_feedback_release"], ast.Constant)
+    assert args["allow_feedback_release"].value is False
+    assert isinstance(args["pytestconfig"], ast.Name)
+    assert args["pytestconfig"].id == "pytestconfig"
+
+
+def _diagnostic_xml(phase="corpus", ordinal="24"):
+    from xml.etree import ElementTree as ET
+
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite")
+    case = ET.SubElement(
+        suite, "testcase", name="test_installed032g_request_encoding_bytes_and_errors"
+    )
+    props = ET.SubElement(case, "properties")
+    ET.SubElement(props, "property", name="canonical_phase", value=phase)
+    if ordinal is not None:
+        ET.SubElement(props, "property", name="canonical_ordinal", value=ordinal)
+    ET.SubElement(props, "property", name="private", value="unsafe-xml-property")
+    ET.SubElement(case, "failure", message="unsafe-log-message").text = "unsafe-body"
+    setup = ET.SubElement(
+        suite,
+        "testcase",
+        name="test_default_off_populated_rd_proposal_adoption_graph_matches_candidate",
+    )
+    ET.SubElement(setup, "error", message="unsafe-fixture-message")
+    return root
+
+
+def test_canonical_diagnostic_projects_allowlist_only_including_fixture_error():
+    results = probe.project_diagnostic_cases(_diagnostic_xml())
+    assert results == {
+        "test_default_off_populated_rd_proposal_adoption_graph_matches_candidate": (
+            "error",
+            "fixture",
+            None,
+        ),
+        "test_installed032g_request_encoding_bytes_and_errors": (
+            "failure",
+            "corpus",
+            24,
+        ),
+    }
+
+
+def test_canonical_diagnostic_rejects_free_form_phase_or_ordinal():
+    import pytest
+
+    for phase, ordinal in (
+        ("unsafe-value", None),
+        ("fixture", None),
+        ("corpus", "25"),
+        ("corpus", "01"),
+        ("corpus", None),
+        ("temp_baseline", "0"),
+    ):
+        with pytest.raises(ValueError, match="^Unexpected|^Ordinal") as error:
+            probe.project_diagnostic_cases(_diagnostic_xml(phase, ordinal))
+        assert "unsafe-value" not in str(error.value)

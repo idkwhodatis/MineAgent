@@ -128,3 +128,74 @@ BEGIN
     SELECT v AS request INTO op;
 {fragment}    RETURN ARRAY[request_utf8,request_ascii];
 END $$;"""
+
+
+def project_diagnostic_cases(root):
+    """Return only closed outcomes, phase names and bounded case ordinals."""
+    phases = {
+        "test_installed032g_request_encoding_bytes_and_errors": {
+            "startup",
+            "connect",
+            "installed_preflight",
+            "temp_scope",
+            "temp_baseline",
+            "temp_candidate",
+            "corpus",
+            "complete",
+        },
+        "test_default_off_populated_rd_proposal_adoption_graph_matches_candidate": {
+            "startup",
+            "original_workflow",
+            "connect",
+            "installed_preflight",
+            "temp_scope",
+            "temp_candidate",
+            "persisted_evidence",
+            "installed_graph",
+            "candidate_graph",
+            "graph_parity",
+            "complete",
+        },
+    }
+    results = {}
+    for case in root.iter("testcase"):
+        name = case.get("name")
+        if name not in phases or name in results:
+            raise ValueError("Unexpected diagnostic testcase inventory")
+        status = next(
+            (
+                tag
+                for tag in ("failure", "error", "skipped")
+                if case.find(tag) is not None
+            ),
+            "passed",
+        )
+        properties = {}
+        for prop in case.findall("./properties/property"):
+            key = prop.get("name")
+            if key in ("canonical_phase", "canonical_ordinal"):
+                if key in properties:
+                    raise ValueError("Duplicate canonical diagnostic property")
+                properties[key] = prop.get("value")
+        phase = properties.get("canonical_phase", "fixture")
+        ordinal_string = properties.get("canonical_ordinal")
+        if not (
+            phase in phases[name]
+            or (phase == "fixture" and "canonical_phase" not in properties)
+        ):
+            raise ValueError("Unexpected canonical diagnostic phase")
+        if phase == "corpus":
+            # The exact finite corpus contains 25 cases enumerated from zero.
+            if ordinal_string not in {str(i) for i in range(25)}:
+                raise ValueError("Unexpected canonical diagnostic case ordinal")
+            ordinal = int(ordinal_string)
+        else:
+            if "canonical_ordinal" in properties:
+                raise ValueError("Ordinal is only allowed for the canonical corpus")
+            ordinal = None
+        if status == "passed" and phase != "complete":
+            raise ValueError("Missing canonical diagnostic completion")
+        results[name] = (status, phase, ordinal)
+    if results.keys() != phases.keys():
+        raise ValueError("Missing exact canonical diagnostic testcase inventory")
+    return dict(sorted(results.items()))
