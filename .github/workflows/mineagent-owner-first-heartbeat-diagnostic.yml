@@ -1,19 +1,19 @@
-name: MineAgent native owner-first heartbeat diagnostic ONLY
+name: MineAgent current032g owner-only composed proof ONLY
 
 # Exact populated-proof setup excerpt, isolated push ref, no full acceptance claim.
 # The original independent populated-workflow baseline file is not changed.
 on:
   push:
-    branches: [chatgpt-dot/owner-first-heartbeat-20261122]
+    branches: [chatgpt-dot/owner-only-composed-20261122]
 
 permissions:
   contents: read
 
 jobs:
-  owner-first-diagnostic:
-    if: ${{ github.repository == 'idkwhodatis/MineAgent' && github.event_name == 'push' && github.ref == 'refs/heads/chatgpt-dot/owner-first-heartbeat-20261122' }}
+  owner-only-composed:
+    if: ${{ github.repository == 'idkwhodatis/MineAgent' && github.event_name == 'push' && github.ref == 'refs/heads/chatgpt-dot/owner-only-composed-20261122' }}
     runs-on: ubuntu-22.04
-    # Two deterministic lock tests only; not a product or full workflow gate.
+    # Isolated lock variant; never substitutes for baseline or full release gates.
     timeout-minutes: 120
     env:
       POSTGRES_USER: tradegrad_ci
@@ -259,13 +259,14 @@ jobs:
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
-      - name: Run exactly two native owner-first tests with synthetic fixtures
+      - name: Run owner-only deterministic lock proof with synthetic fixtures
         id: owner_first_native
         if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
         timeout-minutes: 15
         shell: bash
         env:
           MINEAGENT_TICKETED_NATIVE_TRIAL_REQUIRED: "1"
+          MINEAGENT_OWNER_ONLY_COMPOSED_REQUIRED: "1"
         run: |
           set -euo pipefail
           export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
@@ -275,9 +276,48 @@ jobs:
           export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
           export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
           python -m pytest -q -p no:cacheprovider \
-            tests/integration/test_workflow_owner_first_heartbeat.py::test_actual_owner_first_pulse_waits_before_row_locks_and_times_out_closed \
-            tests/integration/test_workflow_owner_first_reverse_contention.py::test_owner_first_heartbeat_preserves_independent_neutral_nowait_and_fence \
-            --junitxml=var/numeric-private/owner-first.xml >/dev/null 2>&1
+            tests/integration/test_workflow_owner_only_composed.py::test_owner_only_forward_lock_and_expiry \
+            --junitxml=var/numeric-private/owner-only-forward.xml >/dev/null 2>&1
+      - name: Confirm containment after owner-only lock proof
+        id: owner_only_middle
+        if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-oe-structured-orchestrator-v1)
+          test -z "$ids" || { echo 'Normal OE controller containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.structured.admission)
+          test -z "$ids" || { echo 'Structured engine containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
+          test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.analysis.admission)
+          test -z "$ids" || { echo 'Analysis unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2)
+          test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
+          test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Run actual current032g owner-only browser bridge and cold restore
+        id: owner_only_composed
+        if: ${{ !cancelled() && steps.native_setup.outcome == 'success' && steps.owner_first_native.outcome == 'success' && steps.owner_only_middle.outcome == 'success' }}
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED: "1"
+          MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+          MINEAGENT_OWNER_ONLY_COMPOSED_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          python -m pytest -q -p no:cacheprovider \
+            tests/integration/test_workflow_owner_only_composed.py::test_actual_current032g_owner_only_workflow_and_cold_restore \
+            --junitxml=var/numeric-private/owner-only-composed.xml >/dev/null 2>&1
       - name: Confirm containment after owner-first diagnostic
         id: owner_first_after
         if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
@@ -302,34 +342,8 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PYOWNERFIRST'
-          from pathlib import Path
-          from xml.etree import ElementTree as ET
-          source = Path('var/numeric-private/owner-first.xml')
-          if not source.is_file() or source.is_symlink() or source.stat().st_size > 20_000_000:
-              print("RD_OWNER_FIRST_V1 unavailable")
-              raise SystemExit(1)
-          try:
-              cases = list(ET.fromstring(source.read_bytes()).iter('testcase'))
-          except ET.ParseError:
-              print("RD_OWNER_FIRST_V1 unavailable")
-              raise SystemExit(1) from None
-          expected = {
-              ('tests.integration.test_workflow_owner_first_heartbeat', 'test_actual_owner_first_pulse_waits_before_row_locks_and_times_out_closed'): 'forward',
-              ('tests.integration.test_workflow_owner_first_reverse_contention', 'test_owner_first_heartbeat_preserves_independent_neutral_nowait_and_fence'): 'reverse',
-          }
-          actual = {}
-          for case in cases:
-              key = (case.get('classname'), case.get('name'))
-              if key not in expected or expected[key] in actual:
-                  print("RD_OWNER_FIRST_V1 unavailable")
-                  raise SystemExit(1)
-              actual[expected[key]] = next((tag for tag in ('failure', 'error', 'skipped') if case.find(tag) is not None), 'passed')
-          if set(actual) != {'forward', 'reverse'}:
-              print("RD_OWNER_FIRST_V1 unavailable")
-              raise SystemExit(1)
-          print("RD_OWNER_FIRST_V1 forward=" + actual['forward'] + " reverse=" + actual['reverse'])
-          if set(actual.values()) != {'passed'}:
-              raise SystemExit(1)
+          from script.owner_only_composed_report import main
+          raise SystemExit(main())
           PYOWNERFIRST
       - name: Remove only exact disposable numeric PostgreSQL
         if: always()

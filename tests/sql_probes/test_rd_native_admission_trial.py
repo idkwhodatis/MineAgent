@@ -443,3 +443,35 @@ def test_native_finally_metrics_cannot_replace_original_outcome(
             None, None, monkeypatch
         )
     assert calls == ["baseline", "print"]
+
+
+def test_owner_only_uses_committed_observation_without_fifo_or_neutral_patch(
+    monkeypatch,
+):
+    state, factory, fence, lease, originals = setup_trial(monkeypatch)
+
+    class Observer:
+        def __init__(self, bound_factory, bound_fence):
+            assert bound_factory is factory and bound_fence == fence
+
+        def observe(self, bound_factory, bound_fence, *, role):
+            assert bound_factory is factory and bound_fence == fence
+            assert role == "heartbeat"
+            state["events"].append("committed_heartbeat_observation")
+            return object()
+
+    monkeypatch.setattr(trial, "CommittedExpiryObserver", Observer)
+    with trial.native_admission_trial(owner_only=True) as counts:
+        assert lifecycle._neutral_transaction_once is originals[1]
+        assert rdagent_queue.claim_configured_run(factory) == fence
+        with lifecycle._neutral_transaction_once(factory, fence):
+            pass
+        assert lease.pulse(force=True) == "result"
+        lease.close()
+    assert not state["gates"]
+    assert "committed_heartbeat_observation" in state["events"]
+    assert "enter:neutral" not in state["events"]
+    assert "enter:heartbeat" not in state["events"]
+    assert counts["neutral_commits"] == 0
+    assert counts["pulse_returns"] == 1
+    assert lifecycle._neutral_transaction_once is originals[1]

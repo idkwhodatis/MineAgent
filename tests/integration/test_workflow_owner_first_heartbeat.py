@@ -108,7 +108,7 @@ def _lease_times(engine, attempt_id):
 
 
 def test_actual_owner_first_pulse_waits_before_row_locks_and_times_out_closed(
-    drill_databases, tmp_path, monkeypatch
+    drill_databases, tmp_path, monkeypatch, *, owner_only=False
 ):
     if os.environ.get("MINEAGENT_TICKETED_NATIVE_TRIAL_REQUIRED") != "1":
         pytest.fail(
@@ -147,7 +147,7 @@ def test_actual_owner_first_pulse_waits_before_row_locks_and_times_out_closed(
                 ).one()
 
             worker = "heartbeat-owner-first-owned-fixture"
-            with native_admission_trial() as counts:
+            with native_admission_trial(owner_only=owner_only) as counts:
                 fence = rdagent_queue.claim_configured_run(
                     env.factory, run, 1, worker, env.settings
                 )

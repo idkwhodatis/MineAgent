@@ -558,8 +558,20 @@ def run_bridge(env, engine, tmp_path):
     )
 
 
-def assert_restore(drill_databases, tmp_path, source, env, completed):
-    """Exact031 same actual graph roundtrip, with all live operators disabled."""
+def assert_restore(
+    drill_databases,
+    tmp_path,
+    source,
+    env,
+    completed,
+    *,
+    expected_revision="031_workflow_structured_stage",
+):
+    """Exact-revision same-graph roundtrip, with all live operators disabled."""
+    assert expected_revision in (
+        "031_workflow_structured_stage",
+        "032g_schema_keyset_cost",
+    )
     import pytest
     import test_backup_restore as legacy
     from oe_structured_restore_replay import _disabled_settings, _inventory
@@ -618,7 +630,7 @@ def assert_restore(drill_databases, tmp_path, source, env, completed):
     manifest = _roundtrip(
         drill_databases, tmp_path, source, env.settings.storage_root, target
     )
-    assert manifest["schema_revision"] == "031_workflow_structured_stage"
+    assert manifest["schema_revision"] == expected_revision
     assert _files(target) == files
     expected = {
         "research_closure": "mineagent.research-restore-closure.v16",

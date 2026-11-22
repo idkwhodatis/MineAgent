@@ -6,13 +6,14 @@ external I/O. A failed live-thread cleanup retains patches and fails red; run th
 trial alone in its own pytest process, never proceed after that failure.
 """
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from threading import RLock
 
 from sqlalchemy import text
 
 from packages.research_runtime.fences import AttemptFence
+from tests.sql_probes.rd_admission_expiry_observation import CommittedExpiryObserver
 from tests.sql_probes.rd_attempt_admission_candidate import AdmissionRejected
 from tests.sql_probes.rd_ticketed_admission_candidate import TicketedAdmission
 
@@ -49,7 +50,8 @@ def _lock_heartbeat_owner(session, factory, fence, ticket):
 
 
 @contextmanager
-def native_admission_trial():
+def native_admission_trial(*, owner_only=False):
+    """Owner-only retains the exact bounded lock with no FIFO or neutral patch."""
     from backend.app import research_lifecycle as lifecycle
     from workers.research import lease as lease_module
     from workers.research import rdagent_queue
@@ -98,10 +100,15 @@ def native_admission_trial():
                 raise AdmissionRejected("claim_scope_invalid")
         fence = original_claim(factory, *args, **kwargs)
         if fence is not None:
-            gate = TicketedAdmission(factory, fence)
+            gate = (
+                CommittedExpiryObserver(factory, fence)
+                if owner_only
+                else TicketedAdmission(factory, fence)
+            )
             with lock:
                 if closing or entry(factory) is not None:
-                    gate.close()
+                    if not owner_only:
+                        gate.close()
                     raise AdmissionRejected("claim_scope_invalid")
                 entries.append((factory, fence, gate))
                 counts["claims"] += 1
@@ -148,7 +155,12 @@ def native_admission_trial():
             if bound is None:
                 return original_pulse(lease, force=force)
             fence, gate = bound
-            with gate.transaction(lease.factory, fence, role="heartbeat") as ticket:
+            scope = (
+                nullcontext(gate.observe(lease.factory, fence, role="heartbeat"))
+                if owner_only
+                else gate.transaction(lease.factory, fence, role="heartbeat")
+            )
+            with scope as ticket:
                 observation = []
                 binding = pulse_scope.set((lease.factory, fence, ticket, observation))
                 try:
@@ -178,14 +190,15 @@ def native_admission_trial():
 
     def close(lease):
         bound = bind_lease(lease)
-        if bound is not None:
+        if bound is not None and not owner_only:
             bound[1].close()
         original_close(lease)
         if bound is not None and lease.thread.is_alive():
             raise AdmissionRejected("lease_thread_still_alive")
 
     rdagent_queue.claim_configured_run = claim
-    lifecycle._neutral_transaction_once = neutral
+    if not owner_only:
+        lifecycle._neutral_transaction_once = neutral
     AttemptLease.pulse, AttemptLease.close = pulse, close
     AttemptLease.start = start
     lease_module.heartbeat = heartbeat
@@ -195,8 +208,9 @@ def native_admission_trial():
         with lock:
             closing = True
             owned_entries, owned_leases = list(entries), list(leases)
-        for _, _, gate in owned_entries:
-            gate.close()
+        if not owner_only:
+            for _, _, gate in owned_entries:
+                gate.close()
         for lease in owned_leases:
             original_close(lease)
         if any(lease.thread.is_alive() for lease in owned_leases):
@@ -204,7 +218,8 @@ def native_admission_trial():
             # must be selected alone; its process termination is the final fence.
             raise AdmissionRejected("trial_cleanup_thread_alive")
         rdagent_queue.claim_configured_run = original_claim
-        lifecycle._neutral_transaction_once = original_neutral
+        if not owner_only:
+            lifecycle._neutral_transaction_once = original_neutral
         AttemptLease.pulse, AttemptLease.close = original_pulse, original_close
         AttemptLease.start = original_start
         lease_module.heartbeat = original_heartbeat
