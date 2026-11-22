@@ -1,6 +1,10 @@
+import { createMemoryHistory } from "@tanstack/react-router";
 import { expect, it } from "vitest";
 import type { NormalExecutionRecord } from "../../src/client/types.gen";
-import { normalOEExecutionSelection as select } from "../../src/lib/normal-oe-execution-selection";
+import {
+  normalOEExecutionSearchForCandidate as searchFor,
+  normalOEExecutionSelection as select,
+} from "../../src/lib/normal-oe-execution-selection";
 import { OENormalResults } from "../../src/features/oe-provider-results";
 const id = "00000000-0000-0000-0000-000000000001";
 const other = "00000000-0000-0000-0000-000000000002";
@@ -46,4 +50,45 @@ it("keys the actual stateful results child by owner and run to force remount, no
     OENormalResults({ ...props, ownerId: other }).key,
   );
   expect(original.key).not.toBe(OENormalResults({ ...props, runId: id }).key);
+});
+
+it("canonicalizes only explicit clicks on a unique owned execution", () => {
+  expect(searchFor(other, [record])).toBe(`?execution_id=${id}`);
+  expect(searchFor(id, [record])).toBeUndefined();
+  expect(searchFor(other, [{ ...record, execution_id: null }])).toBeUndefined();
+  expect(searchFor(other, [record, record])).toBeUndefined();
+  expect(
+    searchFor(other, [record, { ...record, candidate_id: id }]),
+  ).toBeUndefined();
+  expect(
+    searchFor(other, [record, { ...record, execution_id: other }]),
+  ).toBeUndefined();
+});
+
+it("adds exact selection history under a deployment prefix, preserving Back and Forward", () => {
+  const parent = { ...record, execution_id: other, candidate_id: id };
+  const records = [parent, record];
+  const path = `/mine/engine-runs/structured-search/runs/${id}`;
+  const oldSearch = `?execution_id=${id}`;
+  const history = createMemoryHistory({ initialEntries: [path + oldSearch] });
+  expect(select(history.location.search, records)).toEqual({
+    kind: "execution",
+    candidateId: other,
+  });
+  history.push(path + searchFor(id, records));
+  expect(history.location.href).toBe(`${path}?execution_id=${other}`);
+  expect(select(history.location.search, records)).toEqual({
+    kind: "execution",
+    candidateId: id,
+  });
+  history.back();
+  expect(history.location.href).toBe(path + oldSearch);
+  history.forward();
+  const fresh = createMemoryHistory({
+    initialEntries: [history.location.href],
+  });
+  expect(select(fresh.location.search, records)).toEqual({
+    kind: "execution",
+    candidateId: id,
+  });
 });

@@ -1,11 +1,20 @@
 import {
+  normalOEExecutionSearchForCandidate,
   normalOEExecutionSelection,
   normalOEResultScopeKey,
 } from "@/lib/normal-oe-execution-selection";
 import { NormalOENoteRestoration } from "./normal-oe-note-restore";
 import { NormalOENoteComposer } from "./normal-oe-note-composer";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "@tanstack/react-router";
+import { deploymentUrl } from "@/lib/deployment";
 import type {
   NormalExecutionRecord,
   NormalExecutionView,
@@ -161,34 +170,56 @@ function ScopedNormalResults({
     queryFn: ({ signal }) => oeRecords(runId, signal),
     retry: false,
   });
-  const [selected, setSelected] = useState<string | null>(null);
-  const [search, setSearch] = useState(() =>
-    typeof window === "undefined" ? "" : window.location.search,
+  const { history } = useRouter();
+  // Read raw history: the router's search serialization normalizes repeated
+  // keys and encoding, but exact execution and note validation must see them.
+  const { pathname, search } = useSyncExternalStore(
+    history.subscribe,
+    () => history.location,
   );
-  useEffect(() => {
-    const changed = () => {
-      setSearch(window.location.search);
-      setSelected(null);
-    };
-    window.addEventListener("popstate", changed);
-    return () => window.removeEventListener("popstate", changed);
-  }, []);
   if (records.isPending) return <Loading />;
   if (records.error)
     return (
       <ErrorState error={records.error} retry={() => void records.refetch()} />
     );
-  const lineage = candidateLineage(records.data);
-  const route = normalOEExecutionSelection(search, records.data);
+  return (
+    <NormalExecutionSelectionContents
+      key={search}
+      ownerId={ownerId}
+      runId={runId}
+      records={records.data}
+      pathname={pathname}
+      search={search}
+      onObservation={onObservation}
+    />
+  );
+}
+
+function NormalExecutionSelectionContents({
+  ownerId,
+  runId,
+  records,
+  pathname,
+  search,
+  onObservation,
+}: Omit<NormalResultsProps, "status"> & {
+  records: NormalExecutionRecord[];
+  pathname: string;
+  search: string;
+}) {
+  const { history } = useRouter();
+  const [noteCandidate, setNoteCandidate] = useState<string | null>(null);
+  const lineage = candidateLineage(records);
+  const route = normalOEExecutionSelection(search, records);
   const selectedCandidate =
     route.kind === "execution"
       ? route.candidateId
-      : route.kind === "unavailable"
-        ? null
-        : selected;
+      : route.kind === "note"
+        ? noteCandidate
+        : null;
   const choice = lineage.error
     ? undefined
-    : records.data.find((row) => row.candidate_id === selectedCandidate);
+    : records.find((row) => row.candidate_id === selectedCandidate);
   return (
     <Panel title="Recorded search candidates — metadata only">
       <p>
@@ -211,15 +242,23 @@ function ScopedNormalResults({
       <NormalOENoteRestoration
         ownerId={ownerId}
         runId={runId}
-        records={records.data}
-        onSelected={setSelected}
+        records={records}
+        pathname={pathname}
+        search={search}
+        onSelected={setNoteCandidate}
       />
-      {!records.data.length && <p>No candidate execution recorded yet.</p>}
+      {!records.length && <p>No candidate execution recorded yet.</p>}
       <OECandidateLineage
-        records={records.data}
+        records={records}
         selected={selectedCandidate}
         onSelect={(candidate) => {
-          if (route.kind === "none") setSelected(candidate);
+          const next = normalOEExecutionSearchForCandidate(candidate, records);
+          if (!next || search === next) return;
+          history.push(
+            deploymentUrl(
+              `/engine-runs/structured-search/runs/${encodeURIComponent(runId)}`,
+            ) + next,
+          );
         }}
       />
       {choice?.execution_id && (
@@ -229,7 +268,7 @@ function ScopedNormalResults({
           runId={runId}
           after={choice}
           onObservation={onObservation}
-          before={records.data.find(
+          before={records.find(
             (row) =>
               row.candidate_id === choice.parent_candidate_id &&
               row.execution_id !== null,
