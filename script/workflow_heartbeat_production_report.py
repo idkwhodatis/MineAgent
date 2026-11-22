@@ -400,6 +400,7 @@ _MASKED_CONTROLLER_FIELDS = {
         "sdk_stopped",
         "usage",
         "embedding_response",
+        "chat_response",
         "response_validation",
         "settlement",
     },
@@ -409,6 +410,13 @@ _MASKED_CONTROLLER_FIELDS = {
         "model_profile_id",
         "model_binding_sha256",
         "model",
+        "messages",
+        "role",
+        "content",
+        "finish_reason",
+        "max_output_tokens",
+        "temperature_millionths",
+        "response_format",
         "inputs",
         "dimensions",
         "admitted_monotonic_ns",
@@ -538,7 +546,16 @@ def _masked_controller_observation(failure):
             } and (
                 chain not in {"single", "unique_leaf"}
                 or detail.get(f"{scope}_family") != "validation"
-                or detail.get("masked_rpc_method") != "submit_embedding"
+                or detail.get("masked_rpc_method")
+                not in {"submit_chat", "submit_embedding"}
+                or (
+                    detail.get(f"{scope}_validation_boundary") == "chat_response"
+                    and detail.get("masked_rpc_method") != "submit_chat"
+                )
+                or (
+                    detail.get(f"{scope}_validation_boundary") == "embedding_response"
+                    and detail.get("masked_rpc_method") != "submit_embedding"
+                )
                 or _emit_value(
                     f"{scope}_validation_boundary",
                     detail.get(f"{scope}_validation_boundary"),

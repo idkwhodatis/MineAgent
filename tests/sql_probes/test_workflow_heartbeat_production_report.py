@@ -437,7 +437,26 @@ def test_provider_validation_cut_requires_exact_scope_and_closed_pair():
     assert read()["masked_validation_boundary"] == "sdk_intent"
     assert read()["masked_validation_field"] == "model"
     assert read()["masked_validation_type"] == "value_error"
-    assert "masked_validation_boundary" not in read(masked_rpc_method="submit_chat")
+    assert (
+        read(masked_rpc_method="submit_chat")["masked_validation_boundary"]
+        == "sdk_intent"
+    )
+    assert "masked_validation_boundary" not in read(masked_rpc_method="check_control")
+    assert "masked_validation_boundary" not in read(
+        masked_validation_boundary="chat_response"
+    )
+    assert (
+        read(
+            masked_rpc_method="submit_chat",
+            masked_validation_boundary="chat_response",
+            masked_validation_field="content",
+            masked_validation_type="string_too_short",
+        )["masked_validation_boundary"]
+        == "chat_response"
+    )
+    assert "masked_validation_boundary" not in read(
+        masked_rpc_method="submit_chat", masked_validation_boundary="embedding_response"
+    )
     assert "masked_validation_boundary" not in read(chain="ambiguous")
     assert "masked_validation_boundary" not in read(masked_family="domain")
     assert "masked_validation_field" not in read(masked_validation_boundary="private")

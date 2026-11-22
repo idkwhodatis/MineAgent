@@ -353,6 +353,11 @@ jobs:
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Observe closed RD controller state after bridge containment failure
+        if: ${{ !cancelled() && steps.bridge_clean.outcome == 'failure' }}
+        timeout-minutes: 1
+        shell: bash
+        run: python -m script.workflow_rd_controller_residue after_bridge
       - name: Run unchanged historical and upgrade cold-restore acceptance
         id: restore
         if: ${{ !cancelled() && steps.bridge_clean.outcome == 'success' && steps.bridge.outcome == 'success' }}
@@ -399,6 +404,11 @@ jobs:
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Observe closed RD controller state after restore containment failure
+        if: ${{ !cancelled() && steps.restore_clean.outcome == 'failure' }}
+        timeout-minutes: 1
+        shell: bash
+        run: python -m script.workflow_rd_controller_residue after_restore
       - name: Remove only exact disposable numeric PostgreSQL
         id: pg_cleanup
         if: always()

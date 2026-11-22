@@ -64,7 +64,13 @@ def test_exact_source_and_code_are_required(monkeypatch, tmp_path):
     assert cut._site(_trace(code, 242)) is None
 
 
-def test_real_sdk_intent_boundary_when_original_deadline_reaches_admission(monkeypatch):
+@pytest.mark.parametrize(
+    "protocol",
+    ["mineagent.rdagent-provider-chat.v1", "mineagent.rdagent-provider-embedding.v1"],
+)
+def test_real_sdk_intent_boundary_when_original_deadline_reaches_admission(
+    monkeypatch, protocol
+):
     from contextlib import nullcontext
 
     binding = NS(request_deadline_ms=1, sha256="b" * 64)
@@ -121,7 +127,7 @@ def test_real_sdk_intent_boundary_when_original_deadline_reaches_admission(monke
             call_id=uuid4(),
             idempotency_key=uuid4(),
             relation="initial",
-            protocol="private",
+            protocol=protocol,
             request_bytes=b"private",
             settings=NS(rdagent_provider_python="synthetic-fixture"),
             controller_peer=object(),
@@ -131,4 +137,28 @@ def test_real_sdk_intent_boundary_when_original_deadline_reaches_admission(monke
         "validation_boundary": "sdk_intent",
         "validation_field": "model",
         "validation_type": "value_error",
+    }
+
+
+def test_pinned_chat_response_site_and_closed_pydantic_field():
+    from packages.rdagent_provider.contracts import (
+        RDProviderChatResponse,
+        RDProviderUsage,
+    )
+
+    code = broker.submit_provider_request.__code__
+    assert cut._site(_trace(code, 300)) == "chat_response"
+    assert cut._site(_trace(code, 304)) == "embedding_response"
+    usage = RDProviderUsage(
+        input_tokens=1,
+        output_tokens=1,
+        total_tokens=2,
+        provider_request_id="private-canary",
+        usage_source="synthetic_provider",
+    )
+    with pytest.raises(ValidationError) as raised:
+        RDProviderChatResponse(content="", finish_reason="stop", usage=usage)
+    assert cut._field(raised.value) == {
+        "validation_field": "content",
+        "validation_type": "string_too_short",
     }

@@ -12,6 +12,13 @@ _FIELDS = {
     "model_profile_id",
     "model_binding_sha256",
     "model",
+    "messages",
+    "role",
+    "content",
+    "finish_reason",
+    "max_output_tokens",
+    "temperature_millionths",
+    "response_format",
     "inputs",
     "dimensions",
     "admitted_monotonic_ns",
@@ -143,6 +150,8 @@ def _site(trace):
         return {264: "sdk_started", 266: "sdk_stopped"}.get(callback_line)
     if 291 <= line <= 298:
         return "usage"
+    if 300 <= line <= 302:
+        return "chat_response"
     if line == 304:
         return "embedding_response"
     if line == 306 and ("validate" in sites or "parse" in sites):

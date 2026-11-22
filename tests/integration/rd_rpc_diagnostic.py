@@ -941,7 +941,10 @@ def _masked_controller_summary(original):
             boundary = broker_busy_boundary(error.__traceback__)
             if boundary is not None:
                 row["broker_boundary"] = boundary
-        if original_method == "submit_embedding" and row.get("family") == "validation":
+        if (
+            original_method in {"submit_chat", "submit_embedding"}
+            and row.get("family") == "validation"
+        ):
             from tests.integration.rd_broker_validation_cut import broker_validation_cut
 
             row.update(broker_validation_cut(error))
