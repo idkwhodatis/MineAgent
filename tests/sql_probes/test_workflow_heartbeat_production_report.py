@@ -406,3 +406,38 @@ def test_provider_broker_boundary_requires_exact_masked_controller_deadline():
     }
     assert read(chain="unique_leaf", **nested)["nested_broker_boundary"] == "reserve"
     assert "nested_broker_boundary" not in read(**nested)
+
+
+def test_provider_validation_cut_requires_exact_scope_and_closed_pair():
+    import json
+
+    detail = {
+        "state": "observed",
+        "chain": "single",
+        "masked_rpc_method": "submit_embedding",
+        "masked_family": "validation",
+        "masked_validation_boundary": "sdk_intent",
+        "masked_validation_field": "model",
+        "masked_validation_type": "value_error",
+    }
+
+    def read(**overrides):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps(
+                {
+                    "code": "rd_provider_containment_unknown",
+                    "masked_controller": {**detail, **overrides},
+                }
+            )
+        )
+
+    assert read()["masked_validation_boundary"] == "sdk_intent"
+    assert read()["masked_validation_field"] == "model"
+    assert read()["masked_validation_type"] == "value_error"
+    assert "masked_validation_boundary" not in read(masked_rpc_method="submit_chat")
+    assert "masked_validation_boundary" not in read(chain="ambiguous")
+    assert "masked_validation_boundary" not in read(masked_family="domain")
+    assert "masked_validation_field" not in read(masked_validation_boundary="private")
+    assert "masked_validation_field" not in read(masked_validation_type="private")
+    assert "masked_validation_type" not in read(masked_validation_field="private")

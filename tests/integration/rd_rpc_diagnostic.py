@@ -919,7 +919,11 @@ def _masked_controller_summary(original):
         "neutral_busy_origin",
         "receipt_boundary",
         "broker_boundary",
+        "validation_boundary",
+        "validation_field",
+        "validation_type",
     )
+    original_method = _closed_trace_context(original).get("rpc_method")
 
     def details(error, scope):
         row = {
@@ -937,12 +941,22 @@ def _masked_controller_summary(original):
             boundary = broker_busy_boundary(error.__traceback__)
             if boundary is not None:
                 row["broker_boundary"] = boundary
+        if original_method == "submit_embedding" and row.get("family") == "validation":
+            from tests.integration.rd_broker_validation_cut import broker_validation_cut
+
+            row.update(broker_validation_cut(error))
         return {f"{scope}_{key}": row[key] for key in fields if key in row}
 
     projected = {"state": "observed", **details(original, "masked")}
 
     def uncertain(chain):
-        projected.pop("masked_broker_boundary", None)
+        for key in (
+            "broker_boundary",
+            "validation_boundary",
+            "validation_field",
+            "validation_type",
+        ):
+            projected.pop(f"masked_{key}", None)
         return {**projected, "chain": chain}
 
     # Traverse both explicit causes and suppressed contexts. Do not pass off a

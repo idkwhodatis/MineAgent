@@ -315,6 +315,70 @@ _MASKED_CONTROLLER_FIELDS = {
             "settle",
         }
     ),
+    "validation_boundary": {
+        "request",
+        "configuration",
+        "replay",
+        "sdk_intent",
+        "sdk_started",
+        "sdk_stopped",
+        "usage",
+        "embedding_response",
+        "response_validation",
+        "settlement",
+    },
+    "validation_field": {
+        "schema_version",
+        "kind",
+        "model_profile_id",
+        "model_binding_sha256",
+        "model",
+        "inputs",
+        "dimensions",
+        "admitted_monotonic_ns",
+        "deadline_monotonic_ns",
+        "maximum_duration_ms",
+        "boot_id",
+        "identity",
+        "observed_monotonic_ns",
+        "leader_reaped",
+        "process_group_absent",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "provider_request_id",
+        "usage_source",
+        "billing_status",
+        "vectors",
+        "usage",
+        "transport_id",
+        "request_sha256",
+        "process_id",
+        "process_group_id",
+    },
+    "validation_type": {
+        "value_error",
+        "missing",
+        "int_type",
+        "float_type",
+        "bool_type",
+        "string_type",
+        "uuid_type",
+        "uuid_parsing",
+        "string_pattern_mismatch",
+        "literal_error",
+        "finite_number",
+        "greater_than",
+        "greater_than_equal",
+        "less_than_equal",
+        "too_short",
+        "too_long",
+        "string_too_short",
+        "string_too_long",
+        "tuple_type",
+        "extra_forbidden",
+        "model_type",
+    },
     "analysis_stage": {
         "worker",
         "record_identity",
@@ -389,6 +453,36 @@ def _masked_controller_observation(failure):
                 != "gate_expired_controller"
                 or detail.get("masked_rpc_method")
                 not in {"submit_chat", "submit_embedding"}
+            ):
+                continue
+            if key in {
+                "validation_boundary",
+                "validation_field",
+                "validation_type",
+            } and (
+                chain not in {"single", "unique_leaf"}
+                or detail.get(f"{scope}_family") != "validation"
+                or detail.get("masked_rpc_method") != "submit_embedding"
+                or _emit_value(
+                    f"{scope}_validation_boundary",
+                    detail.get(f"{scope}_validation_boundary"),
+                )
+                == "unavailable"
+                or (
+                    key != "validation_boundary"
+                    and (
+                        _emit_value(
+                            f"{scope}_validation_field",
+                            detail.get(f"{scope}_validation_field"),
+                        )
+                        == "unavailable"
+                        or _emit_value(
+                            f"{scope}_validation_type",
+                            detail.get(f"{scope}_validation_type"),
+                        )
+                        == "unavailable"
+                    )
+                )
             ):
                 continue
             value = _emit_value(field, detail.get(field))
