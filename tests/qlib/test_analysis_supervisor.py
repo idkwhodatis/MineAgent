@@ -1,6 +1,8 @@
 """Analysis issuer/transport doubles only; no Docker result or admission claim."""
 
 import hashlib
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -85,6 +87,68 @@ def test_closed_create_profile():
     assert args[args.index("--pids-limit") + 1] == "32"
     assert "type=bind,src=/private/input,dst=/input/analysis.json,readonly" in args
     assert not any("socket" in item for item in args)
+
+
+def _require_precreate_with_private_umask(root):
+    import os
+    import stat
+
+    from runtimes.research_supervisor.supervisor import operation_path
+
+    os.umask(0o077)  # Isolated in the test subprocess, as in the hosted gate.
+    intent, files = bound()
+    authority = _mint_analysis_authority(intent, files, {})
+    supervisor = AnalysisSupervisor(intent.admission.image_id, "sha256:" + "f" * 64)
+    operation = operation_path(root, intent.admission)
+    input_path = operation / "inputs" / "analysis.json"
+    calls = []
+
+    class BeforeDockerCreate(Exception):
+        pass
+
+    def command(args):
+        assert args[0] == "create"
+        assert input_path.read_bytes() == files["/input/analysis.json"]
+        assert stat.S_IMODE(input_path.stat().st_mode) == 0o444
+        assert (
+            stat.S_IMODE((operation / "control" / "launch.json").stat().st_mode)
+            == 0o600
+        )
+        assert f"type=bind,src={input_path},dst=/input/analysis.json,readonly" in args
+        calls.append("create")
+        raise BeforeDockerCreate()
+
+    def stop(storage, admission, *, original_deadline):
+        assert storage == root and admission == intent.admission
+        assert original_deadline == authority.deadline + 1
+        calls.append("cleanup")
+
+    def unexpected_identity(_):
+        raise AssertionError("must not observe an identity before Docker create")
+
+    supervisor.client._command = command
+    supervisor.stop_and_verify = stop
+    with pytest.raises(BeforeDockerCreate):
+        supervisor.execute(root, authority, on_identity=unexpected_identity)
+    assert calls == ["create", "cleanup"]
+
+
+def test_private_umask_preserves_evaluator_mount_mode_before_create(tmp_path):
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; from pathlib import Path; "
+                "from tests.qlib.test_analysis_supervisor import "
+                "_require_precreate_with_private_umask; "
+                "_require_precreate_with_private_umask(Path(sys.argv[1]))"
+            ),
+            str(tmp_path),
+        ],
+        check=True,
+        timeout=20,
+    )
 
 
 class Reader:

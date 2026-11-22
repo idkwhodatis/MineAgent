@@ -1,6 +1,8 @@
 """Structured issuer/transport doubles only; no Docker result or admission claim."""
 
 import hashlib
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -109,6 +111,63 @@ def test_closed_create_profile():
     assert args[args.index("--pids-limit") + 1] == "64"
     assert "type=bind,src=/private/input,dst=/input/strategy.json,readonly" in args
     assert not any("socket" in item for item in args)
+
+
+def test_staged_readonly_inputs_pass_precreate_verification_under_private_umask(
+    tmp_path,
+):
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+from pathlib import Path
+from stat import S_IMODE
+from sys import argv
+from unittest.mock import patch
+
+from tests.structured_factor_strategy.test_supervisor import bound
+from runtimes.research_supervisor.structured_factor_supervisor import (
+    StructuredSupervisor, _mint_structured_authority, operation_path,
+)
+
+class CreateReached(Exception):
+    pass
+
+root = Path(argv[1])
+intent, files = bound()
+supervisor = StructuredSupervisor(intent.admission.image_id, "sha256:" + "f" * 64)
+authority = _mint_structured_authority(intent, files, {"image_id": intent.admission.image_id})
+operation = operation_path(root, intent.admission)
+
+def command(args):
+    assert args[0] == "create"
+    assert S_IMODE((operation / "control" / "launch.json").stat().st_mode) == 0o600
+    for destination, expected in files.items():
+        source = operation / "inputs" / Path(destination).name
+        assert S_IMODE(source.stat().st_mode) == 0o444
+        assert source.read_bytes() == expected
+        assert f"type=bind,src={source},dst={destination},readonly" in args
+    raise CreateReached()
+
+# Real staging, durable journal readback and both input verifications; no
+# Docker invocation or synthetic containment receipt.
+with patch.object(supervisor.client, "_command", command), patch.object(
+    supervisor, "stop_and_verify"
+) as stop:
+    try:
+        supervisor.execute(root, authority, on_identity=lambda _: None)
+    except CreateReached:
+        stop.assert_called_once()
+    else:
+        raise AssertionError("structured supervisor never reached Docker create")
+""",
+            str(tmp_path),
+        ],
+        check=True,
+        timeout=15,
+        umask=0o077,
+    )
 
 
 class Reader:

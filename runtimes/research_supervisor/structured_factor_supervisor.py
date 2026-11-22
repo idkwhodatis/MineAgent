@@ -158,6 +158,8 @@ def _write_bytes(path, content, mode):
             if written <= 0:
                 raise ProcessError("structured_process_output")
             view = view[written:]
+        # Set the contract mode on the exclusive inode, independent of umask.
+        os.fchmod(fd, mode)
         os.fsync(fd)
         os.fsync(directory)
     finally:

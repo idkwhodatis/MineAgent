@@ -141,6 +141,9 @@ def _write_bytes(path, content, mode):
             if written <= 0:
                 raise ProcessError("analysis_process_output")
             view = view[written:]
+        # Restore the contract mode on this exclusively created inode. A
+        # restrictive host umask must not make the read-only mount unreadable.
+        os.fchmod(fd, mode)
         os.fsync(fd)
         os.fsync(directory)
     finally:
