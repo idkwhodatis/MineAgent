@@ -58,10 +58,17 @@ def test_observer_reuses_original_default_terminal_assertions_only():
         workflow.count('os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED")') == 1
     )
     assert (
-        "assert_browser_history(wid)\n"
+        "observe_graph = (\n"
+        '                        os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED") == "1"\n'
+        "                    )\n"
+        "                    assert_browser_history(wid)\n"
         "                    assert_restored_history(wid)\n"
-        "                    observe_graph = ("
+        "                    return"
     ) in workflow
+    assert (
+        "        observe_graph = False\n    finally:\n        engine.dispose()"
+        in workflow
+    )
     assert "_unchanged_workflow" not in experiment
     assert "def " + probe.GRAPH_CASE not in experiment
 

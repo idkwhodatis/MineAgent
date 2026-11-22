@@ -890,11 +890,11 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                         )
                         == 4
                     )
-                    assert_browser_history(wid)
-                    assert_restored_history(wid)
                     observe_graph = (
                         os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED") == "1"
                     )
+                    assert_browser_history(wid)
+                    assert_restored_history(wid)
                     return
 
                 # A user explicitly edits the future stage selection at the verified
@@ -1196,6 +1196,8 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 )
                 assert_browser_history(wid)
                 assert_restored_history(wid)
+        # Fallthrough (including any suppressed error) is not the default return.
+        observe_graph = False
     finally:
         engine.dispose()
         # A successful default run reaches this point after all original
