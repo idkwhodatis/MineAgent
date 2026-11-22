@@ -35,12 +35,23 @@ CHAT_OBJECTS = frozenset(
 class QlibCost:
     """One synchronous, fixture-owned Qlib RPC on its exact worker engine."""
 
-    def __init__(self, engine, observe_transaction, *, method, policy, child, ordinal):
+    def __init__(
+        self,
+        engine,
+        observe_transaction,
+        *,
+        method,
+        policy,
+        child,
+        ordinal,
+        wait_sampler=None,
+    ):
         if method not in METHODS or policy not in POLICIES or child not in CHILDREN:
             raise ValueError("closed Qlib diagnostic labels required")
         self.engine, self.observe_transaction = engine, observe_transaction
         self.method, self.policy, self.child = method, policy, child
         self.ordinal = min(1_000_000, max(0, ordinal))
+        self.wait_sampler = wait_sampler
         self.thread = get_ident()
         self.publication = None
         self.receipt = None
@@ -155,10 +166,35 @@ class QlibCost:
         return observed
 
     def wrap_driver(self, original):
+        sampler = self.wait_sampler
+        commit = original
+        if sampler is not None:
+            from tests.integration.rd_qlib_wait_diagnostic import COMMIT_STAGES
+
+            def commit(connection):
+                token = None
+                try:
+                    ordinal = self.target(self.committing)
+                    if (
+                        ordinal is not None
+                        and self.stages.get(ordinal) in COMMIT_STAGES
+                    ):
+                        token = sampler.begin(connection, ordinal)
+                except BaseException:  # noqa: BLE001, S110 -- never change commit
+                    pass
+                try:
+                    return original(connection)
+                finally:
+                    if token is not None:
+                        try:
+                            sampler.end(token)
+                        except BaseException:  # noqa: BLE001, S110 -- retain result
+                            pass
+
         @wraps(original)
         def observed(connection):
             return self.timed(
-                "dbapi_commit", lambda: self.committing, original, connection
+                "dbapi_commit", lambda: self.committing, commit, connection
             )
 
         return observed

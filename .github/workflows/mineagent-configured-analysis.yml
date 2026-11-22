@@ -415,6 +415,7 @@ jobs:
         shell: bash
         env:
           MINEAGENT_QLIB_RPC_COST: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121')) && '1' || '0' }}
+          MINEAGENT_QLIB_WAIT_PROFILE: ${{ github.repository == 'idkwhodatis/MineAgent' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121' && '1' || '0' }}
         run: |
           set -euo pipefail
           export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"

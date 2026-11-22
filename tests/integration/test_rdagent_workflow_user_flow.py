@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import secrets
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace as NS
 from uuid import UUID, uuid4
@@ -21,6 +22,7 @@ from rd_composed_profile_fixture import PROFILE, assert_composed_controller
 from rd_configured_dataset_fixture import persist_configured_dataset
 from rd_pg_diagnostic import diagnose_provider_functions
 from rd_provider_fixture import DERIVED_SOURCE, GUIDANCE, SOURCE, provider_server
+from rd_qlib_wait_diagnostic import TARGET_CHAT, sample_waits
 from rd_rpc_diagnostic import diagnose_rd_queue
 from rd_submission_fixture import body, login, profile
 from rd_terminal_diagnostic import diagnose_rd_terminal
@@ -36,18 +38,67 @@ EXTERNAL_TEXT = (
 pytestmark = pytest.mark.postgres
 
 
+@contextmanager
+def _diagnose_workflow_run(factory, run_id, *, qlib_fixture, wait_url, pytestconfig):
+    def closed_output(line):
+        # Emit only constructed closed payloads directly. Do not suspend either
+        # global capture or any test-level capture of original worker output.
+        terminal = pytestconfig.pluginmanager.get_plugin("terminalreporter")
+        if terminal is not None:
+            terminal.write_line(line)
+
+    sampler = None
+    try:
+        with (
+            sample_waits(wait_url) as sampler,
+            diagnose_rd_queue(
+                factory,
+                run_id,
+                qlib_fixture=qlib_fixture,
+                qlib_wait=sampler,
+                qlib_output=closed_output if wait_url is not None else None,
+            ),
+        ):
+            yield
+    finally:
+        if wait_url is not None and qlib_fixture is not None:
+            try:
+                _, policy, child = qlib_fixture
+                report = {
+                    "policy": policy,
+                    "child": child,
+                    "chat_ordinal": TARGET_CHAT,
+                    **(
+                        {"status": "unavailable", "rpc_ordinal": None}
+                        if sampler is None
+                        else sampler.report()
+                    ),
+                }
+                closed_output(
+                    "RD_QLIB_WAIT_V1:"
+                    + json.dumps(report, sort_keys=True, separators=(",", ":"))
+                )
+            except BaseException:  # noqa: BLE001, S110 -- not an acceptance gate
+                pass
+
+
 @pytest.mark.parametrize(
     "allow_feedback_release",
     [False, True],
     ids=["default-off-waits", "explicit-opt-in-two-children"],
 )
 def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results(
-    drill_databases, tmp_path, monkeypatch, allow_feedback_release
+    drill_databases, tmp_path, monkeypatch, allow_feedback_release, pytestconfig
 ):
     if os.environ.get("MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED") != "1":
         pytest.fail("Explicit032c actual workflow runtime gate required", pytrace=False)
     qlib_cost = os.environ.get("MINEAGENT_QLIB_RPC_COST") == "1"
     cost_policy = "explicit_opt_in" if allow_feedback_release else "default_off"
+    wait_url = (
+        drill_databases.source
+        if qlib_cost and os.environ.get("MINEAGENT_QLIB_WAIT_PROFILE") == "1"
+        else None
+    )
     import test_backup_restore as legacy
 
     from backend.app.core.security import get_password_hash
@@ -595,12 +646,14 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 queue = create_queue_app(settings)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_first"),
-                    diagnose_rd_queue(
+                    _diagnose_workflow_run(
                         factory,
                         rid,
                         qlib_fixture=(user.id, cost_policy, "first")
                         if qlib_cost
                         else None,
+                        wait_url=wait_url,
+                        pytestconfig=pytestconfig,
                     ),
                     queue.open(),
                 ):
@@ -967,12 +1020,14 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 assert_stalled_delivery_recovers(factory, second_id)
                 with (
                     diagnose_provider_functions(engine, stage="workflow_seeded"),
-                    diagnose_rd_queue(
+                    _diagnose_workflow_run(
                         factory,
                         second_id,
                         qlib_fixture=(user.id, cost_policy, "seeded")
                         if qlib_cost
                         else None,
+                        wait_url=wait_url,
+                        pytestconfig=pytestconfig,
                     ),
                     queue.open(),
                 ):

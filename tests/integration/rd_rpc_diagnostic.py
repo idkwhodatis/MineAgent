@@ -31,7 +31,7 @@ def _milliseconds(value):
 
 
 @contextmanager
-def diagnose_rd_rpc(*, qlib_scope=None):
+def diagnose_rd_rpc(*, qlib_scope=None, qlib_wait=None, qlib_output=None):
     from backend.app import rdagent_operational_broker as fixture_broker
     from backend.app import rdagent_provider_broker as provider_broker
     from backend.app import rdagent_provider_handler as provider_handler
@@ -40,6 +40,7 @@ def diagnose_rd_rpc(*, qlib_scope=None):
     from packages.research_runtime.resource_scopes import SCOPES
     from runtimes.rdagent_operational import rpc
     from tests.integration.rd_analysis_stage_diagnostic import diagnose_analysis_stages
+    from tests.integration.rd_qlib_wait_diagnostic import TARGET_CHAT
     from workers.research import rdagent_operational as worker
 
     original_serve, original_receive, original_send = (
@@ -49,6 +50,8 @@ def diagnose_rd_rpc(*, qlib_scope=None):
     )
     tail = deque(maxlen=64)
     qlib_costs = deque(maxlen=6)
+    qlib_chat_count = 0
+    qlib_comparison = None
     transactions = deque(maxlen=128)
     failures = []
     totals = {}
@@ -130,6 +133,7 @@ def diagnose_rd_rpc(*, qlib_scope=None):
             unit.reset(token)
 
     def with_qlib_cost(rpc_state, call, *args, **kwargs):
+        nonlocal qlib_chat_count, qlib_comparison
         binding = rpc_state["binding"]
         method = rpc_state["method"]
         if method not in {"generation_boundary", "submit_chat"} or binding is None:
@@ -140,6 +144,14 @@ def diagnose_rd_rpc(*, qlib_scope=None):
                 if (binding[1].run_id, binding[1].owner_id) == (run, owner):
                     from tests.integration.rd_qlib_cost_diagnostic import QlibCost
 
+                    compare = False
+                    if qlib_output is not None and method == "submit_chat":
+                        # handle() is reached only after the original RPC
+                        # authenticates. Count only this fixture's bound chats.
+                        qlib_chat_count = min(TARGET_CHAT + 1, qlib_chat_count + 1)
+                        compare = qlib_chat_count == TARGET_CHAT
+                    if compare and qlib_wait is not None:
+                        qlib_wait.rpc_ordinal = rpc_state["ordinal"]
                     cost = QlibCost(
                         binding[0].kw["bind"],
                         observation,
@@ -147,10 +159,13 @@ def diagnose_rd_rpc(*, qlib_scope=None):
                         policy=policy,
                         child=child,
                         ordinal=rpc_state["ordinal"],
+                        wait_sampler=qlib_wait if compare else None,
                     )
                     stack.enter_context(cost.installed())
                     rpc_state["qlib_cost"] = cost
                     qlib_costs.append(cost)
+                    if compare:
+                        qlib_comparison = cost
             except Exception:  # noqa: BLE001, S110 -- diagnostic only
                 pass
             return call(*args, **kwargs)
@@ -384,13 +399,20 @@ def diagnose_rd_rpc(*, qlib_scope=None):
                 )
             yield
     finally:
-        for cost in qlib_costs:
+        # Keep the selected chat even if later calls evict it from the private
+        # tail; emit it once through the closed comparison channel.
+        costs = [cost for cost in qlib_costs if cost is not qlib_comparison]
+        if qlib_comparison is not None:
+            costs.append(qlib_comparison)
+        for cost in costs:
             try:
-                print(
-                    "RD_QLIB_COST_V1:"
-                    + json.dumps(cost.report(), sort_keys=True, separators=(",", ":")),
-                    flush=True,
+                line = "RD_QLIB_COST_V1:" + json.dumps(
+                    cost.report(), sort_keys=True, separators=(",", ":")
                 )
+                if cost is qlib_comparison:
+                    qlib_output(line)
+                else:
+                    print(line, flush=True)
             except BaseException:  # noqa: BLE001, S110 -- do not mask original work
                 pass
         if totals:
@@ -829,7 +851,9 @@ def _queue_state(factory, run_id):
 
 
 @contextmanager
-def diagnose_rd_queue(factory, run_id, *, qlib_fixture=None):
+def diagnose_rd_queue(
+    factory, run_id, *, qlib_fixture=None, qlib_wait=None, qlib_output=None
+):
     """Observe the original queue callback; retain its exception and retry policy."""
     from workers.research import rdagent_queue
 
@@ -864,7 +888,11 @@ def diagnose_rd_queue(factory, run_id, *, qlib_fixture=None):
     try:
         with (
             diagnose_rd_rpc(
-                qlib_scope=(run_id, *qlib_fixture) if qlib_fixture is not None else None
+                qlib_scope=(run_id, *qlib_fixture)
+                if qlib_fixture is not None
+                else None,
+                qlib_wait=qlib_wait,
+                qlib_output=qlib_output,
             ),
             patch.object(rdagent_queue, "execute", execute),
         ):
