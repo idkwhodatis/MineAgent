@@ -172,6 +172,41 @@ def test_projection_revalidates_properties_and_does_not_publish_passes(tmp_path)
     assert _drain_verdict(tmp_path, "bridge") == {}
 
 
+def test_observer_cut_projects_only_the_first_closed_observer_stage(tmp_path):
+    captured = (
+        'RD_QUEUE_FAILURE:{"family":"process","code":"rd_controller_daemon_identity",'
+        '"stage":"observer","observer_failure":"container_state","rpc_method":"check_control"}\n'
+        'RD_QUEUE_FAILURE:{"stage":"observer","observer_failure":"deadline"}\n'
+    )
+    assert _drain_observations(captured) == {
+        "family": "process",
+        "code": "rd_controller_daemon_identity",
+        "stage": "observer",
+        "observer_failure": "container_state",
+        "rpc_method": "check_control",
+    }
+    assert "observer_failure" not in _drain_observations(
+        captured.replace("container_state", "private-canary", 1)
+    )
+    assert "observer_failure" not in _drain_observations(
+        captured.replace('"observer"', '"controller"', 1)
+    )
+    properties = (
+        '<properties><property name="proof_phase" value="rd_waiting_release"/>'
+        '<property name="rd_drain_stage" value="observer"/>'
+        '<property name="rd_drain_observer_failure" value="deadline"/></properties>'
+    )
+    _write(tmp_path, "bridge", properties + "<failure>private</failure>")
+    assert _drain_verdict(tmp_path, "bridge")["observer_failure"] == "deadline"
+    _write(
+        tmp_path,
+        "bridge",
+        properties.replace('value="observer"', 'value="controller"')
+        + "<failure>private</failure>",
+    )
+    assert "observer_failure" not in _drain_verdict(tmp_path, "bridge")
+
+
 def test_masked_controller_never_projects_unbounded_or_ambiguous_nested_fields():
     import json
 

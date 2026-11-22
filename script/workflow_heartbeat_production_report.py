@@ -121,6 +121,8 @@ _DRAIN_FIELDS = {
             "neutral_transaction_lost",
             "attempt_fenced",
             "rd_controller_deadline",
+            "rd_controller_daemon_identity",
+            "rd_controller_peer",
             "rd_controller_incomplete_generation",
             "rd_controller_original_deadline_completion_missing",
             "rd_controller_incomplete_or_failed_reports",
@@ -206,6 +208,16 @@ _DRAIN_FIELDS = {
             "execute_or_reuse",
             "finish_evaluation",
             "generation_boundary",
+        }
+    ),
+    "observer_failure": frozenset(
+        {
+            "deadline",
+            "container_state",
+            "host_snapshot",
+            "host_read",
+            "daemon_top",
+            "unknown",
         }
     ),
     **dict.fromkeys(_ROLES, _UNIT_STATES),
@@ -380,6 +392,10 @@ def _drain_observations(stdout):
                 for key in ("family", "code", "stage", "sqlstate", "rpc_method")
             }
         )
+        if result.get("stage") == "observer":
+            result["observer_failure"] = _emit_value(
+                "observer_failure", failures[0].get("observer_failure")
+            )
         result.update(_masked_controller_observation(failures[0]))
     states = seen.get("RD_QUEUE_STATE:", [])
     if states:
@@ -457,6 +473,8 @@ def _drain_verdict(root, name):
             {"code": fields.get("code"), "masked_controller": detail}
         )
     )
+    if fields.get("stage") != "observer":
+        fields.pop("observer_failure", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 
