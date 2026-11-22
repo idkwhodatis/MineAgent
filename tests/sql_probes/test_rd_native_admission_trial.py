@@ -8,15 +8,24 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from backend.app import research_lifecycle as lifecycle
+from backend.app import services
 from packages.research_runtime.fences import AttemptFence
 from tests.sql_probes import rd_native_admission_trial as trial
 from tests.sql_probes.rd_attempt_admission_candidate import AdmissionRejected
+from workers.research import lease as lease_module
 from workers.research import rdagent_queue
 from workers.research.lease import AttemptLease
 
 
 def setup_trial(monkeypatch):
-    state = {"events": [], "gates": [], "fail": None, "alive": False}
+    state = {
+        "events": [],
+        "gates": [],
+        "fail": None,
+        "alive": False,
+        "heartbeat": lease_module.heartbeat,
+        "ticket": None,
+    }
     factory = sessionmaker()
     fence = AttemptFence(UUID(int=1), UUID(int=2), UUID(int=3), 1, UUID(int=4))
 
@@ -31,7 +40,7 @@ def setup_trial(monkeypatch):
             if state["fail"] is not None:
                 raise state["fail"]
             try:
-                yield
+                yield state["ticket"]
             finally:
                 state["events"].append("exit:" + role)
 
@@ -98,7 +107,13 @@ def test_original_claim_then_whole_neutral_and_pulse_then_restore(monkeypatch):
         "original_pulse_commit",
     ]
     assert state["events"].index("gate_close") < state["events"].index("original_close")
-    assert counts == {"claims": 1, "neutral_commits": 1, "pulse_returns": 1}
+    assert counts == {
+        "claims": 1,
+        "neutral_commits": 1,
+        "pulse_returns": 1,
+        "owner_first_pulses": 0,
+    }
+    assert lease_module.heartbeat is state["heartbeat"]
     assert (
         rdagent_queue.claim_configured_run,
         lifecycle._neutral_transaction_once,
@@ -175,6 +190,114 @@ def test_live_thread_fails_red_and_does_not_restore_under_thread(monkeypatch):
             AttemptLease.close,
             AttemptLease.start,
         ) = originals
+        lease_module.heartbeat = state["heartbeat"]
+
+
+@pytest.mark.parametrize(
+    ("existing", "remaining", "timeout"),
+    [("0", 0.21575, "215ms"), ("0", 8, "5000ms"), ("15ms", 8, "15ms")],
+)
+def test_owner_lock_limits_only_original_fenced_pulse_transaction(
+    monkeypatch, existing, remaining, timeout
+):
+    state, factory, fence, lease, _originals = setup_trial(monkeypatch)
+    bind = object()
+    factory.configure(bind=bind)
+
+    def execute(statement, params=None):
+        if params is None:
+            return SimpleNamespace(one=lambda: (existing, 0 if existing == "0" else 15))
+        state["events"].append(("timeout", params["timeout"]))
+
+    session = SimpleNamespace(
+        execute=execute,
+        get_bind=lambda: bind,
+        in_transaction=lambda: True,
+        in_nested_transaction=lambda: False,
+    )
+
+    def check_remaining(f, attempt, *, role):
+        assert (f, attempt, role) == (factory, fence, "heartbeat")
+        state["events"].append("expiry")
+        return remaining
+
+    state["ticket"] = SimpleNamespace(remaining=check_remaining)
+
+    def owner(s, key):
+        assert s is session
+        assert key == f"submit:{fence.owner_id}"
+        state["events"].append("owner_lock")
+
+    def original_heartbeat(s, attempt, generation, token, settings):
+        assert s is session
+        state["events"].append("original_fenced_heartbeat")
+        return True
+
+    def original_pulse(current, force=False):
+        assert lease_module.heartbeat(
+            session,
+            current.attempt_id,
+            current.generation,
+            current.token,
+            current.settings,
+        )
+        state["events"].append("original_pulse_commit")
+
+    monkeypatch.setattr(services, "advisory_lock", owner)
+    monkeypatch.setattr(lease_module, "heartbeat", original_heartbeat)
+    monkeypatch.setattr(AttemptLease, "pulse", original_pulse)
+    with trial.native_admission_trial() as counts:
+        # An otherwise identical direct call outside the trial's pulse scope is
+        # not enrolled, even after this exact factory/fence is claimed.
+        rdagent_queue.claim_configured_run(factory)
+        lease_module.heartbeat(
+            session, lease.attempt_id, lease.generation, lease.token, lease.settings
+        )
+        lease.pulse(force=True)
+
+    assert state["events"][:11] == [
+        "original_claim",
+        "original_fenced_heartbeat",
+        "enter:heartbeat",
+        "expiry",
+        ("timeout", timeout),
+        "owner_lock",
+        ("timeout", existing),
+        "expiry",
+        "original_fenced_heartbeat",
+        "original_pulse_commit",
+        "exit:heartbeat",
+    ]
+    assert counts["owner_first_pulses"] == counts["pulse_returns"] == 1
+    assert lease_module.heartbeat is original_heartbeat
+
+
+@pytest.mark.parametrize("boundary", ("before", "after"))
+def test_expired_original_ticket_never_reaches_heartbeat(monkeypatch, boundary):
+    _state, factory, fence, _lease, _originals = setup_trial(monkeypatch)
+    bind = object()
+    factory.configure(bind=bind)
+    calls = []
+    countdown = iter([0.001] if boundary == "after" else [])
+
+    def remaining(*args, **kwargs):
+        result = next(countdown, None)
+        if result is None:
+            raise AdmissionRejected("expired")
+        return result
+
+    session = SimpleNamespace(
+        execute=lambda *_args: SimpleNamespace(one=lambda: ("0", 0)),
+        get_bind=lambda: bind,
+        in_transaction=lambda: True,
+        in_nested_transaction=lambda: False,
+    )
+    monkeypatch.setattr(services, "advisory_lock", lambda *_: calls.append("owner"))
+    with pytest.raises(AdmissionRejected, match="expired"):
+        trial._lock_heartbeat_owner(
+            session, factory, fence, SimpleNamespace(remaining=remaining)
+        )
+    assert calls == (["owner"] if boundary == "after" else [])
 
 
 def test_nested_context_preserves_original_rejection_before_gate(monkeypatch):
@@ -257,6 +380,7 @@ def test_metrics_output_is_bounded_and_drops_unrecognized_private_fields(capsys)
             "claims": 10**20,
             "neutral_commits": 2,
             "pulse_returns": 3,
+            "owner_first_pulses": 1,
             "private": "secret-fence-token",
         }
     )
@@ -288,7 +412,12 @@ def test_native_finally_metrics_cannot_replace_original_outcome(
 
     @contextmanager
     def context():
-        yield {"claims": 1, "neutral_commits": 2, "pulse_returns": 3}
+        yield {
+            "claims": 1,
+            "neutral_commits": 2,
+            "pulse_returns": 3,
+            "owner_first_pulses": 1,
+        }
 
     def baseline(*args):
         calls.append("baseline")

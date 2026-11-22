@@ -7,16 +7,51 @@ trial alone in its own pytest process, never proceed after that failure.
 """
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 from threading import RLock
+
+from sqlalchemy import text
 
 from packages.research_runtime.fences import AttemptFence
 from tests.sql_probes.rd_attempt_admission_candidate import AdmissionRejected
 from tests.sql_probes.rd_ticketed_admission_candidate import TicketedAdmission
 
+OWNER_LOCK_MAX_MS = 5000
+
+
+def _lock_heartbeat_owner(session, factory, fence, ticket):
+    """Bound only the additional lock, then run the original live fence."""
+    from backend.app.services import advisory_lock
+
+    if (
+        not session.in_transaction()
+        or session.in_nested_transaction()
+        or session.get_bind() is not factory.kw["bind"]
+    ):
+        raise AdmissionRejected("heartbeat_session_mismatch")
+    previous, previous_ms = session.execute(
+        text(
+            "SELECT current_setting('lock_timeout'), setting::integer "
+            "FROM pg_settings WHERE name='lock_timeout'"
+        )
+    ).one()
+    remaining_ms = int(ticket.remaining(factory, fence, role="heartbeat") * 1000)
+    limit = min(remaining_ms, OWNER_LOCK_MAX_MS, previous_ms or OWNER_LOCK_MAX_MS)
+    if limit <= 0:
+        raise AdmissionRejected("expired")
+    set_timeout = text("SELECT set_config('lock_timeout', :timeout, true)")
+    session.execute(set_timeout, {"timeout": f"{limit}ms"})
+    # Exact existing submit owner, before original heartbeat's Run/Attempt
+    # locks. Do not patch or require a live lease for containment/recovery.
+    advisory_lock(session, f"submit:{fence.owner_id}")
+    session.execute(set_timeout, {"timeout": previous})
+    ticket.remaining(factory, fence, role="heartbeat")
+
 
 @contextmanager
 def native_admission_trial():
     from backend.app import research_lifecycle as lifecycle
+    from workers.research import lease as lease_module
     from workers.research import rdagent_queue
     from workers.research.lease import AttemptLease
 
@@ -24,10 +59,17 @@ def native_admission_trial():
     original_neutral = lifecycle._neutral_transaction_once
     original_pulse, original_close = AttemptLease.pulse, AttemptLease.close
     original_start = AttemptLease.start
+    original_heartbeat = lease_module.heartbeat
+    pulse_scope = ContextVar("native_trial_heartbeat", default=None)
     lock = RLock()
     entries = []
     leases = []
-    counts = {"claims": 0, "neutral_commits": 0, "pulse_returns": 0}
+    counts = {
+        "claims": 0,
+        "neutral_commits": 0,
+        "pulse_returns": 0,
+        "owner_first_pulses": 0,
+    }
     closing = False
 
     def entry(factory):
@@ -84,17 +126,39 @@ def native_admission_trial():
             with lock:
                 counts["neutral_commits"] += 1
 
+    def heartbeat(session, attempt_id, generation, token, settings):
+        active = pulse_scope.get()
+        if active is None:
+            return original_heartbeat(session, attempt_id, generation, token, settings)
+        factory, fence, ticket, observation = active
+        if (attempt_id, generation, token) != (
+            fence.attempt_id,
+            fence.generation,
+            fence.lease_token,
+        ) or observation:
+            raise AdmissionRejected("heartbeat_binding_mismatch")
+        _lock_heartbeat_owner(session, factory, fence, ticket)
+        result = original_heartbeat(session, attempt_id, generation, token, settings)
+        observation.append(True)
+        return result
+
     def pulse(lease, force=False):
         try:
             bound = bind_lease(lease)
             if bound is None:
                 return original_pulse(lease, force=force)
             fence, gate = bound
-            with gate.transaction(lease.factory, fence, role="heartbeat"):
-                result = original_pulse(lease, force=force)
+            with gate.transaction(lease.factory, fence, role="heartbeat") as ticket:
+                observation = []
+                binding = pulse_scope.set((lease.factory, fence, ticket, observation))
+                try:
+                    result = original_pulse(lease, force=force)
+                finally:
+                    pulse_scope.reset(binding)
                 with lock:
                     # Includes original throttled no-ops, not a renewal claim.
                     counts["pulse_returns"] += 1
+                    counts["owner_first_pulses"] += bool(observation)
                 return result
         except Exception:  # Original pulse failures revoke lease authority.
             lease.lost.set()
@@ -124,6 +188,7 @@ def native_admission_trial():
     lifecycle._neutral_transaction_once = neutral
     AttemptLease.pulse, AttemptLease.close = pulse, close
     AttemptLease.start = start
+    lease_module.heartbeat = heartbeat
     try:
         yield counts
     finally:
@@ -142,6 +207,7 @@ def native_admission_trial():
         lifecycle._neutral_transaction_once = original_neutral
         AttemptLease.pulse, AttemptLease.close = original_pulse, original_close
         AttemptLease.start = original_start
+        lease_module.heartbeat = original_heartbeat
 
 
 def report_trial_counts(counts):
@@ -150,7 +216,12 @@ def report_trial_counts(counts):
         if type(counts) is not dict:
             return
         output = {}
-        for name in ("claims", "neutral_commits", "pulse_returns"):
+        for name in (
+            "claims",
+            "neutral_commits",
+            "pulse_returns",
+            "owner_first_pulses",
+        ):
             value = counts.get(name)
             if type(value) is not int or value < 0:
                 return

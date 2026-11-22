@@ -63,7 +63,7 @@ class TicketedAdmission:
                         self._owner = identity
                         break
                     self._condition.wait(timeout=min(remaining, threading.TIMEOUT_MAX))
-            yield
+            yield ticket
         finally:
             with self._condition:
                 if self._participants.get(thread) is identity:

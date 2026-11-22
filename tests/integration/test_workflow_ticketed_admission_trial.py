@@ -28,6 +28,7 @@ def test_actual_current032g_workflow_with_ticketed_admission_trial(
     finally:
         report_trial_counts(counts)
     if not all(
-        counts[name] > 0 for name in ("claims", "neutral_commits", "pulse_returns")
+        counts[name] > 0
+        for name in ("claims", "neutral_commits", "pulse_returns", "owner_first_pulses")
     ):
         pytest.fail("Native scheduling coverage incomplete", pytrace=False)
