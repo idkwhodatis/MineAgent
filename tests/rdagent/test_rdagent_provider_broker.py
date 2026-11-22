@@ -2,12 +2,15 @@
 
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.orm import sessionmaker
 
 from backend.app import rdagent_provider_broker as module
+from backend.app import rdagent_workflow_coordination as coord
 from packages.rdagent_provider.codec import canonical_bytes
 from packages.rdagent_provider.contracts import RDModelBinding, RDProviderChatRequest
 from packages.rdagent_provider.process_receipts import parse_receipt, validate_chain
@@ -16,10 +19,12 @@ from packages.rdagent_provider.transport import (
     ProcessStop,
     ProviderFailure,
 )
+from packages.research_runtime.fences import AttemptFence
 
 
 @pytest.fixture
 def broker(monkeypatch, tmp_path):
+    real_settle = module._settle
     binding = RDModelBinding(
         profile_id="local-double",
         profile_sha256="a" * 64,
@@ -44,9 +49,7 @@ def broker(monkeypatch, tmp_path):
         max_output_tokens=128,
         response_format=None,
     )
-    fence = SimpleNamespace(
-        owner_id=uuid4(), run_id=uuid4(), attempt_id=uuid4(), generation=1
-    )
+    fence = AttemptFence(uuid4(), uuid4(), uuid4(), 1, uuid4())
     config = SimpleNamespace(model_binding=binding)
     session = SimpleNamespace(scalar=lambda query: None)
     state = SimpleNamespace(
@@ -55,6 +58,10 @@ def broker(monkeypatch, tmp_path):
         calls=0,
         outcomes=[],
         files={},
+        published=[],
+        before_stop=None,
+        after_stop=None,
+        unknown_guard=None,
         fail=None,
         auth_count=0,
         fail_auth=None,
@@ -67,20 +74,23 @@ def broker(monkeypatch, tmp_path):
     monkeypatch.setenv("RD_TEST_SECRET", "synthetic-no-credential")
 
     @contextmanager
-    def transaction(*args, **kwargs):
+    def transaction(factory, fence, **kwargs):
         assert not state.active
-        state.active = True
-        try:
-            yield session
-        finally:
-            state.active = False
+        with coord.neutral(factory, fence):
+            state.active = True
+            try:
+                yield session
+            finally:
+                state.active = False
 
     def publish(factory, fence, settings, kind, raw, key):
         assert not state.active
         identifier = uuid4()
         path = tmp_path / str(identifier)
-        path.write_bytes(raw)
-        state.files[identifier] = path
+        with coord.neutral(factory, fence):
+            path.write_bytes(raw)
+            state.files[identifier] = path
+            state.published.append(kind)
         return identifier
 
     def bind(session, fence, *, transport_id, object_id, sha256, settings):
@@ -91,13 +101,23 @@ def broker(monkeypatch, tmp_path):
         state.receipts[doc.kind] = doc
 
     def settle(
-        session, fence, transport_id, settings, *, response_id=None, response=None
+        session,
+        fence,
+        transport_id,
+        settings,
+        *,
+        response_id=None,
+        response=None,
+        expected_chain=None,
     ):
         assert state.active
-        validate_chain(
-            *(state.receipts[k] for k in ("intent", "started", "stopped")),
-            completed=response is not None,
-        )
+        chain = tuple(state.receipts[k] for k in ("intent", "started", "stopped"))
+        validate_chain(*chain, completed=response is not None)
+        if expected_chain is not None:
+            assert response_id is response is None and type(expected_chain) is tuple
+            if state.unknown_guard is not None:
+                state.unknown_guard(chain, expected_chain)
+            assert chain == expected_chain
         state.outcomes.append("completed" if response is not None else "unknown")
 
     def sdk(request, *, identity_boundary, deadline_monotonic, **kwargs):
@@ -117,8 +137,16 @@ def broker(monkeypatch, tmp_path):
         state.calls += 1  # Simulated private pipe handoff, only after durable callback.
         if state.fail == "missing_stop":
             raise ProviderFailure("group_unconfirmed", contained=False)
-        stop = ProcessStop(identity=identity, observed_monotonic_ns=time.monotonic_ns())
+        if state.fail == "identity_drift":
+            identity = replace(identity, start_ticks=identity.start_ticks + 1)
+        if state.before_stop is not None:
+            state.before_stop()
+        stop = ProcessStop(
+            identity=identity, observed_monotonic_ns=module.time.monotonic_ns()
+        )
         identity_boundary("stopped", stop)
+        if state.after_stop is not None:
+            state.after_stop()
         if state.fail == "transport":
             raise ProviderFailure("provider_error", contained=True)
         return SimpleNamespace(
@@ -168,7 +196,12 @@ def broker(monkeypatch, tmp_path):
         "original_deadline": time.monotonic() + 10,
     }
     return SimpleNamespace(
-        state=state, args=args, fence=fence, factory=object(), binding=binding
+        state=state,
+        args=args,
+        fence=fence,
+        factory=sessionmaker(),
+        binding=binding,
+        real_settle=real_settle,
     )
 
 
@@ -186,6 +219,7 @@ def test_started_is_retained_before_request_and_stopped_before_success(broker):
         ("started", 0, []),
         ("stopped", 1, []),
         ("missing_stop", 1, []),
+        ("identity_drift", 1, []),
         ("transport", 1, ["unknown"]),
         ("usage", 1, ["unknown"]),
     ],
@@ -197,6 +231,176 @@ def test_uncertain_physical_or_usage_evidence_never_returns_success(
     with pytest.raises((ValueError, OSError, ProviderFailure)):
         module.submit_provider_request(broker.factory, broker.fence, **broker.args)
     assert broker.state.calls == calls and broker.state.outcomes == outcomes
+
+
+@pytest.mark.parametrize(
+    "failure", [None, "transport", "usage", "stale", "drift", "elapsed"]
+)
+def test_positive_stop_is_durable_but_never_publishes_late_response(
+    broker, monkeypatch, failure
+):
+    now = time.monotonic()
+    cutoff = now + 1
+    clock = [now]
+    monkeypatch.setattr(coord, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(coord, "monotonic_ns", lambda: int(clock[0] * 1e9))
+    monkeypatch.setattr(
+        module,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock[0], monotonic_ns=lambda: int(clock[0] * 1e9)
+        ),
+    )
+    broker.args["original_deadline"] = cutoff
+    broker.state.before_stop = lambda: clock.__setitem__(0, cutoff + 0.01)
+    broker.state.fail = failure
+    if failure == "elapsed":
+        broker.state.after_stop = lambda: clock.__setitem__(
+            0, cutoff + coord.OWNER_WAIT_SECONDS + 0.1
+        )
+    elif failure in {"stale", "drift"}:
+
+        def refuse_unknown(actual, expected):
+            assert actual == expected
+            if failure == "stale":
+                from backend.app.services import FenceLost
+
+                raise FenceLost()
+            raise ValueError("Retained SDK chain differs")
+
+        broker.state.unknown_guard = refuse_unknown
+    with (
+        coord.registered(broker.factory, broker.fence),
+        coord.controller_deadline(broker.factory, broker.fence, cutoff),
+        pytest.raises(ValueError if failure == "usage" else ProviderFailure) as caught,
+    ):
+        module.submit_provider_request(broker.factory, broker.fence, **broker.args)
+    if failure != "usage":
+        assert str(caught.value) == (
+            "provider_error"
+            if failure == "transport"
+            else "original_controller_deadline"
+        )
+    assert set(broker.state.receipts) == {"intent", "started", "stopped"}
+    expected = [] if failure in {"stale", "drift", "elapsed"} else ["unknown"]
+    assert broker.state.calls == 1 and broker.state.outcomes == expected
+    assert "model_response" not in broker.state.published
+
+
+def test_early_stop_does_not_shorten_original_multi_transaction_budget(
+    broker, monkeypatch
+):
+    clock = [100.0]
+    original_cutoff = 120.0
+    monkeypatch.setattr(coord, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(coord, "monotonic_ns", lambda: int(clock[0] * 1e9))
+    monkeypatch.setattr(
+        module,
+        "time",
+        SimpleNamespace(
+            monotonic=lambda: clock[0], monotonic_ns=lambda: int(clock[0] * 1e9)
+        ),
+    )
+    broker.args["original_deadline"] = original_cutoff
+    publish = module._publish
+
+    def publish_with_stopped_receipt_cost(factory, fence, settings, kind, raw, key):
+        if kind != module.OBJECT_KIND or parse_receipt(raw).kind != "stopped":
+            return publish(factory, fence, settings, kind, raw, key)
+        # Publication enters reserve/preflight/finalize separately before its
+        # caller enters bind. Each can be short while their total exceeds 5 s.
+        for _ in range(2):
+            with coord.neutral(factory, fence):
+                clock[0] += 2
+        identity = publish(factory, fence, settings, kind, raw, key)
+        clock[0] += 2
+        return identity
+
+    monkeypatch.setattr(module, "_publish", publish_with_stopped_receipt_cost)
+    with (
+        coord.registered(broker.factory, broker.fence),
+        coord.controller_deadline(broker.factory, broker.fence, original_cutoff),
+    ):
+        _, raw = module.submit_provider_request(
+            broker.factory, broker.fence, **broker.args
+        )
+    assert b"actual provider text" in raw
+    assert clock[0] > 100 + coord.OWNER_WAIT_SECONDS
+    assert broker.state.outcomes == ["completed"]
+
+
+@pytest.mark.parametrize("case", ["exact", "drift", "response"])
+def test_actual_settlement_requires_exact_retained_stop_before_full_charge(
+    broker, monkeypatch, case
+):
+    from unittest.mock import Mock
+
+    module.submit_provider_request(broker.factory, broker.fence, **broker.args)
+    receipts = broker.state.receipts
+    expected = tuple(receipts[k] for k in ("intent", "started", "stopped"))
+    transport_id = receipts["intent"].transport_id
+    protocol = broker.args["protocol"]
+    request = module.parse_request(protocol, broker.args["request_bytes"])
+    charge = module.request_reservation(request, broker.binding)
+    transport = SimpleNamespace(
+        id=transport_id,
+        state="submitted",
+        operation_id=uuid4(),
+        reservation_id=uuid4(),
+    )
+    operation = SimpleNamespace(
+        state="open", protocol=protocol, request=request.model_dump(mode="json")
+    )
+    reservation = SimpleNamespace(amounts=charge.model_dump())
+    scope_row = Mock(side_effect=[transport, operation, reservation])
+    read_chain = Mock(return_value=dict(receipts))
+    settle_budget = Mock(return_value=SimpleNamespace(charge=charge.model_dump()))
+    session = Mock()
+    monkeypatch.setattr(module, "_scope_row", scope_row)
+    monkeypatch.setattr(module, "read_chain", read_chain)
+    monkeypatch.setattr(module, "settle_budget", settle_budget)
+    kwargs = {"expected_chain": expected}
+    if case == "drift":
+        stopped = receipts["stopped"]
+        read_chain.return_value["stopped"] = stopped.model_copy(
+            update={"observed_monotonic_ns": stopped.observed_monotonic_ns + 1}
+        )
+    elif case == "response":
+        kwargs["response_id"] = uuid4()
+
+    if case == "exact":
+        outcome = broker.real_settle(
+            session, broker.fence, transport_id, broker.args["settings"], **kwargs
+        )
+        assert outcome.outcome == transport.state == operation.state == "unknown"
+        assert outcome.response_object_id is None
+        settle_budget.assert_called_once_with(
+            session,
+            broker.fence,
+            transport.reservation_id,
+            charge=charge,
+            outcome="conservative_unknown",
+        )
+        session.add.assert_called_once_with(outcome)
+    else:
+        message = "chain differs" if case == "drift" else "containment-only"
+        with pytest.raises(ValueError, match=message):
+            broker.real_settle(
+                session, broker.fence, transport_id, broker.args["settings"], **kwargs
+            )
+        assert transport.state == "submitted" and operation.state == "open"
+        settle_budget.assert_not_called()
+        session.add.assert_not_called()
+    if case != "response":
+        read_chain.assert_called_once_with(
+            session,
+            broker.fence,
+            transport_id,
+            broker.args["settings"],
+            completed=False,
+        )
+    else:
+        read_chain.assert_not_called()
 
 
 def test_expired_original_controller_deadline_never_admits_sdk(broker):

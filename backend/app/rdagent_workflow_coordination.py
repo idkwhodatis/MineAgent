@@ -8,8 +8,9 @@ from collections import deque
 from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from threading import Condition, Lock, get_ident
-from time import monotonic
+from time import monotonic, monotonic_ns
 
+from packages.rdagent_provider.process_receipts import SDKStopped
 from packages.research_runtime.fences import AttemptFence
 
 OWNER_WAIT_SECONDS = 5.0
@@ -17,6 +18,7 @@ OWNER_WAIT_SECONDS = 5.0
 _entries = {}
 _registry_lock = Lock()
 _controller = ContextVar("rd_workflow_controller_deadline", default=None)
+_sdk_stop = ContextVar("rd_workflow_sdk_stop_admission", default=None)
 
 
 def _rejected(heartbeat):
@@ -119,6 +121,52 @@ def controller_deadline(factory, fence, deadline):
         _controller.reset(token)
 
 
+@contextmanager
+def _positive_sdk_stop_admission(factory, fence, receipt):
+    """Only admit retention of an already observed, positively stopped SDK.
+
+    Do not change the controller clock, database fence, or PG NOWAIT. All
+    receipt transactions and conservative unknown settlement use the ordinary
+    controller cutoff when it is later. Otherwise they share one cutoff set
+    by the stop observation, even across separate scopes. The caller must
+    leave this scope before processing any response or success.
+    """
+    if (
+        type(receipt) is not SDKStopped
+        or receipt.leader_reaped is not True
+        or receipt.process_group_absent is not True
+        or any(
+            getattr(receipt, key) != getattr(fence, key)
+            for key in ("owner_id", "run_id", "attempt_id", "generation")
+        )
+    ):
+        raise _rejected(heartbeat=False)
+    gate = _lookup(factory, fence)
+    current = _controller.get()
+    if gate is None or current is None or current[0] is not gate:
+        yield
+        return
+    if _sdk_stop.get() is not None:
+        raise _rejected(heartbeat=False)
+    observed = receipt.observed_monotonic_ns
+    cutoff_ns = observed + int(OWNER_WAIT_SECONDS * 1_000_000_000)
+    now = monotonic_ns()
+    if observed > now:
+        raise _rejected(heartbeat=False)
+    cutoff = cutoff_ns / 1_000_000_000
+    if current[1] >= cutoff:
+        # Never shorten normal receipt work or its per-transaction wait.
+        yield
+        return
+    if now >= cutoff_ns:
+        raise _rejected(heartbeat=False)
+    token = _sdk_stop.set((gate, get_ident(), cutoff))
+    try:
+        yield
+    finally:
+        _sdk_stop.reset(token)
+
+
 def neutral(factory, fence):
     gate = _lookup(factory, fence)
     if gate is None:
@@ -126,7 +174,11 @@ def neutral(factory, fence):
     deadline = monotonic() + OWNER_WAIT_SECONDS
     current = _controller.get()
     if current is not None and current[0] is gate:
-        deadline = min(deadline, current[1])
+        stop = _sdk_stop.get()
+        if stop is not None and stop[0] is gate and stop[1] == get_ident():
+            deadline = min(deadline, stop[2])
+        else:
+            deadline = min(deadline, current[1])
     return gate.hold(deadline)
 
 

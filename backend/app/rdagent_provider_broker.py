@@ -9,6 +9,7 @@ import hashlib
 import math
 import os
 import time
+from contextlib import nullcontext
 from dataclasses import asdict
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -28,6 +29,7 @@ from backend.app.rdagent_services import (
     admit_atomic_request,
     require_research_spec,
 )
+from backend.app.rdagent_workflow_coordination import _positive_sdk_stop_admission
 from backend.app.research_broker_models import (
     ResearchBudgetReservation,
     ResearchModelOperation,
@@ -55,6 +57,7 @@ from packages.rdagent_provider.process_receipts import (
     SDKStarted,
     SDKStopped,
     receipt_bytes,
+    validate_chain,
 )
 from packages.rdagent_provider.transport import ProviderFailure, execute
 from packages.research_runtime.budget_contracts import BudgetVector
@@ -76,7 +79,18 @@ def _retain_receipt(factory, fence, settings, document, key):
         )
 
 
-def _settle(session, fence, transport_id, settings, *, response_id=None, response=None):
+def _settle(
+    session,
+    fence,
+    transport_id,
+    settings,
+    *,
+    response_id=None,
+    response=None,
+    expected_chain=None,
+):
+    if expected_chain is not None and (response_id is not None or response is not None):
+        raise ValueError("Positive SDK stop admits containment-only settlement")
     transport = _scope_row(
         session, ResearchModelTransport, transport_id, fence, lock=True
     )
@@ -93,7 +107,14 @@ def _settle(session, fence, transport_id, settings, *, response_id=None, respons
     )
     if BudgetVector.model_validate(reservation.amounts) != held:
         raise ValueError("Provider physical reservation differs")
-    read_chain(session, fence, transport_id, settings, completed=response is not None)
+    documents = read_chain(
+        session, fence, transport_id, settings, completed=response is not None
+    )
+    if expected_chain is not None and (
+        tuple(documents[kind] for kind in ("intent", "started", "stopped"))
+        != expected_chain
+    ):
+        raise ValueError("Retained SDK chain differs from current verified stop")
     response_sha = None
     if response is not None:
         response, _usage = expected_usage(
@@ -248,7 +269,10 @@ def submit_provider_request(
     )
     _retain_receipt(factory, fence, settings, intent, key)
 
+    started = stopped = None
+
     def identity_boundary(event, evidence):
+        nonlocal started, stopped
         if event == "started":
             # This transaction and retained publication must finish before execute
             # releases ANY request/secret bytes into the private SDK pipe.
@@ -271,12 +295,16 @@ def submit_provider_request(
             or document.identity.deadline_monotonic_ns != intent.deadline_monotonic_ns
         ):
             raise ValueError("Observed SDK identity differs from original intent")
+        if event == "stopped":
+            validate_chain(intent, started, document, completed=False)
+            with _positive_sdk_stop_admission(factory, fence, document):
+                stopped = document
+                _retain_receipt(factory, fence, settings, document, key)
+            return
         _retain_receipt(factory, fence, settings, document, key)
-        if event == "started":
-            with neutral_transaction(
-                factory, fence, resource_scope="objects"
-            ) as session:
-                _authorize(controller_peer, session, fence)
+        with neutral_transaction(factory, fence, resource_scope="objects") as session:
+            _authorize(controller_peer, session, fence)
+        started = document
 
     try:
         result = execute(
@@ -304,6 +332,8 @@ def submit_provider_request(
             else RDProviderEmbeddingResponse(vectors=result.vectors, usage=usage)
         )
         response, _ = expected_usage(protocol, request, response, binding)
+        if time.monotonic() >= original_deadline:
+            raise ProviderFailure("original_controller_deadline", contained=True)
         response_id = _publish(
             factory,
             fence,
@@ -326,10 +356,26 @@ def submit_provider_request(
         # Missing physical observations or lost fence must stay reserved/uncertain.
         # Do not fabricate a never-launched receipt or retry a possibly sent call.
         try:
-            with neutral_transaction(
-                factory, fence, resource_scope="objects"
-            ) as session:
-                _settle(session, fence, transport_id, settings)
+            admission = (
+                nullcontext()
+                if stopped is None
+                else _positive_sdk_stop_admission(factory, fence, stopped)
+            )
+            with (
+                admission,
+                neutral_transaction(
+                    factory, fence, resource_scope="objects"
+                ) as session,
+            ):
+                _settle(
+                    session,
+                    fence,
+                    transport_id,
+                    settings,
+                    expected_chain=None
+                    if stopped is None
+                    else (intent, started, stopped),
+                )
         except Exception:  # noqa: BLE001 - preserve original failure and conservative reservation
             # No successful receipt is returned; unresolved physical/DB state stays held.
             original.add_note(

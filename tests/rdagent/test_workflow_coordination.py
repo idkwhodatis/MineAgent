@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.app import rdagent_workflow_coordination as coord
 from backend.app.services import DomainError, FenceLost
+from packages.rdagent_provider.process_receipts import SDKStopped
 from packages.research_runtime.fences import AttemptFence
 
 
@@ -125,3 +126,65 @@ def test_expired_heartbeat_never_enters_body(identities):
             pytest.fail("expired heartbeat entered transaction")
         with coord.neutral(factory, fence):
             pass
+
+
+def test_positive_stop_has_one_cutoff_and_original_scope_is_restored(
+    identities, monkeypatch
+):
+    factory, fence = identities
+    now = [100.0]
+    monkeypatch.setattr(coord, "monotonic", lambda: now[0])
+    monkeypatch.setattr(coord, "monotonic_ns", lambda: int(now[0] * 1e9))
+    stop = SDKStopped(
+        owner_id=fence.owner_id,
+        run_id=fence.run_id,
+        attempt_id=fence.attempt_id,
+        generation=fence.generation,
+        transport_id=uuid4(),
+        request_sha256="a" * 64,
+        model_binding_sha256="b" * 64,
+        identity={
+            "pid": 2,
+            "start_ticks": 3,
+            "process_group": 2,
+            "session_id": 2,
+            "parent_pid": 1,
+            "boot_id": uuid4(),
+            "deadline_monotonic_ns": 1,
+        },
+        observed_monotonic_ns=100_000_000_000,
+        leader_reaped=True,
+        process_group_absent=True,
+    )
+    with (
+        coord.registered(factory, fence),
+        coord.controller_deadline(factory, fence, 99),
+    ):
+        for invalid in (
+            object(),
+            stop.model_copy(update={"process_group_absent": False}),
+            stop.model_copy(update={"owner_id": uuid4()}),
+        ):
+            with (
+                pytest.raises(DomainError),
+                coord._positive_sdk_stop_admission(factory, fence, invalid),
+            ):
+                pytest.fail("invalid evidence admitted")
+        with coord._positive_sdk_stop_admission(factory, fence, stop):
+            with coord.neutral(factory, fence):
+                pass
+            with (
+                pytest.raises(DomainError),
+                coord._positive_sdk_stop_admission(factory, fence, stop),
+            ):
+                pytest.fail("nested context renewed admission")
+            now[0] += coord.OWNER_WAIT_SECONDS
+            with pytest.raises(DomainError), coord.neutral(factory, fence):
+                pytest.fail("stop retention minted another admission window")
+        with pytest.raises(DomainError), coord.neutral(factory, fence):
+            pytest.fail("ordinary RPC admission inherited stop-only scope")
+        with (
+            pytest.raises(DomainError),
+            coord._positive_sdk_stop_admission(factory, fence, stop),
+        ):
+            pytest.fail("a separate scope renewed an expired stop observation")
