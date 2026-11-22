@@ -90,6 +90,27 @@ def owned_current_fixture(engine, run_id):
     )
 
 
+def owned_032h_fixture(engine, run_id):
+    """The independently pinned revision may reuse masked errors, not lock sampling."""
+    current_head = "MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED"
+    if not (
+        all(os.environ.get(k) == v for k, v in _EXPECTED.items() if k != current_head)
+        and os.environ.get(current_head) != "1"
+        and os.environ.get("MINEAGENT_WORKFLOW_032H_REQUIRED") == "1"
+        and os.environ.get("MINEAGENT_NATIVE_PROOF_SCOPE") == "current-032h"
+        and engine.dialect.name == "postgresql"
+        and _DB.fullmatch(engine.url.database or "") is not None
+        and type(run_id) is UUID
+    ):
+        return False
+    with engine.connect() as connection, connection.begin():
+        connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+        connection.exec_driver_sql("SET LOCAL statement_timeout = '1s'")
+        return connection.exec_driver_sql(
+            "SELECT version_num FROM public.alembic_version LIMIT 2"
+        ).all() == [("032h_workflow_oe_run_guard",)]
+
+
 @contextmanager
 def observe_first_neutral_holder(engine, run_id):
     if not owned_current_fixture(engine, run_id):

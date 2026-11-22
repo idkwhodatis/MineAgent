@@ -75,9 +75,14 @@ def diagnose_first_rd_drain(factory, engine, workflow_id):
     if run_id is not None:
         project_masked = False
         try:
-            from rd_neutral_holder_diagnostic import owned_current_fixture
+            from rd_neutral_holder_diagnostic import (
+                owned_032h_fixture,
+                owned_current_fixture,
+            )
 
-            project_masked = owned_current_fixture(engine, run_id)
+            project_masked = owned_current_fixture(engine, run_id) or (
+                owned_032h_fixture(engine, run_id)
+            )
         except Exception:  # noqa: BLE001, S110 -- keep existing diagnostics independent
             pass
         try:

@@ -136,3 +136,51 @@ def test_hooks_sample_only_first_busy_and_preserve_original_error(monkeypatch, c
         "first_holder": "workflow_heartbeat",
         "first_caller": "other",
     }
+
+
+def test_exact_032h_lane_enables_masking_without_legacy_holder_observer(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace as NS
+    from uuid import uuid4
+
+    from tests.integration import rd_neutral_holder_diagnostic as diagnostic
+
+    old_flag = "MINEAGENT_WORKFLOW_CURRENT_HEAD_REQUIRED"
+    for key, value in diagnostic._EXPECTED.items():
+        if key != old_flag:
+            monkeypatch.setenv(key, value)
+    monkeypatch.delenv(old_flag, raising=False)
+    monkeypatch.setenv("MINEAGENT_WORKFLOW_032H_REQUIRED", "1")
+    monkeypatch.setenv("MINEAGENT_NATIVE_PROOF_SCOPE", "current-032h")
+    run = uuid4()
+    rows = [("032h_workflow_oe_run_guard",)]
+    queries = []
+
+    def execute(sql):
+        queries.append(sql)
+        return NS(all=lambda: rows)
+
+    connection = NS(begin=nullcontext, exec_driver_sql=execute)
+    engine = NS(
+        dialect=NS(name="postgresql"),
+        url=NS(database=f"tradegrad_backup_test_{uuid4().hex}"),
+        connect=lambda: nullcontext(connection),
+    )
+    assert not diagnostic.owned_current_fixture(engine, run)
+    assert diagnostic.owned_032h_fixture(engine, run)
+    assert queries == [
+        "SET TRANSACTION READ ONLY",
+        "SET LOCAL statement_timeout = '1s'",
+        "SELECT version_num FROM public.alembic_version LIMIT 2",
+    ]
+    rows[:] = [("032g_old",)]
+    assert not diagnostic.owned_032h_fixture(engine, run)
+    rows[:] = [("032h_workflow_oe_run_guard",)] * 2
+    assert not diagnostic.owned_032h_fixture(engine, run)
+    queries.clear()
+    monkeypatch.setenv(old_flag, "1")
+    assert not diagnostic.owned_032h_fixture(engine, run)
+    monkeypatch.delenv(old_flag)
+    monkeypatch.setenv("MINEAGENT_NATIVE_PROOF_SCOPE", "historical")
+    assert not diagnostic.owned_032h_fixture(engine, run)
+    assert queries == []
