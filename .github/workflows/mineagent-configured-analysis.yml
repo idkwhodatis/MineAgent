@@ -388,6 +388,7 @@ jobs:
           PYRESULT
           test "$status" = 0
       - name: Require unchanged PostgreSQL validation semantics
+        id: canonical_prerequisites
         timeout-minutes: 5
         run: |
           python -m pytest tests/integration/test_rdagent_validation_performance.py \
@@ -450,25 +451,67 @@ jobs:
           PYWORKFLOW
           test "$status" = 0
       - name: Confirm exact numeric units are absent without label-based removal
+        id: canonical_numeric_clean
         if: always()
         run: |
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
           test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
       - name: Confirm exact protected analysis units are absent
+        id: canonical_analysis_clean
         if: always()
         run: |
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.analysis.admission)
           test -z "$ids" || { echo 'Analysis unit containment is not confirmed' >&2; exit 1; }
       - name: Confirm exact controller units are absent
+        id: canonical_controller_clean
         if: always()
         run: |
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2)
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
       - name: Confirm installed-parent proof container is absent
+        id: canonical_parent_clean
         if: always()
         run: |
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Compare canonical encodings and real default Qlib generation graph (diagnostic only)
+        if: ${{ always() && !cancelled() && github.repository == 'idkwhodatis/MineAgent' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121' && steps.canonical_prerequisites.outcome == 'success' && steps.canonical_numeric_clean.outcome == 'success' && steps.canonical_analysis_clean.outcome == 'success' && steps.canonical_controller_clean.outcome == 'success' && steps.canonical_parent_clean.outcome == 'success' }}
+        timeout-minutes: 15
+        shell: bash
+        env:
+          MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          status=0
+          python -m pytest tests/integration/test_rd_graph_canonical_candidate_postgres.py -q \
+            --junitxml=var/numeric-private/canonical-graph.xml >/dev/null 2>&1 || status=$?
+          for selector in 'label=io.mineagent.numeric.admission' 'label=io.mineagent.analysis.admission' 'label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2' 'name=^/mineagent-qlib-direct-installation-proof$'; do
+            ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter "$selector")
+            test -z "$ids" || { echo 'Canonical diagnostic unit containment is not confirmed' >&2; exit 1; }
+          done
+          python - <<'PYCANONICAL'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          from script.summarize_ci_junit import summarize
+          source=Path('var/numeric-private/canonical-graph.xml')
+          summarize(source,Path('var/numeric-proof/canonical-graph-outcomes.xml'))
+          cases=list(ET.parse(source).getroot().iter('testcase'))
+          required={'test_installed032g_request_encoding_bytes_and_errors','test_default_off_populated_rd_proposal_adoption_graph_matches_candidate'}
+          outcomes={}
+          for case in cases:
+              name=case.get('name')
+              assert name in required and name not in outcomes
+              outcomes[name]=next((tag for tag in ('failure','error','skipped') if case.find(tag) is not None),'passed')
+          assert set(outcomes)==required
+          print('QLIB_CANONICAL_GRAPH_V1 '+str(dict(sorted(outcomes.items()))))
+          assert set(outcomes.values())=={'passed'}
+          PYCANONICAL
+          test "$status" = 0
       - name: Remove only exact disposable numeric PostgreSQL
         if: always()
         shell: bash
