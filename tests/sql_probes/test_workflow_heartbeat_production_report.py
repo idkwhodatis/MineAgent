@@ -644,16 +644,13 @@ def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
         "oe_claim_boundary": "tick_result",
         "oe_claim_state": "waiting_release",
     }
-    assert (
-        _oe_claim_observation(
-            call(
-                'assert oe_claim.state == "structured_child_queued"',
-                AssertionError("private-canary"),
-                state=TickOutcome(uuid4(), "private-canary"),
-            )
+    assert _oe_claim_observation(
+        call(
+            'assert oe_claim.state == "structured_child_queued"',
+            AssertionError("private-canary"),
+            state=TickOutcome(uuid4(), "private-canary"),
         )
-        == {"oe_claim_boundary": "tick_result"}
-    )
+    ) == {"oe_claim_boundary": "tick_result"}
     assert _oe_claim_observation(
         call(
             'assert oe_claim.state == "structured_child_queued"\n'
@@ -1070,3 +1067,40 @@ def test_h_bridge_finish_evaluation_deadline_projects_only_closed_bins(tmp_path)
     verdict = _drain_verdict(tmp_path, "h_bridge")
     assert verdict["rpc_handler_remaining"] == "late_lt_250ms"
     assert verdict["rpc_send_remaining"] == "late_lt_250ms"
+
+
+def test_oe_reverse_probe_is_hard_commit_gate_only(tmp_path):
+    def project(**extra):
+        fields = {
+            "proof_phase": "oe_claim",
+            "rd_drain_oe_claim_error": "database",
+            "rd_drain_oe_claim_sqlstate": "P0001",
+            "rd_drain_oe_claim_site": "dispatch",
+            "rd_drain_oe_claim_predicate": "reverse_graph",
+            "rd_drain_oe_reverse_root": "active",
+            "rd_drain_oe_reverse_attachment": "predecessor_input_graph",
+            **extra,
+        }
+        props = "".join(
+            f'<property name="{k}" value="{v}"/>' for k, v in fields.items()
+        )
+        _write(
+            tmp_path,
+            "h_bridge",
+            f"<failure/><properties>{props}</properties>",
+        )
+        return _drain_verdict(tmp_path, "h_bridge")
+
+    assert project()["oe_reverse_attachment"] == "predecessor_input_graph"
+    for changes in (
+        {"rd_drain_oe_claim_sqlstate": "23514"},
+        {"rd_drain_oe_claim_site": "claim"},
+        {"rd_drain_oe_claim_predicate": "predecessor_input_graph"},
+        {"proof_phase": "rd_drain"},
+        {"rd_drain_oe_reverse_root": "private-canary"},
+    ):
+        for key in ("oe_reverse_attachment", "oe_reverse_root"):
+            assert key not in project(**changes)
+    sibling = project(rd_drain_oe_reverse_root="sibling")
+    assert sibling["oe_reverse_root"] == "sibling"
+    assert "oe_reverse_attachment" not in sibling

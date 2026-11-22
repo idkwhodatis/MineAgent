@@ -109,6 +109,14 @@ _OE_CLAIM_TRIGGER_LABELS = {
     "Workflow OE root graph differs": "root_graph",
     "Workflow OE reverse immutable graph differs": "reverse_graph",
 }
+_OE_ATTACHMENT_PROBE = frozenset(_OE_CLAIM_TRIGGER_LABELS.values()) - {
+    "root_graph",
+    "reverse_graph",
+}
+_OE_REVERSE_FIELDS = {
+    "oe_reverse_root": {"active", "sibling", "active_and_sibling", "all_consistent"},
+    "oe_reverse_attachment": _OE_ATTACHMENT_PROBE | {"accepted", "unknown"},
+}
 _OE_CLAIM_FIELDS = {
     "oe_claim_boundary": {"tick_call", "tick_result", "readback_enter"},
     "oe_claim_predicate": frozenset(_OE_CLAIM_TRIGGER_LABELS.values()),
@@ -359,6 +367,7 @@ _DRAIN_FIELDS = {
         {"reserve", "publication_prepare", "publication_finalize", "bind"}
     ),
     **_OE_CLAIM_FIELDS,
+    **_OE_REVERSE_FIELDS,
     **dict.fromkeys(_ROLES, _UNIT_STATES),
 }
 
@@ -978,6 +987,18 @@ def _drain_verdict(root, name):
         ):
             if family != expected:
                 fields.pop(f"oe_claim_{suffix}", None)
+    if (
+        name != "h_bridge"
+        or fields.get("proof_phase") != "oe_claim"
+        or fields.get("oe_claim_error") != "database"
+        or fields.get("oe_claim_sqlstate") != "P0001"
+        or fields.get("oe_claim_site") != "dispatch"
+        or fields.get("oe_claim_predicate") != "reverse_graph"
+    ):
+        for key in _OE_REVERSE_FIELDS:
+            fields.pop(key, None)
+    if fields.get("oe_reverse_root") not in {"active", "active_and_sibling"}:
+        fields.pop("oe_reverse_attachment", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 
@@ -1099,7 +1120,10 @@ def _oe_claim_observation(call):
                 and type(result.state) is str
                 and result.state in _OE_CLAIM_FIELDS["oe_claim_state"]
             ):
-                return {"oe_claim_boundary": "tick_result", "oe_claim_state": result.state}
+                return {
+                    "oe_claim_boundary": "tick_result",
+                    "oe_claim_state": result.state,
+                }
             return {"oe_claim_boundary": "tick_result"}
         if (
             line == "with env.factory() as session:"

@@ -5,6 +5,7 @@ import os
 import pytest
 from sqlalchemy import text
 from test_backup_restore import drill_databases as drill_databases  # noqa: PLC0414
+from workflow_oe_reverse_fixture import observe_032h_oe_reverse
 from workflow_structured_stage_fixture import (
     actual_environment,
     assert_restore,
@@ -63,7 +64,13 @@ def test_actual_032h_workflow_completes_with_cold_restore(
                 assert current.json()["status"] == state
                 no_engine_child(env.factory, wid)
             assert env.rd_calls == env.oe_calls == []
-            completed = run_bridge(env, source, tmp_path)
+            with observe_032h_oe_reverse(
+                monkeypatch,
+                record_property,
+                enabled=os.environ.get("MINEAGENT_WORKFLOW_032H_REVERSE_DIAGNOSTIC")
+                == "1",
+            ):
+                completed = run_bridge(env, source, tmp_path)
             call_counts = (len(env.rd_calls), len(env.oe_calls))
             with source.connect() as connection, connection.begin():
                 connection.exec_driver_sql("SET TRANSACTION READ ONLY")
