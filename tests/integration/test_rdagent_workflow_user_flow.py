@@ -158,16 +158,24 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     sdk = Path(os.environ["MINEAGENT_PROVIDER_SDK_PYTHON"])
     assert sdk.is_absolute() and sdk.is_file()
     observe_graph = False
+    ab_arm = os.environ.get("MINEAGENT_QLIB_ASCII_AB_ARM")
+    ab_phase = "setup"
+
+    def mark_ab_phase(phase):
+        nonlocal ab_phase
+        ab_phase = phase
+
     engine = legacy._engine(drill_databases.source)
     try:
         legacy._upgrade(engine, "032g_schema_keyset_cost")
-        ab_arm = os.environ.get("MINEAGENT_QLIB_ASCII_AB_ARM")
         if ab_arm is not None:
             from tests.sql_probes.qlib_ascii_ab import prepare_arm, validate_arm
 
+            mark_ab_phase("arm_configuration")
             validate_arm(ab_arm, allow_feedback_release, os.environ)
-            prepare_arm(engine, drill_databases, ab_arm)
+            prepare_arm(engine, drill_databases, ab_arm, mark_phase=mark_ab_phase)
             record_property("qlib_ascii_ab_source", ab_arm)
+            mark_ab_phase("fixture_before_restore")
         storage = tmp_path / "workflow-provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)
@@ -240,6 +248,8 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 def assert_restored_history(workflow_id):
                     from workflow_restore_replay import assert_workflow_restore
 
+                    if ab_arm is not None:
+                        mark_ab_phase("cold_restore")
                     assert_workflow_restore(
                         drill_databases,
                         tmp_path,
@@ -252,12 +262,14 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     if ab_arm is not None:
                         from tests.sql_probes.qlib_ascii_ab import attest_restored
 
+                        mark_ab_phase("restore_attestation")
                         restored = legacy._engine(drill_databases.restored)
                         try:
                             attest_restored(engine, restored, drill_databases, ab_arm)
                         finally:
                             restored.dispose()
                         record_property("qlib_ascii_ab_restore", ab_arm)
+                        mark_ab_phase("post_restore")
 
                 def assert_browser_history(workflow_id):
                     from workflow_history_browser import assert_actual_workflow_browser
@@ -1215,6 +1227,8 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
         # Fallthrough (including any suppressed error) is not the default return.
         observe_graph = False
     finally:
+        if ab_arm is not None:
+            record_property("qlib_ascii_ab_phase", ab_phase)
         engine.dispose()
         # A successful default run reaches this point after all original
         # assertions and contexts exit, while the drill DB fixture still exists.

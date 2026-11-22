@@ -6,7 +6,9 @@ import subprocess
 from pathlib import Path
 
 from tests.sql_probes.qlib_ab_evidence import (
+    BEFORE_SOURCE_PHASES,
     CHILDREN,
+    PHASES,
     _number,
     require,
     validate_checkout,
@@ -36,6 +38,7 @@ ARM_FIELDS = {
     "revision",
     "arm",
     "acceptance",
+    "phase",
     "source_attested",
     "restore_attested",
     "commits",
@@ -59,8 +62,13 @@ def _load_arm(root, arm, revision):
         and raw["revision"] == revision
         and raw["arm"] == arm
         and raw["acceptance"] in STATUSES
+        and raw["phase"] in PHASES
+        and (raw["phase"] == "accepted") == (raw["acceptance"] == "passed")
         and type(raw["source_attested"]) is bool
         and type(raw["restore_attested"]) is bool
+        and (raw["phase"] in BEFORE_SOURCE_PHASES) == (not raw["source_attested"])
+        and (raw["phase"] in {"post_restore", "accepted"}) == raw["restore_attested"]
+        and (raw["phase"] != "graph_body_edit" or arm == "ascii_reuse")
         and type(raw["commits"]) is list
         and len(raw["commits"]) <= 512
     )
@@ -69,7 +77,7 @@ def _load_arm(root, arm, revision):
         or (status == b"1\n" and raw["acceptance"] in {"failure", "error"})
     )
     if raw["acceptance"] != "passed":
-        return raw["acceptance"], {}
+        return raw["acceptance"], raw["phase"], {}
     require(raw["source_attested"] and raw["restore_attested"])
     observed = {}
     for row in raw["commits"]:
@@ -90,12 +98,12 @@ def _load_arm(root, arm, revision):
             and _number(row["dbapi_ms"])
         )
         observed[key] = row["dbapi_ms"]
-    return "passed", observed
+    return "passed", "accepted", observed
 
 
 def compare(root, revision):
-    baseline, left = _load_arm(root, "baseline", revision)
-    treatment, right = _load_arm(root, "ascii_reuse", revision)
+    baseline, baseline_phase, left = _load_arm(root, "baseline", revision)
+    treatment, treatment_phase, right = _load_arm(root, "ascii_reuse", revision)
     complete = (
         baseline == treatment == "passed" and left.keys() == right.keys() == SLOTS
     )
@@ -119,6 +127,8 @@ def compare(root, revision):
         "revision": revision,
         "baseline": baseline,
         "ascii_reuse": treatment,
+        "baseline_phase": baseline_phase,
+        "ascii_reuse_phase": treatment_phase,
         "comparison": "generation_commit_slots" if complete else "unavailable",
         "slots": slots,
     }

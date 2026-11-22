@@ -81,7 +81,14 @@ def test_only_treatment_writes_exact_sql_and_attests_committed_body(monkeypatch,
     monkeypatch.setattr(ab, "_attest", attest)
     monkeypatch.setattr(ab, "_catalog_identity", lambda conn: ["enc", "fn"])
     dbs = _dbs()
-    ab.prepare_arm(NS(begin=begin, connect=connect), dbs, arm)
+    phases = []
+    ab.prepare_arm(NS(begin=begin, connect=connect), dbs, arm, mark_phase=phases.append)
+    assert phases == [
+        "database_identity",
+        "pinned_baseline",
+        *(["graph_body_edit"] if arm == "ascii_reuse" else []),
+        "source_attestation",
+    ]
     assert verify.call_args_list == [call(first, dbs), call(committed, dbs)]
     assert attest.call_args_list == [
         call(first, arm="baseline"),

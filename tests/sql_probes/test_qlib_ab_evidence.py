@@ -66,8 +66,10 @@ def test_real_pytest_junit_contains_closed_data_on_pass_and_failure(tmp_path, su
             print("private canary")
             print({(evidence.PREFIX + json.dumps(REPORT))!r})
             if not {succeed!r}:
+                record_property("qlib_ascii_ab_phase", "fixture_before_restore")
                 pytest.fail("private failure")
             record_property("qlib_ascii_ab_restore", "baseline")
+            record_property("qlib_ascii_ab_phase", "post_restore")
         """)
     )
     result = subprocess.run(
@@ -91,6 +93,7 @@ def test_real_pytest_junit_contains_closed_data_on_pass_and_failure(tmp_path, su
     assert result.returncode == (0 if succeed else 1)
     projected = evidence.project(tmp_path / "private.xml", "baseline", REV)
     assert projected["acceptance"] == ("passed" if succeed else "failure")
+    assert projected["phase"] == ("accepted" if succeed else "fixture_before_restore")
     assert projected["source_attested"] and projected["restore_attested"] is succeed
     assert projected["commits"] == [
         {
@@ -163,3 +166,36 @@ def test_arms_disable_wait_channel_that_bypasses_xml_capture():
     validate_arm("baseline", True, env)
     with pytest.raises(ValueError):
         validate_arm("baseline", True, {**env, "MINEAGENT_QLIB_WAIT_PROFILE": "1"})
+
+
+@pytest.mark.parametrize(
+    ("arm", "phase", "accepted"),
+    [
+        ("baseline", "database_identity", True),
+        ("baseline", "pinned_baseline", True),
+        ("baseline", "source_attestation", True),
+        ("baseline", "graph_body_edit", False),
+        ("ascii_reuse", "graph_body_edit", True),
+        ("ascii_reuse", "private message", False),
+        ("ascii_reuse", "accepted", False),
+    ],
+)
+def test_early_phase_only_projects_closed_arm_specific_values(
+    tmp_path, arm, phase, accepted
+):
+    from xml.etree import ElementTree as ET
+
+    case = ET.Element("testcase", name=evidence.CASE, classname=evidence.CLASS)
+    ET.SubElement(case, "failure").text = "private traceback"
+    props = ET.SubElement(case, "properties")
+    ET.SubElement(props, "property", name="qlib_ascii_ab_phase", value=phase)
+    path = tmp_path / "private.xml"
+    ET.ElementTree(case).write(path)
+    if not accepted:
+        with pytest.raises(ValueError):
+            evidence.project(path, arm, REV)
+        return
+    result = evidence.project(path, arm, REV)
+    assert result["phase"] == phase and not result["source_attested"]
+    assert result["commits"] == []
+    assert "private" not in json.dumps(result)

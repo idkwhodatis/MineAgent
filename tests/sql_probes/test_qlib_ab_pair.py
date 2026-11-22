@@ -38,6 +38,7 @@ def arm(root, key, *, accept="passed", nudge=0, missing=False, wrong_stage=False
                 "revision": REV,
                 "arm": key,
                 "acceptance": accept,
+                "phase": "accepted" if accept == "passed" else "fixture_before_restore",
                 "source_attested": True,
                 "restore_attested": accept == "passed",
                 "commits": rows,
@@ -64,6 +65,10 @@ def test_incomplete_pair_does_not_publish_any_timing(tmp_path, case):
     arm(tmp_path, "ascii_reuse", **case)
     result = pair.compare(tmp_path, REV)
     assert result["comparison"] == "unavailable" and result["slots"] == []
+    assert result["baseline_phase"] == "accepted"
+    assert result["ascii_reuse_phase"] == (
+        "fixture_before_restore" if "accept" in case else "accepted"
+    )
 
 
 def test_mismatched_slot_and_checkout_rejected(tmp_path):

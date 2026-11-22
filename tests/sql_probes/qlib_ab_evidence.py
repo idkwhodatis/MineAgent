@@ -29,6 +29,16 @@ STAGES = {"reserve_object", "finalize_object"}
 ARMS = {"baseline", "ascii_reuse"}
 SHA = re.compile(r"[a-f0-9]{40}")
 MAX_BYTES = 20_000_000
+BEFORE_SOURCE_PHASES = {
+    "setup",
+    "arm_configuration",
+    "database_identity",
+    "pinned_baseline",
+    "graph_body_edit",
+    "source_attestation",
+}
+AFTER_SOURCE_PHASES = {"fixture_before_restore", "cold_restore", "restore_attestation"}
+PHASES = BEFORE_SOURCE_PHASES | AFTER_SOURCE_PHASES | {"post_restore", "accepted"}
 
 
 def require(ok):
@@ -159,15 +169,25 @@ def project(path, arm, revision):
     failures = [k for k in ("error", "failure", "skipped") if case.find(k) is not None]
     status = failures[0] if failures else "passed"
     props = {}
+    phase = None
     for prop in case.findall("./properties/property"):
         key = prop.get("name")
         if key in {"qlib_ascii_ab_source", "qlib_ascii_ab_restore"}:
             require(key not in props and prop.get("value") == arm)
             props[key] = True
+        elif key == "qlib_ascii_ab_phase":
+            require(phase is None and prop.get("value") in PHASES - {"accepted"})
+            phase = prop.get("value")
+    phase = phase or "setup"
     source = props.get("qlib_ascii_ab_source", False)
     restored = props.get("qlib_ascii_ab_restore", False)
     require(not restored or source)
-    require(status != "passed" or (source and restored))
+    require((phase in BEFORE_SOURCE_PHASES) == (not source))
+    require((phase == "post_restore") == restored)
+    require(phase != "graph_body_edit" or arm == "ascii_reuse")
+    require(status != "passed" or (source and restored and phase == "post_restore"))
+    if status == "passed":
+        phase = "accepted"
     output = case.findall("system-out")
     require(len(output) <= 1)
     rows = _project_rows(output[0].text or "") if source and output else []
@@ -176,6 +196,7 @@ def project(path, arm, revision):
         "revision": revision,
         "arm": arm,
         "acceptance": status,
+        "phase": phase,
         "source_attested": source,
         "restore_attested": restored,
         "commits": rows,

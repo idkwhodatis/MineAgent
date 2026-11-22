@@ -72,13 +72,16 @@ def _catalog_identity(connection):
     )
 
 
-def prepare_arm(engine, databases, arm):
+def prepare_arm(engine, databases, arm, *, mark_phase=lambda _phase: None):
     if arm not in _ARMS:
         raise ValueError("Unrecognized Qlib A/B arm")
+    mark_phase("database_identity")
     with engine.begin() as connection:
         _verify_database(connection, databases)
+        mark_phase("pinned_baseline")
         _attest(connection, arm="baseline")
         if arm == "ascii_reuse":
+            mark_phase("graph_body_edit")
             before = _catalog_identity(connection)
             if len(before) != 2:
                 raise ValueError("Require exact function catalog inventory")
@@ -89,6 +92,7 @@ def prepare_arm(engine, databases, arm):
             if _catalog_identity(connection) != before:
                 raise ValueError("Treatment changed more than the installed graph body")
     # Read committed installed versions separately; never attest a rollback.
+    mark_phase("source_attestation")
     with engine.connect() as connection:
         _verify_database(connection, databases)
         _attest(connection, arm=arm)
