@@ -153,7 +153,7 @@ _ROLES = (
 _UNIT_STATES = frozenset(
     {"launch_intended", "uncertain", "running", "stopped", "unknown"}
 )
-_RPC_REPLY_METHODS = {"submit_chat", "submit_embedding"}
+_RPC_REPLY_METHODS = {"submit_chat", "submit_embedding", "finish_evaluation"}
 _RPC_DURATION = {"lt_50ms", "lt_250ms", "lt_1s", "lt_5s", "ge_5s"}
 _RPC_REMAINING = {
     "late_250ms_or_more",

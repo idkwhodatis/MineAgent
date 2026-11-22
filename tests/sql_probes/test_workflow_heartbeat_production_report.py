@@ -972,3 +972,61 @@ def test_h_bridge_projects_closed_sdk_outcome_at_both_boundaries(tmp_path):
             f'value="rd_waiting_release"/>{props}</properties>',
         )
         assert _drain_verdict(tmp_path, "h_bridge").get("sdk_outcome_cut") == expected
+
+
+def test_h_bridge_finish_evaluation_deadline_projects_only_closed_bins(tmp_path):
+    import json
+
+    condition = {
+        "family": "rpc",
+        "code": "deadline",
+        "stage": "rpc_send",
+        "rpc_method": "finish_evaluation",
+    }
+    identity = {"method": "finish_evaluation", "sequence": 321, "rpc_ordinal": 654}
+
+    def row(stage, elapsed, remaining, *, ok=True):
+        return {
+            **identity,
+            "stage": stage,
+            "elapsed_ms": elapsed,
+            "remaining_ms": remaining,
+            "ok": ok,
+        }
+
+    def observations(tail):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps(condition)
+            + "\nRD_RPC_TIMING:"
+            + json.dumps({"tail": tail})
+        )
+
+    auth = row("auth", 20, 600)
+    commit = row("commit", 40, 100)
+    handler = row("handle", 700, -100)
+    send = row("send", 0, -110, ok=False)
+    data = observations((auth, commit, handler, send))
+    assert data["rpc_auth_elapsed"] == "lt_50ms"
+    assert data["rpc_handler_elapsed"] == "lt_1s"
+    assert data["rpc_handler_remaining"] == "late_lt_250ms"
+    assert data["rpc_commit_deadline_cut"] == "not_observed_past_deadline"
+    assert data["rpc_send_remaining"] == "late_lt_250ms"
+    assert "sequence" not in data and "rpc_ordinal" not in data
+    assert "rpc_send_remaining" not in observations(
+        (auth, commit, handler, send, {**send, "rpc_ordinal": 655})
+    )
+
+    props = "".join(
+        f'<property name="rd_drain_{key}" value="{value}"/>'
+        for key, value in data.items()
+    )
+    _write(
+        tmp_path,
+        "h_bridge",
+        '<failure/><properties><property name="proof_phase" '
+        f'value="rd_waiting_release"/>{props}</properties>',
+    )
+    verdict = _drain_verdict(tmp_path, "h_bridge")
+    assert verdict["rpc_handler_remaining"] == "late_lt_250ms"
+    assert verdict["rpc_send_remaining"] == "late_lt_250ms"
