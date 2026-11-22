@@ -626,7 +626,7 @@ def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
                     NS(
                         path="tests/integration/workflow_structured_stage_fixture.py",
                         name="run_bridge",
-                        lineno=1,
+                        lineno=len(source.splitlines()),
                         frame=NS(code=NS(firstlineno=1, source=lambda: source)),
                         locals={"oe_claim": state, "private": "private-canary"},
                     )
@@ -640,7 +640,10 @@ def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
             AssertionError("private-canary"),
             state=TickOutcome(uuid4(), "waiting_release"),
         )
-    ) == {"oe_claim_state": "waiting_release"}
+    ) == {
+        "oe_claim_boundary": "tick_result",
+        "oe_claim_state": "waiting_release",
+    }
     assert (
         _oe_claim_observation(
             call(
@@ -649,8 +652,15 @@ def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
                 state=TickOutcome(uuid4(), "private-canary"),
             )
         )
-        == {}
+        == {"oe_claim_boundary": "tick_result"}
     )
+    assert _oe_claim_observation(
+        call(
+            'assert oe_claim.state == "structured_child_queued"\n'
+            "with env.factory() as session:",
+            RuntimeError("private-canary"),
+        )
+    ) == {"oe_claim_boundary": "readback_enter"}
     error = DBAPIError(
         "private-sql", {"private": "private-data"}, ServerFailure("private")
     )
@@ -659,7 +669,17 @@ def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
             "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)",
             error,
         )
-    ) == {"oe_claim_error": "database", "oe_claim_sqlstate": "P0001"}
+    ) == {
+        "oe_claim_boundary": "tick_call",
+        "oe_claim_error": "database",
+        "oe_claim_sqlstate": "P0001",
+    }
+    assert _oe_claim_observation(
+        call(
+            "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)",
+            RuntimeError("private-canary"),
+        )
+    ) == {"oe_claim_boundary": "tick_call", "oe_claim_error": "other"}
     assert (
         _oe_claim_observation(
             call("assert released.status_code == 200, released.text", error)
@@ -685,6 +705,26 @@ def test_oe_claim_junit_never_emits_raw_or_cross_phase_values(tmp_path):
     }
     _write(tmp_path, "bridge", fields.replace('value="oe_claim"', 'value="rd_drain"'))
     assert _drain_verdict(tmp_path, "bridge") == {}
+
+
+def test_oe_claim_boundary_keeps_exact_phase_and_suppresses_conflicting_details(
+    tmp_path,
+):
+    fields = """<properties>
+    <property name="proof_phase" value="oe_claim"/>
+    <property name="rd_drain_oe_claim_boundary" value="readback_enter"/>
+    <property name="rd_drain_oe_claim_error" value="database"/>
+    <property name="rd_drain_oe_claim_sqlstate" value="23514"/>
+    <property name="rd_drain_oe_claim_site" value="claim"/>
+    <property name="rd_drain_oe_claim_state" value="waiting_release"/>
+    </properties><failure>private</failure>"""
+    _write(tmp_path, "h_bridge", fields)
+    assert _drain_verdict(tmp_path, "h_bridge") == {
+        "proof_phase": "oe_claim",
+        "oe_claim_boundary": "readback_enter",
+    }
+    _write(tmp_path, "h_bridge", fields.replace('value="oe_claim"', 'value="rd_drain"'))
+    assert _drain_verdict(tmp_path, "h_bridge") == {}
 
 
 def test_only_attested_oe_claim_predicate_survives_junit_projection(tmp_path):

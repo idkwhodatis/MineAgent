@@ -110,6 +110,7 @@ _OE_CLAIM_TRIGGER_LABELS = {
     "Workflow OE reverse immutable graph differs": "reverse_graph",
 }
 _OE_CLAIM_FIELDS = {
+    "oe_claim_boundary": {"tick_call", "tick_result", "readback_enter"},
     "oe_claim_predicate": frozenset(_OE_CLAIM_TRIGGER_LABELS.values()),
     "oe_claim_state": {
         "blocked",
@@ -123,8 +124,10 @@ _OE_CLAIM_FIELDS = {
         "completed",
         "structured_stage_closed",
         "workflow_waiting_containment",
+        "workflow_child_failed_unverified",
+        "workflow_child_cancelled_unverified",
     },
-    "oe_claim_error": {"domain", "database", "validation"},
+    "oe_claim_error": {"domain", "database", "validation", "other"},
     "oe_claim_domain": CODES
     | {
         "run_quota",
@@ -956,6 +959,12 @@ def _drain_verdict(root, name):
         family = fields.get("oe_claim_error")
         if family:
             fields.pop("oe_claim_state", None)
+        if fields.get("oe_claim_boundary") not in {None, "tick_call"}:
+            for key in ("oe_claim_error", "oe_claim_site"):
+                fields.pop(key, None)
+            family = None
+        if fields.get("oe_claim_boundary") == "readback_enter":
+            fields.pop("oe_claim_state", None)
         if (
             family != "database"
             or fields.get("oe_claim_sqlstate") != "P0001"
@@ -1090,15 +1099,22 @@ def _oe_claim_observation(call):
                 and type(result.state) is str
                 and result.state in _OE_CLAIM_FIELDS["oe_claim_state"]
             ):
-                return {"oe_claim_state": result.state}
-            return {}
+                return {"oe_claim_boundary": "tick_result", "oe_claim_state": result.state}
+            return {"oe_claim_boundary": "tick_result"}
+        if (
+            line == "with env.factory() as session:"
+            and index > 0
+            and source[index - 1].strip()
+            == 'assert oe_claim.state == "structured_child_queued"'
+        ):
+            return {"oe_claim_boundary": "readback_enter"}
         if BRIDGE.get(line) == "oe_claim":
             break
         return {}
     else:
         return {}
 
-    result = {}
+    result = {"oe_claim_boundary": "tick_call", "oe_claim_error": "other"}
     if type(value) is DomainError:
         result["oe_claim_error"] = "domain"
         if (
