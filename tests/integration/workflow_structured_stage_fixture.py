@@ -234,7 +234,7 @@ def actual_environment(engine, settings, monkeypatch):
             }
         )
         dataset, _, policy = persist_configured_dataset(
-            factory, account.user.id, configured
+            factory, account.user.id, configured, structured=True
         )
         with TestClient(create_app(settings=configured, engine=engine)) as client:
             yield NS(
@@ -441,10 +441,8 @@ def run_bridge(env, engine, tmp_path):
         )
         released = env.client.post(route + "/release", headers=env.headers)
         assert released.status_code == 200, released.text
-    assert (
-        drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid).state
-        == "structured_child_queued"
-    )
+    oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)
+    assert oe_claim.state == "structured_child_queued"
     with env.factory() as session:
         attached = session.scalars(
             select(OEWorkflowSubmission).filter_by(workflow_id=wid)

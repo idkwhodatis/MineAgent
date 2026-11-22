@@ -39,7 +39,7 @@ BRIDGE = {
     "unreleased = env.client.get(": "rd_release_unreleased",
     'env.client.post(route + "/release", headers=env.foreign).status_code == 404': "rd_release_foreign",
     'released = env.client.post(route + "/release", headers=env.headers)': "rd_release_owner",
-    '== "structured_child_queued"': "oe_claim",
+    "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)": "oe_claim",
     "attached = session.scalars(": "oe_child_readback",
     'paused = command(env.client, env.headers, wid, "pause_after_stage")': "oe_pause",
     'premature = command(env.client, env.headers, wid, "resume")': "oe_premature_resume",
@@ -86,7 +86,53 @@ CODES = frozenset(
 
 _DRAIN_PHASES = {"rd_drain", "rd_waiting_release", "rd_checkpoint_readback"}
 _RELEASE_PHASES = {"rd_release_unreleased", "rd_release_foreign", "rd_release_owner"}
-_OUTCOME_DETAIL_PHASES = _DRAIN_PHASES | _RELEASE_PHASES
+_OUTCOME_DETAIL_PHASES = _DRAIN_PHASES | _RELEASE_PHASES | {"oe_claim"}
+_OE_CLAIM_TRIGGER_LABELS = {
+    "Workflow OE immutable predecessor/input/submission graph differs": "predecessor_input_graph",
+    "Workflow OE definition differs from actual predecessor": "predecessor_definition",
+    "Workflow OE manual input bytes differ": "manual_input_bytes",
+    "Workflow OE derived input bytes differ": "derived_input_bytes",
+    "Workflow OE text hash differs": "text_hash",
+    "Workflow OE exact frozen preflight differs": "frozen_preflight",
+    "Workflow OE requires durable original queue and budget": "queue_budget",
+    "Workflow OE root graph differs": "root_graph",
+    "Workflow OE reverse immutable graph differs": "reverse_graph",
+}
+_OE_CLAIM_FIELDS = {
+    "oe_claim_predicate": frozenset(_OE_CLAIM_TRIGGER_LABELS.values()),
+    "oe_claim_state": {
+        "blocked",
+        "waiting_release",
+        "changed",
+        "feedback_allocated",
+        "paused",
+        "control_pending_or_terminal",
+        "child_owned_by_engine_worker",
+        "child_queued",
+        "completed",
+        "structured_stage_closed",
+        "workflow_waiting_containment",
+    },
+    "oe_claim_error": {"domain", "database", "validation"},
+    "oe_claim_domain": CODES
+    | {
+        "run_quota",
+        "resolved_input_limit",
+        "workflow_graph_inconsistent",
+    },
+    "oe_claim_sqlstate": {
+        "23503",
+        "23505",
+        "23514",
+        "40001",
+        "40P01",
+        "55P03",
+        "57014",
+        "P0001",
+    },
+    "oe_claim_model": {"WorkflowOEClaim", "WorkflowStructuredRunConfig"},
+    "oe_claim_site": {"tick", "read", "dispatch", "claim"},
+}
 _ROLES = (
     "rd_orchestrator",
     "factor_cutoff_candidate",
@@ -292,6 +338,7 @@ _DRAIN_FIELDS = {
     "receipt_boundary": frozenset(
         {"reserve", "publication_prepare", "publication_finalize", "bind"}
     ),
+    **_OE_CLAIM_FIELDS,
     **dict.fromkeys(_ROLES, _UNIT_STATES),
 }
 
@@ -767,7 +814,6 @@ def _bridge_phase(source, line):
     if phase not in {
         "rd_drain",
         "rd_release_unreleased",
-        "rd_release_owner",
         "oe_premature_resume",
     }:
         return phase
@@ -784,7 +830,6 @@ def _bridge_phase(source, line):
     # boundary from the exact four-line source statement, not exception text.
     comparisons = {
         "rd_drain": ("waiting_release", "rd_waiting_release"),
-        "rd_release_owner": ("structured_child_queued", "oe_claim"),
         "oe_premature_resume": ("child_owned_by_engine_worker", "oe_queue_boundary"),
     }
     state, target = comparisons[phase]
@@ -841,6 +886,26 @@ def _drain_verdict(root, name):
             fields.pop(key, None)
     if fields.get("rpc_commit_deadline_cut") != "crossed":
         fields.pop("rpc_late_commit_unit", None)
+    if fields.get("proof_phase") != "oe_claim":
+        for key in _OE_CLAIM_FIELDS:
+            fields.pop(key, None)
+    else:
+        family = fields.get("oe_claim_error")
+        if family:
+            fields.pop("oe_claim_state", None)
+        if (
+            family != "database"
+            or fields.get("oe_claim_sqlstate") != "P0001"
+            or fields.get("oe_claim_site") not in {"dispatch", "claim"}
+        ):
+            fields.pop("oe_claim_predicate", None)
+        for suffix, expected in (
+            ("domain", "domain"),
+            ("sqlstate", "database"),
+            ("model", "validation"),
+        ):
+            if family != expected:
+                fields.pop(f"oe_claim_{suffix}", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 
@@ -934,6 +999,89 @@ def _release_observation(call):
     return {}
 
 
+def _oe_claim_observation(call):
+    from psycopg.errors import RaiseException
+    from pydantic import ValidationError
+    from sqlalchemy.exc import DBAPIError
+
+    from backend.app import research_workflow_oe_claim as claims
+    from backend.app.services import DomainError
+    from workers.research import workflow_tick
+
+    value = call.excinfo.value
+    fixture = Path("tests/integration/workflow_structured_stage_fixture.py").resolve()
+    for frame in reversed(call.excinfo.traceback):
+        if Path(frame.path).resolve() != fixture or frame.name != "run_bridge":
+            continue
+        source = str(frame.frame.code.source()).splitlines()
+        index = frame.lineno - frame.frame.code.firstlineno
+        if not (0 <= index < len(source)):
+            return {}
+        line = source[index].strip()
+        if line == 'assert oe_claim.state == "structured_child_queued"':
+            result = frame.locals.get("oe_claim")
+            if (
+                type(result) is workflow_tick.TickOutcome
+                and type(result.state) is str
+                and result.state in _OE_CLAIM_FIELDS["oe_claim_state"]
+            ):
+                return {"oe_claim_state": result.state}
+            return {}
+        if BRIDGE.get(line) == "oe_claim":
+            break
+        return {}
+    else:
+        return {}
+
+    result = {}
+    if type(value) is DomainError:
+        result["oe_claim_error"] = "domain"
+        if (
+            type(value.code) is str
+            and value.code in _OE_CLAIM_FIELDS["oe_claim_domain"]
+        ):
+            result["oe_claim_domain"] = value.code
+    elif isinstance(value, DBAPIError):
+        result["oe_claim_error"] = "database"
+        code = getattr(value.orig, "sqlstate", None)
+        if type(code) is str and code in _OE_CLAIM_FIELDS["oe_claim_sqlstate"]:
+            result["oe_claim_sqlstate"] = code
+        if code == "P0001" and type(value.orig) is RaiseException:
+            primary = value.orig.diag.message_primary
+            if type(primary) is str:
+                predicate = _OE_CLAIM_TRIGGER_LABELS.get(primary)
+                if predicate is not None:
+                    result["oe_claim_predicate"] = predicate
+    elif type(value) is ValidationError:
+        result["oe_claim_error"] = "validation"
+        if (
+            type(value.title) is str
+            and value.title in _OE_CLAIM_FIELDS["oe_claim_model"]
+        ):
+            result["oe_claim_model"] = value.title
+
+    sites = (
+        (workflow_tick.drive_one.__code__, "tick"),
+        (workflow_tick._read.__code__, "read"),
+        (claims.dispatch_oe_stage.__code__, "dispatch"),
+        (claims.claim_oe_stage.__code__, "claim"),
+    )
+    trace = value.__traceback__
+    site = None
+    for _ in range(64):
+        if trace is None:
+            if site is not None:
+                result["oe_claim_site"] = site
+            if site not in {"dispatch", "claim"}:
+                result.pop("oe_claim_predicate", None)
+            return result
+        for code, label in sites:
+            if trace.tb_frame.f_code is code:
+                site = label
+        trace = trace.tb_next
+    return result
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item, call):
     report = yield
@@ -950,6 +1098,12 @@ def pytest_runtest_makereport(item, call):
         if phase in _RELEASE_PHASES and call.when == "call":
             try:
                 for key, value in _release_observation(call).items():
+                    item.user_properties.append((f"rd_drain_{key}", value))
+            except (OSError, TypeError, ValueError, AttributeError):
+                pass  # Preserve the original failed assertion.
+        if phase == "oe_claim" and call.when == "call":
+            try:
+                for key, value in _oe_claim_observation(call).items():
                     item.user_properties.append((f"rd_drain_{key}", value))
             except (OSError, TypeError, ValueError, AttributeError):
                 pass  # Preserve the original failed assertion.

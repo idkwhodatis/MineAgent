@@ -400,6 +400,26 @@ def test_diagnostic_wraps_only_original_first_drain_without_changing_assertions(
     assert ast.unparse(wrapper.body[0]) == "drain(env.factory, env.settings)"
     index = bridge.body.index(wrapper)
     bridge.body[index : index + 1] = wrapper.body
+    capture, comparison = ast.parse(
+        "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)\n"
+        'assert oe_claim.state == "structured_child_queued"'
+    ).body
+    shapes = [ast.dump(n, include_attributes=False) for n in (capture, comparison)]
+    locations = [
+        i
+        for i in range(len(bridge.body) - 1)
+        if [ast.dump(n, include_attributes=False) for n in bridge.body[i : i + 2]]
+        == shapes
+    ]
+    assert len(locations) == 1
+    assert (
+        sum(isinstance(n, ast.Name) and n.id == "oe_claim" for n in ast.walk(bridge))
+        == 2
+    )
+    index = locations[0]
+    bridge.body[index : index + 2] = ast.parse(
+        'assert drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid).state == "structured_child_queued"'
+    ).body
     assert hashlib.sha256(
         ast.dump(bridge, include_attributes=False).encode()
     ).hexdigest() == (
@@ -1039,3 +1059,51 @@ def test_lease_database_guard_is_an_exact_closed_public_literal(
     error = DBAPIError("private SQL", {"private": "parameter"}, driver)
     assert lease._database_guard(error) == expected
     assert rpc_diagnostic._queue_failure(error)["sqlstate"] == "P0001"
+
+
+def test_composed_retained_dataset_qualifies_for_both_exact_readers(
+    monkeypatch, tmp_path
+):
+    import json
+    from contextlib import contextmanager
+    from datetime import date
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from packages.factors.contracts import DateWindow
+    from packages.structured_factor_strategy.market import ARTIFACTS, stage_market
+
+    monkeypatch.syspath_prepend(str(ROOT / "tests/integration"))
+    from rd_configured_dataset_fixture import (
+        persist_configured_dataset,
+        retained_marketdata_fixture,
+    )
+
+    retained = []
+
+    @contextmanager
+    def begin():
+        yield SimpleNamespace(add=retained.append)
+
+    dataset, source, _ = persist_configured_dataset(
+        SimpleNamespace(begin=begin),
+        uuid4(),
+        SimpleNamespace(storage_root=tmp_path),
+        structured=True,
+    )
+    assert retained == [dataset]
+    root = tmp_path / dataset.storage_key
+    artifacts = {name: (root / name).read_bytes() for name in ARTIFACTS}
+    market = stage_market(
+        (root / "manifest.json").read_bytes(),
+        artifacts,
+        dataset_sha256=dataset.content_sha256,
+        window=DateWindow(start=date(2024, 3, 13), end=date(2024, 3, 15)),
+    )
+    assert market.qualification == "synthetic_by_construction_not_live_or_pit_evidence"
+    assert {value.listing_id for value in market.listings} == set(
+        source.universe.listing_ids
+    )
+    original = retained_marketdata_fixture()["bars"]
+    actual = json.loads(artifacts["preview.json"])
+    assert [row["close"] for row in actual] == [row["close"] for row in original]

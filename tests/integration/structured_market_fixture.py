@@ -9,7 +9,7 @@ from packages.rdagent_adapter.configured_source import ConfiguredSourcePolicy
 from packages.structured_factor_strategy.market import GENERATOR
 
 
-def encoded_structured_market():
+def encoded_structured_market(*, break_warmup_tie=True):
     value = retained_marketdata_fixture()
     for row in value["bars"]:
         row["low"] = 90.0
@@ -17,7 +17,11 @@ def encoded_structured_market():
         x["listing_id"] for x in value["manifest"]["listings"] if x["symbol"] == "AAA"
     )
     for row in value["bars"]:
-        if row["listing_id"] == aaa and row["session_date"] == "2024-03-12":
+        if (
+            break_warmup_tie
+            and row["listing_id"] == aaa
+            and row["session_date"] == "2024-03-12"
+        ):
             row["close"] = 103.0
     manifest = value["manifest"]
     manifest["price_semantics"]["algorithm_version"] = GENERATOR

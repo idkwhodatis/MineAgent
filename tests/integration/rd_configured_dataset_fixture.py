@@ -15,6 +15,7 @@ from backend.app.models import DatasetVersion
 from packages.marketdata.contracts import Bar, BarsRequest, PriceSemantics, make_listing
 from packages.marketdata.normalize import canonical_json
 from packages.rdagent_adapter.configured_source import (
+    ARTIFACTS,
     ConfiguredSourcePolicy,
     parse_retained_source,
 )
@@ -133,9 +134,14 @@ def encoded_marketdata_fixture(value):
     }
 
 
-def persist_configured_dataset(factory, owner_id, settings):
+def persist_configured_dataset(factory, owner_id, settings, *, structured=False):
     """Retain real canonical artifact bytes and exact owned row; no run/source grant."""
-    args = encoded_marketdata_fixture(retained_marketdata_fixture())
+    if structured:
+        from structured_market_fixture import encoded_structured_market
+
+        args = encoded_structured_market(break_warmup_tie=False)
+    else:
+        args = encoded_marketdata_fixture(retained_marketdata_fixture())
     key = f"datasets/{owner_id}/{args['dataset_id']}"
     directory = settings.storage_root / key
     provision_directory(directory, durable_parent=settings.storage_root)
@@ -160,5 +166,9 @@ def persist_configured_dataset(factory, owner_id, settings):
     )
     with factory.begin() as session:
         session.add(dataset)
-    source = parse_retained_source(**args)
+    # RD consumes only its exact primitive files; the same manifest commits
+    # the additional synthetic actions/coverage that structured OE verifies.
+    source = parse_retained_source(
+        **{**args, "artifacts": {name: args["artifacts"][name] for name in ARTIFACTS}}
+    )
     return dataset, source, args["policy"]

@@ -143,16 +143,18 @@ def test_waiting_release_checkpoint_and_worker_drain_do_not_collapse():
 def test_oe_claim_call_is_distinct_from_release_assertion():
     source = Path("tests/integration/workflow_structured_stage_fixture.py").read_text()
     source = source.split("def run_bridge(", 1)[1].split("def assert_restore(", 1)[0]
-    for state, cut in (
-        ("structured_child_queued", "oe_claim"),
-        ("child_owned_by_engine_worker", "oe_queue_boundary"),
-    ):
-        comparison = next(
-            i
-            for i, line in enumerate(source.splitlines(), 1)
-            if line.strip() == f'== "{state}"'
+    lines = [line.strip() for line in source.splitlines()]
+    assignment = (
+        lines.index(
+            "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)"
         )
-        assert _bridge_phase(source, comparison - 2) == cut
+        + 1
+    )
+    assert _bridge_phase(source, assignment - 1) == "rd_release_owner"
+    assert _bridge_phase(source, assignment) == "oe_claim"
+    assert _bridge_phase(source, assignment + 1) == "oe_claim"
+    comparison = lines.index('== "child_owned_by_engine_worker"') + 1
+    assert _bridge_phase(source, comparison - 2) == "oe_queue_boundary"
 
 
 def test_only_exact_release_assertion_can_report_closed_http_status(tmp_path):
@@ -583,3 +585,126 @@ def test_deadline_commit_bins_require_one_send_same_rpc_and_strict_values(tmp_pa
             content.replace(f'value="{original}"', f'value="{replacement}"'),
         )
         assert "rpc_send_remaining" not in _drain_verdict(tmp_path, "bridge")
+
+
+def test_oe_claim_observation_projects_exact_outcome_or_exception_only():
+    from types import SimpleNamespace as NS
+    from uuid import uuid4
+
+    from sqlalchemy.exc import DBAPIError
+
+    from script.workflow_heartbeat_production_report import _oe_claim_observation
+    from workers.research.workflow_tick import TickOutcome
+
+    class ServerFailure(Exception):
+        sqlstate = "P0001"
+
+    def call(source, value, *, state=None):
+        return NS(
+            excinfo=NS(
+                value=value,
+                traceback=[
+                    NS(
+                        path="tests/integration/workflow_structured_stage_fixture.py",
+                        name="run_bridge",
+                        lineno=1,
+                        frame=NS(code=NS(firstlineno=1, source=lambda: source)),
+                        locals={"oe_claim": state, "private": "private-canary"},
+                    )
+                ],
+            )
+        )
+
+    assert _oe_claim_observation(
+        call(
+            'assert oe_claim.state == "structured_child_queued"',
+            AssertionError("private-canary"),
+            state=TickOutcome(uuid4(), "waiting_release"),
+        )
+    ) == {"oe_claim_state": "waiting_release"}
+    assert (
+        _oe_claim_observation(
+            call(
+                'assert oe_claim.state == "structured_child_queued"',
+                AssertionError("private-canary"),
+                state=TickOutcome(uuid4(), "private-canary"),
+            )
+        )
+        == {}
+    )
+    error = DBAPIError(
+        "private-sql", {"private": "private-data"}, ServerFailure("private")
+    )
+    assert _oe_claim_observation(
+        call(
+            "oe_claim = drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid)",
+            error,
+        )
+    ) == {"oe_claim_error": "database", "oe_claim_sqlstate": "P0001"}
+    assert (
+        _oe_claim_observation(
+            call("assert released.status_code == 200, released.text", error)
+        )
+        == {}
+    )
+
+
+def test_oe_claim_junit_never_emits_raw_or_cross_phase_values(tmp_path):
+    fields = """<properties>
+    <property name="proof_phase" value="oe_claim"/>
+    <property name="rd_drain_oe_claim_error" value="database"/>
+    <property name="rd_drain_oe_claim_sqlstate" value="P0001"/>
+    <property name="rd_drain_oe_claim_site" value="dispatch"/>
+    <property name="rd_drain_oe_claim_state" value="waiting_release"/>
+    </properties><failure>private</failure>"""
+    _write(tmp_path, "bridge", fields)
+    assert _drain_verdict(tmp_path, "bridge") == {
+        "proof_phase": "oe_claim",
+        "oe_claim_error": "database",
+        "oe_claim_sqlstate": "P0001",
+        "oe_claim_site": "dispatch",
+    }
+    _write(tmp_path, "bridge", fields.replace('value="oe_claim"', 'value="rd_drain"'))
+    assert _drain_verdict(tmp_path, "bridge") == {}
+
+
+def test_only_attested_oe_claim_predicate_survives_junit_projection(tmp_path):
+    from script.workflow_heartbeat_production_report import _OE_CLAIM_TRIGGER_LABELS
+
+    exact_triggers = "\n".join(
+        Path(f"backend/app/oe_workflow_{kind}_sql.py").read_text()
+        for kind in ("graph", "reverse")
+    )
+    assert all(
+        f"RAISE EXCEPTION '{primary}'" in exact_triggers
+        for primary in _OE_CLAIM_TRIGGER_LABELS
+    )
+    properties = {
+        "proof_phase": "oe_claim",
+        "rd_drain_oe_claim_error": "database",
+        "rd_drain_oe_claim_site": "dispatch",
+        "rd_drain_oe_claim_sqlstate": "P0001",
+        "rd_drain_oe_claim_predicate": "predecessor_input_graph",
+    }
+
+    def read(**change):
+        attrs = "".join(
+            f'<property name="{k}" value="{v}"/>'
+            for k, v in {**properties, **change}.items()
+        )
+        _write(
+            tmp_path,
+            "bridge",
+            f"<properties>{attrs}</properties><failure>private</failure>",
+        )
+        return _drain_verdict(tmp_path, "bridge")
+
+    assert read()["oe_claim_predicate"] == "predecessor_input_graph"
+    for change in (
+        {"proof_phase": "rd_drain"},
+        {"rd_drain_oe_claim_error": "validation"},
+        {"rd_drain_oe_claim_sqlstate": "23514"},
+        {"rd_drain_oe_claim_site": "tick"},
+        {"rd_drain_oe_claim_predicate": "private-canary"},
+    ):
+        assert "oe_claim_predicate" not in read(**change)
