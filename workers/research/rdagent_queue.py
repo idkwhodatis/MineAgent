@@ -39,7 +39,9 @@ def _queued_identity(session, run):
     return require_source_identity(run)
 
 
-def claim_configured_run(factory, run_id, generation, worker_id, settings):
+def claim_configured_run(
+    factory, run_id, generation, worker_id, settings, *, _on_committed=None
+):
     with factory.begin() as session:
         fence = _claim(session, run_id, generation, worker_id, settings, None, None)
     if fence is None:
@@ -50,6 +52,10 @@ def claim_configured_run(factory, run_id, generation, worker_id, settings):
         config = _queued_identity(session, session.get(ResearchRun, fence.run_id))
         initialize_budget(session, fence, config.budget)
         bind_research_attempt(session, fence)
+    if _on_committed is not None:
+        # Keep the returned fence unchanged. Mode comes from the already
+        # validated receipt/config; no separate read or authority is introduced.
+        _on_committed(config.schema_version == "mineagent.factor-research.v3")
     return fence
 
 
@@ -199,8 +205,8 @@ def execute(run_id, generation, *, settings):
     import socket
 
     from backend.app.core.db import create_db_engine, session_factory
-    from workers.research.lease import AttemptLease
     from workers.research.rdagent_configured import execute_configured_controller
+    from workers.research.rdagent_workflow_lease import configured_rd_lease
 
     engine = create_db_engine(settings)
     factory = session_factory(engine)
@@ -215,18 +221,20 @@ def execute(run_id, generation, *, settings):
                     settings.storage_root / directory,
                     durable_parent=settings.storage_root,
                 )
+            mode = []
             fence = claim_configured_run(
-                factory, UUID(run_id), generation, worker_id, settings
+                factory,
+                UUID(run_id),
+                generation,
+                worker_id,
+                settings,
+                _on_committed=mode.append,
             )
             if fence is None:
                 return
-            lease = AttemptLease(
-                factory,
-                settings,
-                fence.attempt_id,
-                fence.generation,
-                fence.lease_token,
-                worker_id,
+            (workflow,) = mode
+            lease = configured_rd_lease(
+                factory, settings, fence, worker_id, workflow=workflow
             )
             lease.start()
             try:
