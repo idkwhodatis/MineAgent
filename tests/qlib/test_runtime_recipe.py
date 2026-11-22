@@ -178,12 +178,12 @@ def test_docker_build_and_workflow_keep_disabled_fresh_installed_only_scope(
     from xml.etree import ElementTree as ET
 
     assert "python -m pytest tests/qlib -q --junitxml=qlib-contracts.xml" in workflow
-    assert "assert len(cases) == 279" in workflow
+    assert "assert len(cases) == 280" in workflow
     verifier = textwrap.dedent(
         workflow.split("python - <<'PY'\n", 1)[1].split("          PY\n", 1)[0]
     )
     suite = ET.Element("testsuite")
-    for index in range(279):
+    for index in range(280):
         ET.SubElement(suite, "testcase", name=f"test_existing_{index}")
     monkeypatch.setattr(ET, "parse", lambda path: ET.ElementTree(suite))
 
