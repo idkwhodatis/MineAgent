@@ -142,6 +142,7 @@ _ROLES = (
 _UNIT_STATES = frozenset(
     {"launch_intended", "uncertain", "running", "stopped", "unknown"}
 )
+_RPC_REPLY_METHODS = {"submit_chat", "submit_embedding"}
 _RPC_DURATION = {"lt_50ms", "lt_250ms", "lt_1s", "lt_5s", "ge_5s"}
 _RPC_REMAINING = {
     "late_250ms_or_more",
@@ -622,7 +623,8 @@ def _rpc_send_deadline(fields):
     return (
         fields.get("code") == "deadline"
         and fields.get("stage") == "rpc_send"
-        and fields.get("rpc_method") == "submit_chat"
+        and type(fields.get("rpc_method")) is str
+        and fields["rpc_method"] in _RPC_REPLY_METHODS
     )
 
 
@@ -652,6 +654,7 @@ def _rpc_deadline_timing(stdout, fields):
     """Use only the composed fixture's existing private RPC timing capture."""
     if not _rpc_send_deadline(fields):
         return {}
+    method = fields["rpc_method"]
     prefix = "RD_RPC_TIMING:"
     matches = [line for line in stdout.splitlines() if line.startswith(prefix)]
     if len(matches) != 1 or len(matches[0]) > 200_000:
@@ -676,7 +679,7 @@ def _rpc_deadline_timing(stdout, fields):
     candidates = [
         (i, row)
         for i, row in enumerate(tail)
-        if row.get("method") == "submit_chat"
+        if row.get("method") == method
         and row.get("stage") == "send"
         and row.get("ok") is False
     ]
@@ -693,8 +696,10 @@ def _rpc_deadline_timing(stdout, fields):
     ):
         return {}
     found = {}
+    handler_index = None
+    commit_indices = []
     for i, row in enumerate(tail):
-        if row.get("method") == "submit_chat" and row.get("rpc_ordinal") == ordinal:
+        if row.get("method") == method and row.get("rpc_ordinal") == ordinal:
             stage = row.get("stage")
             if type(stage) is not str or stage not in {
                 "auth",
@@ -713,8 +718,14 @@ def _rpc_deadline_timing(stdout, fields):
                 or not bounded(row.get("remaining_ms"), -3_600_000, 3_600_000)
             ):
                 return {}
+            if stage == "handle":
+                handler_index = i
+            if stage == "commit":
+                commit_indices.append(i)
             found.setdefault(stage, []).append(row)
-    if len(found.get("send", ())) != 1:
+    if len(found.get("send", ())) != 1 or (
+        handler_index is not None and any(i > handler_index for i in commit_indices)
+    ):
         return {}
     result = {
         "rpc_send_elapsed": _duration(send["elapsed_ms"]),
@@ -735,7 +746,11 @@ def _rpc_deadline_timing(stdout, fields):
         )
         late = [row for row in rows if row["remaining_ms"] < 0]
         crossing = [row for row in late if row["elapsed_ms"] + row["remaining_ms"] > 1]
-        if len(crossing) == 1 and crossing[0].get("ownership") == "rpc_fenced_neutral":
+        if (
+            len(crossing) == 1
+            and crossing[0]["ok"] is True
+            and crossing[0].get("ownership") == "rpc_fenced_neutral"
+        ):
             unit = crossing[0].get("unit")
             if type(unit) is str and unit in _RPC_LATE_COMMIT_UNITS:
                 result["rpc_late_commit_unit"] = unit

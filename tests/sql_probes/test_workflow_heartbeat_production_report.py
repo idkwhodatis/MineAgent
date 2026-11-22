@@ -595,7 +595,7 @@ def test_deadline_commit_bins_require_one_send_same_rpc_and_strict_values(tmp_pa
     for original, replacement in (
         ("deadline", "neutral_busy"),
         ("rpc_send", "transaction"),
-        ("submit_chat", "submit_embedding"),
+        ("submit_chat", "check_control"),
         ("rd_drain", "rd_release_owner"),
     ):
         _write(
@@ -727,3 +727,85 @@ def test_only_attested_oe_claim_predicate_survives_junit_projection(tmp_path):
         {"rd_drain_oe_claim_predicate": "private-canary"},
     ):
         assert "oe_claim_predicate" not in read(**change)
+
+
+def test_embedding_uses_exact_handler_return_and_unique_fenced_commit(tmp_path):
+    import json
+
+    identity = {"method": "submit_embedding", "sequence": 871, "rpc_ordinal": 991}
+    condition = {
+        "code": "deadline",
+        "stage": "rpc_send",
+        "rpc_method": "submit_embedding",
+    }
+
+    def row(stage, elapsed, remaining, **extra):
+        return {
+            **identity,
+            "stage": stage,
+            "ok": True,
+            "elapsed_ms": elapsed,
+            "remaining_ms": remaining,
+            **extra,
+        }
+
+    auth = row("auth", 30, 900)
+    crossing = row(
+        "commit",
+        500,
+        -100,
+        ownership="rpc_fenced_neutral",
+        unit="provider_publication",
+    )
+    handler = row("handle", 1100, -200, payload="private-canary")
+    sent = row("send", 0, -251, ok=False)
+
+    def project(*tail):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps(condition)
+            + "\nRD_RPC_TIMING:"
+            + json.dumps({"tail": tail})
+        )
+
+    result = project(
+        {**crossing, "method": "submit_chat", "unit": "provider_receipt"},
+        auth,
+        crossing,
+        handler,
+        sent,
+    )
+    assert result["rpc_handler_remaining"] == "late_lt_250ms"
+    assert result["rpc_send_remaining"] == "late_250ms_or_more"
+    assert result["rpc_late_commit_unit"] == "provider_publication"
+    for value in ("private-canary", "991", "871", "provider_receipt"):
+        assert value not in json.dumps(result)
+
+    failed = project(auth, {**crossing, "ok": False}, handler, sent)
+    assert failed["rpc_commit_deadline_cut"] == "crossed"
+    assert "rpc_late_commit_unit" not in failed
+    assert "rpc_late_commit_unit" not in project(
+        auth, crossing, crossing, handler, sent
+    )
+    assert "rpc_handler_remaining" not in project(auth, handler, crossing, sent)
+    assert "rpc_handler_remaining" not in project(
+        auth, handler, {**sent, "rpc_ordinal": 444}
+    )
+
+    evidence = {
+        "proof_phase": "rd_waiting_release",
+        **{f"rd_drain_{k}": v for k, v in result.items()},
+    }
+    attrs = "".join(f'<property name="{k}" value="{v}"/>' for k, v in evidence.items())
+    _write(
+        tmp_path,
+        "bridge",
+        f"<properties>{attrs}</properties><failure>private</failure>",
+    )
+    assert (
+        _drain_verdict(tmp_path, "bridge")["rpc_handler_remaining"] == "late_lt_250ms"
+    )
+    assert (
+        _drain_verdict(tmp_path, "bridge")["rpc_late_commit_unit"]
+        == "provider_publication"
+    )
