@@ -41,38 +41,29 @@ def test_experiment_emits_only_closed_temp_functions():
         assert (probe.CANDIDATE if candidate else probe.BASELINE) in value
 
 
-def test_default_workflow_call_supplies_exact_required_inputs_by_name():
-    import ast
+def test_observer_reuses_original_default_terminal_assertions_only():
     from pathlib import Path
 
     integration = Path(__file__).parents[1] / "integration"
-    workflow = ast.parse(
-        (integration / "test_rdagent_workflow_user_flow.py").read_text()
+    workflow = (integration / "test_rdagent_workflow_user_flow.py").read_text()
+    experiment = (
+        integration / "test_rd_graph_canonical_candidate_postgres.py"
+    ).read_text()
+    assert workflow.count("observe_populated_graph(") == 1
+    assert workflow.index("engine.dispose()") < workflow.index(
+        "observe_populated_graph("
     )
-    experiment = ast.parse(
-        (integration / "test_rd_graph_canonical_candidate_postgres.py").read_text()
+    assert "if observe_graph and sys.exception() is None:" in workflow
+    assert (
+        workflow.count('os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED")') == 1
     )
-    original = next(
-        node
-        for node in workflow.body
-        if isinstance(node, ast.FunctionDef)
-        and node.name
-        == "test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results"
-    )
-    calls = [
-        node
-        for node in ast.walk(experiment)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_unchanged_workflow"
-    ]
-    assert len(calls) == 1 and not calls[0].args
-    args = {kw.arg: kw.value for kw in calls[0].keywords}
-    assert set(args) == {arg.arg for arg in original.args.args}
-    assert isinstance(args["allow_feedback_release"], ast.Constant)
-    assert args["allow_feedback_release"].value is False
-    assert isinstance(args["pytestconfig"], ast.Name)
-    assert args["pytestconfig"].id == "pytestconfig"
+    assert (
+        "assert_browser_history(wid)\n"
+        "                    assert_restored_history(wid)\n"
+        "                    observe_graph = ("
+    ) in workflow
+    assert "_unchanged_workflow" not in experiment
+    assert "def " + probe.GRAPH_CASE not in experiment
 
 
 def _diagnostic_xml(phase="corpus", ordinal="24", sqlstate=None):
@@ -91,21 +82,37 @@ def _diagnostic_xml(phase="corpus", ordinal="24", sqlstate=None):
         ET.SubElement(props, "property", name="canonical_sqlstate", value=sqlstate)
     ET.SubElement(props, "property", name="private", value="unsafe-xml-property")
     ET.SubElement(case, "failure", message="unsafe-log-message").text = "unsafe-body"
-    setup = ET.SubElement(
-        suite,
-        "testcase",
-        name="test_default_off_populated_rd_proposal_adoption_graph_matches_candidate",
+    return root
+
+
+def _workflow_xml(*, original=None, phase=None, status=None):
+    from xml.etree import ElementTree as ET
+
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite")
+    other = ET.SubElement(suite, "testcase", name="opt-in")
+    ET.SubElement(other, "failure", message="unsafe-other-workflow")
+    case = ET.SubElement(
+        suite, "testcase", name=probe.WORKFLOW_DEFAULT, classname=probe.WORKFLOW_CLASS
     )
-    ET.SubElement(setup, "error", message="unsafe-fixture-message")
+    props = ET.SubElement(case, "properties")
+    if phase is not None:
+        ET.SubElement(props, "property", name="canonical_phase", value=phase)
+    if status is not None:
+        ET.SubElement(props, "property", name="canonical_status", value=status)
+    if original is not None:
+        ET.SubElement(case, original, message="unsafe-fixture-message")
     return root
 
 
 def test_canonical_diagnostic_projects_allowlist_only_including_fixture_error():
-    results = probe.project_diagnostic_cases(_diagnostic_xml())
+    results = probe.project_diagnostic_cases(
+        _diagnostic_xml(), _workflow_xml(original="error")
+    )
     assert results == {
         "test_default_off_populated_rd_proposal_adoption_graph_matches_candidate": (
-            "error",
-            "fixture",
+            "unavailable",
+            "original_workflow",
             None,
             None,
         ),
@@ -130,7 +137,7 @@ def test_canonical_diagnostic_rejects_free_form_phase_or_ordinal():
         ("temp_baseline", "0"),
     ):
         with pytest.raises(ValueError, match="^Unexpected|^Ordinal") as error:
-            probe.project_diagnostic_cases(_diagnostic_xml(phase, ordinal))
+            probe.project_diagnostic_cases(_diagnostic_xml(phase, ordinal), None)
         assert "unsafe-value" not in str(error.value)
 
 
@@ -142,7 +149,7 @@ def test_ddl_sqlstate_is_closed_and_tied_to_temp_failures():
         expected = "42601" if state == "42601" else "other"
         assert probe.closed_sqlstate(state) == expected
         result = probe.project_diagnostic_cases(
-            _diagnostic_xml("temp_candidate", None, expected)
+            _diagnostic_xml("temp_candidate", None, expected), None
         )
         assert result[name] == ("failure", "temp_candidate", None, expected)
 
@@ -153,5 +160,56 @@ def test_ddl_sqlstate_is_closed_and_tied_to_temp_failures():
         with pytest.raises(
             ValueError, match="^Unexpected canonical diagnostic SQLSTATE"
         ) as error:
-            probe.project_diagnostic_cases(input_xml)
+            probe.project_diagnostic_cases(input_xml, None)
         assert "private" not in str(error.value)
+
+
+def test_workflow_comparison_verdict_is_independent_and_closed():
+    import pytest
+
+    encoder = _diagnostic_xml()
+    for root, expected in (
+        (None, ("unavailable", "original_workflow", None, None)),
+        (_workflow_xml(), ("unavailable", "observer_missing", None, None)),
+        (
+            _workflow_xml(phase="complete", status="passed"),
+            ("passed", "complete", None, None),
+        ),
+        (
+            _workflow_xml(phase="candidate_graph", status="failure"),
+            ("failure", "candidate_graph", None, None),
+        ),
+        *[
+            (
+                _workflow_xml(original=verdict, phase="complete", status="passed"),
+                ("unavailable", "original_workflow", None, None),
+            )
+            for verdict in ("error", "failure", "skipped")
+        ],
+    ):
+        assert (
+            probe.project_diagnostic_cases(encoder, root)[probe.GRAPH_CASE] == expected
+        )
+    for phase, status in (("private", "failure"), ("complete", "private")):
+        with pytest.raises(ValueError, match="^Unexpected"):
+            probe.project_diagnostic_cases(
+                encoder, _workflow_xml(phase=phase, status=status)
+            )
+
+
+def test_workflow_comparison_rejects_wrong_provenance_or_duplicate():
+    import pytest
+
+    encoder = _diagnostic_xml()
+    wrong = _workflow_xml(phase="complete", status="passed")
+    same_name = next(
+        c for c in wrong.iter("testcase") if c.get("name") == probe.WORKFLOW_DEFAULT
+    )
+    same_name.set("classname", "private")
+    with pytest.raises(ValueError, match="^Unexpected original default") as error:
+        probe.project_diagnostic_cases(encoder, wrong)
+    assert "private" not in str(error.value)
+    same_name.set("classname", probe.WORKFLOW_CLASS)
+    wrong.find("testsuite").append(same_name)
+    with pytest.raises(ValueError, match="^Duplicate original default"):
+        probe.project_diagnostic_cases(encoder, wrong)

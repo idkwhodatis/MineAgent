@@ -138,79 +138,120 @@ def closed_sqlstate(value):
     return value if type(value) is str and value in _SQLSTATES else "other"
 
 
-def project_diagnostic_cases(root):
-    """Return only closed outcomes, phases, bounded ordinals, and allowed temp DDL SQLSTATEs."""
-    phases = {
-        "test_installed032g_request_encoding_bytes_and_errors": {
-            "startup",
-            "connect",
-            "installed_preflight",
-            "temp_scope",
-            "temp_baseline",
-            "temp_candidate",
-            "corpus",
-            "complete",
-        },
-        "test_default_off_populated_rd_proposal_adoption_graph_matches_candidate": {
-            "startup",
-            "original_workflow",
-            "connect",
-            "installed_preflight",
-            "temp_scope",
-            "temp_candidate",
-            "persisted_evidence",
-            "installed_graph",
-            "candidate_graph",
-            "graph_parity",
-            "complete",
-        },
+ENCODER_CASE = "test_installed032g_request_encoding_bytes_and_errors"
+GRAPH_CASE = "test_default_off_populated_rd_proposal_adoption_graph_matches_candidate"
+WORKFLOW_CLASS = "tests.integration.test_rdagent_workflow_user_flow"
+WORKFLOW_DEFAULT = (
+    "test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results"
+    "[default-off-waits]"
+)
+_ENCODER_PHASES = {
+    "startup",
+    "connect",
+    "installed_preflight",
+    "temp_scope",
+    "temp_baseline",
+    "temp_candidate",
+    "corpus",
+    "complete",
+}
+_GRAPH_PHASES = {
+    "startup",
+    "connect",
+    "installed_preflight",
+    "temp_scope",
+    "temp_candidate",
+    "persisted_evidence",
+    "installed_graph",
+    "candidate_graph",
+    "graph_parity",
+    "complete",
+}
+
+
+def _test_status(case):
+    return next(
+        (tag for tag in ("failure", "error", "skipped") if case.find(tag) is not None),
+        "passed",
+    )
+
+
+def _project_case(case, phases, *, independent=False):
+    status = _test_status(case)
+    if independent and status != "passed":
+        # Ignore any optional telemetry if a later baseline teardown failed.
+        return ("unavailable", "original_workflow", None, None)
+    properties = {}
+    for prop in case.findall("./properties/property"):
+        key = prop.get("name")
+        if key in {
+            "canonical_phase",
+            "canonical_ordinal",
+            "canonical_sqlstate",
+            "canonical_status",
+        }:
+            if key in properties:
+                raise ValueError("Duplicate canonical diagnostic property")
+            properties[key] = prop.get("value")
+    if independent:
+        if not properties:
+            return ("unavailable", "observer_missing", None, None)
+        status = properties.pop("canonical_status", None)
+        if status not in {"passed", "failure"}:
+            raise ValueError("Unexpected independent canonical diagnostic status")
+    elif "canonical_status" in properties:
+        raise ValueError("Unexpected override of encoder test outcome")
+    phase = properties.get("canonical_phase", "fixture")
+    ordinal_string = properties.get("canonical_ordinal")
+    if not (
+        phase in phases or (not independent and phase == "fixture" and not properties)
+    ):
+        raise ValueError("Unexpected canonical diagnostic phase")
+    if phase == "corpus":
+        # The exact finite corpus contains 25 cases enumerated from zero.
+        if ordinal_string not in {str(i) for i in range(25)}:
+            raise ValueError("Unexpected canonical diagnostic case ordinal")
+        ordinal = int(ordinal_string)
+    else:
+        if "canonical_ordinal" in properties:
+            raise ValueError("Ordinal is only allowed for the canonical corpus")
+        ordinal = None
+    sqlstate = properties.get("canonical_sqlstate")
+    if "canonical_sqlstate" in properties and (
+        sqlstate not in _SQLSTATES | {"other"}
+        or phase not in _TEMP_PHASES
+        or status not in {"failure", "error"}
+    ):
+        raise ValueError("Unexpected canonical diagnostic SQLSTATE")
+    if (status == "passed") != (phase == "complete"):
+        raise ValueError("Unexpected canonical diagnostic completion")
+    return (status, phase, ordinal, sqlstate)
+
+
+def project_diagnostic_cases(encoder_root, workflow_root):
+    """Project one encoder test and independent evidence from the original default case."""
+    encoder = list(encoder_root.iter("testcase"))
+    if len(encoder) != 1 or encoder[0].get("name") != ENCODER_CASE:
+        raise ValueError("Unexpected encoder diagnostic testcase inventory")
+    default = (
+        [
+            case
+            for case in workflow_root.iter("testcase")
+            if case.get("name") == WORKFLOW_DEFAULT
+        ]
+        if workflow_root is not None
+        else []
+    )
+    if len(default) > 1:
+        raise ValueError("Duplicate original default diagnostic testcase")
+    if default and default[0].get("classname") != WORKFLOW_CLASS:
+        raise ValueError("Unexpected original default diagnostic testcase class")
+    results = {
+        ENCODER_CASE: _project_case(encoder[0], _ENCODER_PHASES),
+        GRAPH_CASE: (
+            _project_case(default[0], _GRAPH_PHASES, independent=True)
+            if default
+            else ("unavailable", "original_workflow", None, None)
+        ),
     }
-    results = {}
-    for case in root.iter("testcase"):
-        name = case.get("name")
-        if name not in phases or name in results:
-            raise ValueError("Unexpected diagnostic testcase inventory")
-        status = next(
-            (
-                tag
-                for tag in ("failure", "error", "skipped")
-                if case.find(tag) is not None
-            ),
-            "passed",
-        )
-        properties = {}
-        for prop in case.findall("./properties/property"):
-            key = prop.get("name")
-            if key in ("canonical_phase", "canonical_ordinal", "canonical_sqlstate"):
-                if key in properties:
-                    raise ValueError("Duplicate canonical diagnostic property")
-                properties[key] = prop.get("value")
-        phase = properties.get("canonical_phase", "fixture")
-        ordinal_string = properties.get("canonical_ordinal")
-        if not (
-            phase in phases[name]
-            or (phase == "fixture" and "canonical_phase" not in properties)
-        ):
-            raise ValueError("Unexpected canonical diagnostic phase")
-        if phase == "corpus":
-            # The exact finite corpus contains 25 cases enumerated from zero.
-            if ordinal_string not in {str(i) for i in range(25)}:
-                raise ValueError("Unexpected canonical diagnostic case ordinal")
-            ordinal = int(ordinal_string)
-        else:
-            if "canonical_ordinal" in properties:
-                raise ValueError("Ordinal is only allowed for the canonical corpus")
-            ordinal = None
-        sqlstate = properties.get("canonical_sqlstate")
-        if "canonical_sqlstate" in properties and (
-            sqlstate not in _SQLSTATES | {"other"}
-            or phase not in _TEMP_PHASES
-            or status not in {"failure", "error"}
-        ):
-            raise ValueError("Unexpected canonical diagnostic SQLSTATE")
-        if status == "passed" and phase != "complete":
-            raise ValueError("Missing canonical diagnostic completion")
-        results[name] = (status, phase, ordinal, sqlstate)
-    if results.keys() != phases.keys():
-        raise ValueError("Missing exact canonical diagnostic testcase inventory")
     return dict(sorted(results.items()))

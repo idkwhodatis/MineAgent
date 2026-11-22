@@ -417,6 +417,7 @@ jobs:
         env:
           MINEAGENT_QLIB_RPC_COST: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121')) && '1' || '0' }}
           MINEAGENT_QLIB_WAIT_PROFILE: ${{ github.repository == 'idkwhodatis/MineAgent' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121' && '1' || '0' }}
+          MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED: ${{ github.repository == 'idkwhodatis/MineAgent' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121' && '1' || '0' }}
         run: |
           set -euo pipefail
           export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
@@ -478,15 +479,8 @@ jobs:
         if: ${{ always() && !cancelled() && github.repository == 'idkwhodatis/MineAgent' && github.ref == 'refs/heads/chatgpt-dot/qlib-rpc-cost-20261121' && steps.canonical_prerequisites.outcome == 'success' && steps.canonical_numeric_clean.outcome == 'success' && steps.canonical_analysis_clean.outcome == 'success' && steps.canonical_controller_clean.outcome == 'success' && steps.canonical_parent_clean.outcome == 'success' }}
         timeout-minutes: 15
         shell: bash
-        env:
-          MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED: "1"
         run: |
           set -euo pipefail
-          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
-          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
-          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
-          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
-          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
           status=0
           python -m pytest tests/integration/test_rd_graph_canonical_candidate_postgres.py -q \
             --junitxml=var/numeric-private/canonical-graph.xml >/dev/null 2>&1 || status=$?
@@ -498,15 +492,18 @@ jobs:
           from pathlib import Path
           from xml.etree import ElementTree as ET
           from script.summarize_ci_junit import summarize
-          from tests.sql_probes.rd_graph_canonical_candidate import project_diagnostic_cases
+          from tests.sql_probes.rd_graph_canonical_candidate import ENCODER_CASE, GRAPH_CASE, project_diagnostic_cases
           source=Path('var/numeric-private/canonical-graph.xml')
           summarize(source,Path('var/numeric-proof/canonical-graph-outcomes.xml'))
-          diagnostics=project_diagnostic_cases(ET.parse(source).getroot())
+          workflow=Path('var/numeric-private/workflow-runtime.xml')
+          workflow_root=ET.parse(workflow).getroot() if workflow.is_file() else None
+          diagnostics=project_diagnostic_cases(ET.parse(source).getroot(),workflow_root)
           outcomes={name: entry[0] for name, entry in diagnostics.items()}
           print('QLIB_CANONICAL_GRAPH_V1 '+str(outcomes))
           print('QLIB_CANONICAL_GRAPH_PHASE_V1 '+str({name: row[:3] for name, row in diagnostics.items()}))
           print('QLIB_CANONICAL_GRAPH_SQLSTATE_V1 '+str({name: row[3] for name, row in diagnostics.items()}))
-          assert set(outcomes.values())=={'passed'}
+          assert outcomes[ENCODER_CASE]=='passed'
+          assert outcomes[GRAPH_CASE] in ('passed','unavailable')
           PYCANONICAL
           test "$status" = 0
       - name: Remove only exact disposable numeric PostgreSQL

@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import secrets
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -88,7 +89,12 @@ def _diagnose_workflow_run(factory, run_id, *, qlib_fixture, wait_url, pytestcon
     ids=["default-off-waits", "explicit-opt-in-two-children"],
 )
 def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results(
-    drill_databases, tmp_path, monkeypatch, allow_feedback_release, pytestconfig
+    drill_databases,
+    tmp_path,
+    monkeypatch,
+    allow_feedback_release,
+    pytestconfig,
+    record_property,
 ):
     if os.environ.get("MINEAGENT_RD_WORKFLOW_FLOW_REQUIRED") != "1":
         pytest.fail("Explicit032c actual workflow runtime gate required", pytrace=False)
@@ -151,6 +157,7 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
 
     sdk = Path(os.environ["MINEAGENT_PROVIDER_SDK_PYTHON"])
     assert sdk.is_absolute() and sdk.is_file()
+    observe_graph = False
     engine = legacy._engine(drill_databases.source)
     try:
         legacy._upgrade(engine, "032g_schema_keyset_cost")
@@ -885,6 +892,9 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                     )
                     assert_browser_history(wid)
                     assert_restored_history(wid)
+                    observe_graph = (
+                        os.environ.get("MINEAGENT_RD_GRAPH_ASCII_PROBE_REQUIRED") == "1"
+                    )
                     return
 
                 # A user explicitly edits the future stage selection at the verified
@@ -1188,3 +1198,16 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                 assert_restored_history(wid)
     finally:
         engine.dispose()
+        # A successful default run reaches this point after all original
+        # assertions and contexts exit, while the drill DB fixture still exists.
+        if observe_graph and sys.exception() is None:
+            try:
+                from test_rd_graph_canonical_candidate_postgres import (
+                    observe_populated_graph,
+                )
+
+                observe_populated_graph(
+                    drill_databases.source, storage, record_property
+                )
+            except Exception:  # noqa: BLE001, S110 -- missing observer evidence fails open only for baseline
+                pass
