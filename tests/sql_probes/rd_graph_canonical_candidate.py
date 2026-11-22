@@ -41,7 +41,7 @@ def candidate_source():
     return replace_once(pinned_sources()[GRAPH], BASELINE, CANDIDATE)
 
 
-def checked_schema(connection):
+def checked_schema(connection, *, ascii_reuse=False):
     """Require exact current chain, held inside an owned test namespace only."""
     database, schema, version = connection.exec_driver_sql(
         "SELECT current_database(), current_schema(), current_setting('server_version_num')"
@@ -57,7 +57,10 @@ def checked_schema(connection):
         "SELECT version_num FROM alembic_version"
     ).scalars().all() != ["032g_schema_keyset_cost"]:
         raise ValueError("Exact installed032g migration chain required")
-    for name, source in pinned_sources().items():
+    sources = pinned_sources()
+    if ascii_reuse:
+        sources[GRAPH] = candidate_source()
+    for name, source in sources.items():
         rows = connection.execute(
             text(
                 """SELECT p.prosrc, p.proconfig, p.prosecdef,

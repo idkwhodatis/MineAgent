@@ -161,6 +161,13 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
     engine = legacy._engine(drill_databases.source)
     try:
         legacy._upgrade(engine, "032g_schema_keyset_cost")
+        ab_arm = os.environ.get("MINEAGENT_QLIB_ASCII_AB_ARM")
+        if ab_arm is not None:
+            from tests.sql_probes.qlib_ascii_ab import prepare_arm, validate_arm
+
+            validate_arm(ab_arm, allow_feedback_release, os.environ)
+            prepare_arm(engine, drill_databases, ab_arm)
+            record_property("qlib_ascii_ab_source", ab_arm)
         storage = tmp_path / "workflow-provider-user-flow"
         storage.mkdir(mode=0o700)
         factory = sessionmaker(engine, expire_on_commit=False)
@@ -242,6 +249,15 @@ def test_normal_workflow_children_consume_frozen_inputs_and_real_numeric_results
                         other=NS(user=other_user, password=other_password),
                         workflow_id=workflow_id,
                     )
+                    if ab_arm is not None:
+                        from tests.sql_probes.qlib_ascii_ab import attest_restored
+
+                        restored = legacy._engine(drill_databases.restored)
+                        try:
+                            attest_restored(engine, restored, drill_databases, ab_arm)
+                        finally:
+                            restored.dispose()
+                        record_property("qlib_ascii_ab_restore", ab_arm)
 
                 def assert_browser_history(workflow_id):
                     from workflow_history_browser import assert_actual_workflow_browser
