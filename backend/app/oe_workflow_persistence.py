@@ -31,7 +31,6 @@ from packages.research_runtime.budget_contracts import BudgetVector
 def persist_workflow_child(
     session,
     owner_id,
-    key,
     request,
     checked,
     fixed,
@@ -45,7 +44,10 @@ def persist_workflow_child(
     from backend.app.research_input_storage import require_publication_admission
 
     require_publication_admission(session, settings, admission)
-    run_id = request.workflow_context.child_run_id
+    context = request.workflow_context
+    run_id = context.child_run_id
+    # The deferred attachment check and cold readers bind this exact namespace.
+    key = f"workflow-stage:{context.inputs.binding.stage_id}"
     version_id, submission_id = uuid4(), uuid4()
     program = request.seed_parameters.program(data.manifest.input.window)
     search = StructuredSearchSpec(

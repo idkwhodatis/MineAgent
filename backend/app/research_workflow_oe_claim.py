@@ -311,7 +311,6 @@ def claim_oe_stage(session, owner_id, command, settings, *, admission):
             child = persist_workflow_child(
                 session,
                 owner_id,
-                f"workflow-oe:{stage.id}",
                 request,
                 checked,
                 fixed,

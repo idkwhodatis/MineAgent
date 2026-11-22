@@ -386,3 +386,61 @@ def test_consistently_rebound_rows_cannot_move_frozen_child(declaration):
     )
     with pytest.raises(ValueError):
         validate_submission_binding(row, metadata, **args)
+
+
+def test_new_oe_child_rows_use_the_stage_bound_idempotency_key(
+    declaration, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from backend.app import research_input_storage
+    from backend.app.models import DatasetVersion, ResearchRun
+    from backend.app.oe_structured_models import OEStructuredSubmission
+    from backend.app.oe_workflow_persistence import persist_workflow_child
+
+    attachment, _, args = declaration
+    request, config = args["request"], args["config"]
+    owner = config.search.owner_id
+    window = config.search.domain.seed_program.signal_window
+    dataset = SimpleNamespace(
+        id=config.fixed_inputs.dataset_version_id,
+        owner_id=owner,
+        content_sha256=config.fixed_inputs.dataset_sha256,
+        start_date=window.start,
+        end_date=window.end,
+        market="US",
+        manifest={},
+    )
+    rows = []
+
+    def get(model, identifier):
+        assert (model, identifier) == (DatasetVersion, dataset.id)
+        return dataset
+
+    session = SimpleNamespace(
+        add=rows.append, add_all=rows.extend, flush=lambda: None, get=get
+    )
+    monkeypatch.setattr(
+        research_input_storage, "require_publication_admission", lambda *a: None
+    )
+    receipt = persist_workflow_child(
+        session,
+        owner,
+        request,
+        SimpleNamespace(preflight_sha256=attachment["preflight_sha256"]),
+        config.fixed_inputs,
+        OEStructuredServerProfile(runtime=config.runtime),
+        config.model_binding,
+        SimpleNamespace(manifest=SimpleNamespace(input=SimpleNamespace(window=window))),
+        settings=object(),
+        admission=object(),
+    )
+    child = next(x for x in rows if type(x) is ResearchRun)
+    submission = next(x for x in rows if type(x) is OEStructuredSubmission)
+    assert receipt.stage_id == request.workflow_context.inputs.binding.stage_id
+    assert receipt.run_id == child.id == submission.run_id
+    assert (
+        child.idempotency_key
+        == submission.idempotency_key
+        == ("workflow-stage:" + attachment["stage_id"])
+    )
