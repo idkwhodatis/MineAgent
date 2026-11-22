@@ -96,7 +96,36 @@ _ROLES = (
 _UNIT_STATES = frozenset(
     {"launch_intended", "uncertain", "running", "stopped", "unknown"}
 )
+_RPC_DURATION = {"lt_50ms", "lt_250ms", "lt_1s", "lt_5s", "ge_5s"}
+_RPC_REMAINING = {
+    "late_250ms_or_more",
+    "late_lt_250ms",
+    "at_deadline",
+    "left_lt_250ms",
+    "left_250ms_or_more",
+}
+_RPC_LATE_COMMIT_UNITS = {
+    "provider_receipt",
+    "provider_publication",
+    "provider_broker",
+    "outer_auth",
+}
+_RPC_TIMING_FIELDS = {
+    "rpc_late_commit_unit": _RPC_LATE_COMMIT_UNITS,
+    "rpc_auth_elapsed": _RPC_DURATION,
+    "rpc_handler_elapsed": _RPC_DURATION,
+    "rpc_handler_remaining": _RPC_REMAINING,
+    "rpc_commit_max_elapsed": _RPC_DURATION,
+    "rpc_commit_deadline_cut": {
+        "crossed",
+        "already_late",
+        "not_observed_past_deadline",
+    },
+    "rpc_send_elapsed": _RPC_DURATION,
+    "rpc_send_remaining": _RPC_REMAINING,
+}
 _DRAIN_FIELDS = {
+    **_RPC_TIMING_FIELDS,
     "release_resource": {"snapshot", "analysis"},
     "release_status": {
         "http_200",
@@ -525,6 +554,142 @@ def _holder_observation(stdout):
     return fields if "unavailable" not in fields.values() else {}
 
 
+def _rpc_send_deadline(fields):
+    return (
+        fields.get("code") == "deadline"
+        and fields.get("stage") == "rpc_send"
+        and fields.get("rpc_method") == "submit_chat"
+    )
+
+
+def _duration(ms):
+    for ceiling, label in (
+        (50, "lt_50ms"),
+        (250, "lt_250ms"),
+        (1000, "lt_1s"),
+        (5000, "lt_5s"),
+    ):
+        if ms < ceiling:
+            return label
+    return "ge_5s"
+
+
+def _remaining(ms):
+    if ms <= -250:
+        return "late_250ms_or_more"
+    if ms < 0:
+        return "late_lt_250ms"
+    if ms == 0:
+        return "at_deadline"
+    return "left_250ms_or_more" if ms >= 250 else "left_lt_250ms"
+
+
+def _rpc_deadline_timing(stdout, fields):
+    """Use only the composed fixture's existing private RPC timing capture."""
+    if not _rpc_send_deadline(fields):
+        return {}
+    prefix = "RD_RPC_TIMING:"
+    matches = [line for line in stdout.splitlines() if line.startswith(prefix)]
+    if len(matches) != 1 or len(matches[0]) > 200_000:
+        return {}
+    try:
+        report = json.loads(matches[0][len(prefix) :], object_pairs_hook=_strict_object)
+    except (ValueError, RecursionError):
+        return {}
+    if type(report) is not dict:
+        return {}
+    tail = report.get("tail")
+    if (
+        type(tail) is not list
+        or not 1 <= len(tail) <= 64
+        or any(type(row) is not dict for row in tail)
+    ):
+        return {}
+
+    def bounded(value, low, high):
+        return type(value) is int and low <= value <= high
+
+    candidates = [
+        (i, row)
+        for i, row in enumerate(tail)
+        if row.get("method") == "submit_chat"
+        and row.get("stage") == "send"
+        and row.get("ok") is False
+    ]
+    # Do not select among repeated same-method failures; the scoped
+    # failure marker does not contain an RPC ordinal to disambiguate.
+    if len(candidates) != 1:
+        return {}
+    index, send = candidates[0]
+    ordinal, sequence = send.get("rpc_ordinal"), send.get("sequence")
+    if not (
+        bounded(ordinal, 1, 1_000_000)
+        and bounded(sequence, 0, 1_000_000)
+        and bounded(send.get("remaining_ms"), -3_600_000, 0)
+    ):
+        return {}
+    found = {}
+    for i, row in enumerate(tail):
+        if row.get("method") == "submit_chat" and row.get("rpc_ordinal") == ordinal:
+            stage = row.get("stage")
+            if type(stage) is not str or stage not in {
+                "auth",
+                "handle",
+                "commit",
+                "send",
+            }:
+                continue
+            if (
+                not bounded(row.get("rpc_ordinal"), 1, 1_000_000)
+                or not bounded(row.get("sequence"), 0, 1_000_000)
+                or row["sequence"] != sequence
+                or i > index
+                or type(row.get("ok")) is not bool
+                or not bounded(row.get("elapsed_ms"), 0, 3_600_000)
+                or not bounded(row.get("remaining_ms"), -3_600_000, 3_600_000)
+            ):
+                return {}
+            found.setdefault(stage, []).append(row)
+    if len(found.get("send", ())) != 1:
+        return {}
+    result = {
+        "rpc_send_elapsed": _duration(send["elapsed_ms"]),
+        "rpc_send_remaining": _remaining(send["remaining_ms"]),
+    }
+    for stage, name in (("auth", "auth"), ("handle", "handler")):
+        rows = found.get(stage, ())
+        if len(rows) > 1 or (rows and not rows[0]["ok"]):
+            return {}
+        if rows:
+            result[f"rpc_{name}_elapsed"] = _duration(rows[0]["elapsed_ms"])
+            if stage == "handle":
+                result["rpc_handler_remaining"] = _remaining(rows[0]["remaining_ms"])
+    rows = found.get("commit", ())
+    if rows:
+        result["rpc_commit_max_elapsed"] = _duration(
+            max(row["elapsed_ms"] for row in rows)
+        )
+        late = [row for row in rows if row["remaining_ms"] < 0]
+        crossing = [row for row in late if row["elapsed_ms"] + row["remaining_ms"] > 1]
+        if len(crossing) == 1 and crossing[0].get("ownership") == "rpc_fenced_neutral":
+            unit = crossing[0].get("unit")
+            if type(unit) is str and unit in _RPC_LATE_COMMIT_UNITS:
+                result["rpc_late_commit_unit"] = unit
+        result["rpc_commit_deadline_cut"] = (
+            "crossed"
+            if crossing
+            else "already_late"
+            if late
+            and all(row["elapsed_ms"] + row["remaining_ms"] < -1 for row in late)
+            else "not_observed_past_deadline"
+            if not late
+            else None
+        )
+        if result["rpc_commit_deadline_cut"] is None:
+            result.pop("rpc_commit_deadline_cut")
+    return result
+
+
 def _drain_observations(stdout):
     """Only exact fixed vocabulary from the original fixture's private capture."""
     if type(stdout) is not str or len(stdout) > 4_000_000:
@@ -565,6 +730,7 @@ def _drain_observations(stdout):
             for key in ("neutral_busy_origin", "receipt_boundary"):
                 result[key] = _emit_value(key, failures[0].get(key))
         result.update(_masked_controller_observation(failures[0]))
+    result.update(_rpc_deadline_timing(stdout, result))
     states = seen.get("RD_QUEUE_STATE:", [])
     if states:
         result["run"] = _emit_value("run", states[0].get("status"))
@@ -670,6 +836,11 @@ def _drain_verdict(root, name):
     if fields.get("proof_phase") not in _RELEASE_PHASES:
         fields.pop("release_resource", None)
         fields.pop("release_status", None)
+    if fields.get("proof_phase") not in _DRAIN_PHASES or not _rpc_send_deadline(fields):
+        for key in _RPC_TIMING_FIELDS:
+            fields.pop(key, None)
+    if fields.get("rpc_commit_deadline_cut") != "crossed":
+        fields.pop("rpc_late_commit_unit", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 

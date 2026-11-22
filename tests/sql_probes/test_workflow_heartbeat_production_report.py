@@ -441,3 +441,145 @@ def test_provider_validation_cut_requires_exact_scope_and_closed_pair():
     assert "masked_validation_field" not in read(masked_validation_boundary="private")
     assert "masked_validation_field" not in read(masked_validation_type="private")
     assert "masked_validation_type" not in read(masked_validation_field="private")
+
+
+def test_exact_deadline_projects_actual_private_timing_capture(monkeypatch, capsys):
+    import json
+    from types import SimpleNamespace
+
+    import pytest
+
+    from runtimes.rdagent_operational import rpc
+    from tests.rdagent.test_rpc_stage_diagnostic import Channel, _diagnostic
+    from workers.research import rdagent_operational as worker
+
+    module = _diagnostic()
+    now = [10.0]
+    monkeypatch.setattr(module, "monotonic", lambda: now[0])
+    monkeypatch.setattr(rpc, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    channel = Channel()
+    channel.raw = rpc.encode(
+        {
+            "schema_version": rpc.SCHEMA,
+            "sequence": 0,
+            "ticket": "private-ticket",
+            "method": "submit_chat",
+            "body": {"secret": "private-payload"},
+        }
+    )
+
+    def handle(*_):
+        now[0] = 10.501
+        return {"private-reply": "secret"}
+
+    with (
+        pytest.raises(rpc.RPCError, match="^deadline$") as caught,
+        module.diagnose_rd_rpc(),
+    ):
+        worker.serve_one(
+            channel,
+            sequence=0,
+            deadline=10.5,
+            authenticate=lambda *_: None,
+            handle=handle,
+        )
+    assert not channel.sent
+    private = capsys.readouterr().out
+    assert "RD_RPC_TIMING:" in private
+    fields = _drain_observations(
+        "RD_QUEUE_FAILURE:"
+        + json.dumps(module._queue_failure(caught.value))
+        + "\n"
+        + private
+    )
+    assert fields["rpc_auth_elapsed"] == "lt_50ms"
+    assert fields["rpc_handler_elapsed"] == "lt_1s"
+    assert fields["rpc_handler_remaining"] == "late_lt_250ms"
+    assert fields["rpc_send_elapsed"] == "lt_50ms"
+    assert fields["rpc_send_remaining"] == "late_lt_250ms"
+    assert "rpc_commit_max_elapsed" not in fields
+    assert "private" not in json.dumps(fields)
+
+
+def test_deadline_commit_bins_require_one_send_same_rpc_and_strict_values(tmp_path):
+    import json
+
+    identity = {"method": "submit_chat", "sequence": 151, "rpc_ordinal": 333}
+    commit = {
+        **identity,
+        "stage": "commit",
+        "ok": True,
+        "elapsed_ms": 500,
+        "remaining_ms": -80,
+    }
+    send = {
+        **identity,
+        "stage": "send",
+        "ok": False,
+        "elapsed_ms": 0,
+        "remaining_ms": -200,
+    }
+    condition = {"code": "deadline", "stage": "rpc_send", "rpc_method": "submit_chat"}
+
+    def project(*rows, **scope):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps({**condition, **scope})
+            + "\nRD_RPC_TIMING:"
+            + json.dumps({"tail": rows, "ignored": "private-canary"})
+        )
+
+    fields = project(commit, send)
+    assert fields["rpc_commit_max_elapsed"] == "lt_1s"
+    assert fields["rpc_commit_deadline_cut"] == "crossed"
+    owned = {**commit, "ownership": "rpc_fenced_neutral", "unit": "provider_receipt"}
+    assert project(owned, send)["rpc_late_commit_unit"] == "provider_receipt"
+    for unverifiable in (
+        project(owned, owned, send),
+        project({**owned, "ownership": "unconfirmed"}, send),
+        project({**owned, "unit": "private-canary"}, send),
+    ):
+        assert "rpc_late_commit_unit" not in unverifiable
+    assert fields["rpc_send_remaining"] == "late_lt_250ms"
+    assert not any(
+        k in fields for k in ("rpc_ordinal", "sequence", "statement", "handler_input")
+    )
+    assert "rpc_commit_max_elapsed" not in project({**commit, "rpc_ordinal": 332}, send)
+    for invalid in (
+        project(commit, send, {**send, "rpc_ordinal": 444}),
+        project({**commit, "elapsed_ms": True}, send),
+        project({**commit, "sequence": 444}, send),
+        project(commit, send, code="neutral_busy"),
+    ):
+        assert "rpc_send_remaining" not in invalid
+
+    properties = "".join(
+        f'<property name="rd_drain_{key}" value="{value}"/>'
+        for key, value in {
+            **condition,
+            "rpc_send_remaining": "late_lt_250ms",
+            "rpc_handler_elapsed": "private-canary",
+            "rpc_late_commit_unit": "provider_receipt",
+        }.items()
+    )
+    content = (
+        '<properties><property name="proof_phase" value="rd_drain"/>'
+        + properties
+        + "</properties><failure>private</failure>"
+    )
+    _write(tmp_path, "bridge", content)
+    assert _drain_verdict(tmp_path, "bridge")["rpc_send_remaining"] == "late_lt_250ms"
+    assert "rpc_handler_elapsed" not in _drain_verdict(tmp_path, "bridge")
+    assert "rpc_late_commit_unit" not in _drain_verdict(tmp_path, "bridge")
+    for original, replacement in (
+        ("deadline", "neutral_busy"),
+        ("rpc_send", "transaction"),
+        ("submit_chat", "submit_embedding"),
+        ("rd_drain", "rd_release_owner"),
+    ):
+        _write(
+            tmp_path,
+            "bridge",
+            content.replace(f'value="{original}"', f'value="{replacement}"'),
+        )
+        assert "rpc_send_remaining" not in _drain_verdict(tmp_path, "bridge")
