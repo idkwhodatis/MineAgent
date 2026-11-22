@@ -94,7 +94,9 @@ def test_separate_steps_only_run_after_unchanged_containment_failure():
         ".github/workflows/mineagent-production-heartbeat-native-proof.yml"
     ).read_text()
     assert (
-        source.count("run: python -m script.workflow_heartbeat_production_report\n")
+        source.count(
+            "run: python -m script.workflow_heartbeat_production_report --report-historical\n"
+        )
         == 1
     )
     assert (

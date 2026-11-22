@@ -867,3 +867,70 @@ def test_032h_full_report_preserves_historical_case_labels(
         "RD_PRODUCTION_HEARTBEAT_V1 h_bridge=failure phase=current_cold_restore code=unavailable",
         "RD_PRODUCTION_HEARTBEAT_V1 restore=passed phase=complete code=unavailable",
     ]
+
+
+def test_032h_scoped_projection_never_prints_historical_outcomes(
+    tmp_path, monkeypatch, capsys
+):
+    from script import workflow_heartbeat_production_report as report
+
+    _write(tmp_path, "bridge", "<failure>private-canary</failure>")
+    _write(
+        tmp_path,
+        "h_bridge",
+        "<failure>private-canary</failure><properties>"
+        '<property name="proof_phase" value="current_cold_restore"/>'
+        '<property name="proof_code" value="private-canary"/>'
+        "</properties>",
+    )
+    monkeypatch.setattr(report, "ROOT", tmp_path)
+    monkeypatch.setattr("sys.argv", ["projector", "--report-h-bridge"])
+    assert report.main() == 1
+    assert capsys.readouterr().out.splitlines() == [
+        "RD_PRODUCTION_HEARTBEAT_V1 h_bridge=failure phase=current_cold_restore code=unavailable"
+    ]
+    _write(
+        tmp_path,
+        "h_bridge",
+        "<properties>"
+        '<property name="current_032h_bridge" value="passed"/>'
+        '<property name="current_032h_cold_restore" value="passed"/>'
+        "</properties>",
+    )
+    assert report.main() == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "RD_PRODUCTION_HEARTBEAT_V1 h_bridge=passed phase=complete code=unavailable"
+    ]
+    monkeypatch.setattr("sys.argv", ["projector", "--report-historical"])
+    assert report.main() == 1
+    assert "h_bridge=" not in capsys.readouterr().out
+
+
+def test_032h_workflow_scoped_report_still_requires_containment_and_pg_cleanup():
+    source = Path(
+        ".github/workflows/mineagent-production-heartbeat-native-proof.yml"
+    ).read_text()
+    scope = "MINEAGENT_NATIVE_PROOF_SCOPE"
+    assert f"{scope}: current-032h" in source
+    for step in ("bridge", "bridge_clean", "restore_clean"):
+        guard = source.split(f"        id: {step}\n", 1)[1].splitlines()[0]
+        assert f"env.{scope} == 'historical'" in guard
+    step = source.split(
+        "- name: Report only closed 032h evidence after containment and PG cleanup\n",
+        1,
+    )[1]
+    lines = step.splitlines()
+    assert f"env.{scope} == 'current-032h'" in lines[0]
+    for gate in (
+        "native_setup",
+        "owner_first_before",
+        "heartbeat",
+        "heartbeat_clean",
+        "h_bridge_clean",
+        "pg_cleanup",
+    ):
+        assert f"steps.{gate}.outcome == 'success'" in lines[0]
+    assert "steps.h_bridge.outcome == 'failure'" in lines[0]
+    assert "steps.bridge" not in lines[0]
+    assert "steps.restore" not in lines[0]
+    assert lines[2].endswith("workflow_heartbeat_production_report --report-h-bridge")

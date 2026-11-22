@@ -1248,27 +1248,37 @@ def outcome(root, name):
     return status, phase, code
 
 
+def _report_case(root, name):
+    status, phase, code = outcome(root, name)
+    print(f"RD_PRODUCTION_HEARTBEAT_V1 {name}={status} phase={phase} code={code}")
+    if name in {"bridge", "h_bridge", "restore"}:
+        fields = _drain_verdict(root, name)
+        if fields:
+            detail = " ".join(f"{key}={fields[key]}" for key in sorted(fields))
+            print(f"RD_PRODUCTION_RD_DRAIN_V1 case={name} {detail}")
+    return status != "passed"
+
+
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--require-pass", choices=(*CASES, "coordination"))
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--require-pass", choices=(*CASES, "coordination"))
+    mode.add_argument("--report-h-bridge", action="store_true")
+    mode.add_argument("--report-historical", action="store_true")
     args = parser.parse_args()
     if args.require_pass == "coordination":
         return int(any(value != "passed" for value in coordination(ROOT).values()))
     if args.require_pass:
         return int(outcome(ROOT, args.require_pass)[0] != "passed")
+    if args.report_h_bridge:
+        return int(_report_case(ROOT, "h_bridge"))
     outcomes = coordination(ROOT)
     fields = " ".join(f"{key}={value}" for key, value in outcomes.items())
     print(f"RD_PRODUCTION_RPC_COORDINATION_V1 {fields}")
     failed = any(value != "passed" for value in outcomes.values())
     for name in CASES:
-        status, phase, code = outcome(ROOT, name)
-        print(f"RD_PRODUCTION_HEARTBEAT_V1 {name}={status} phase={phase} code={code}")
-        failed |= status != "passed"
-        if name in {"bridge", "h_bridge", "restore"}:
-            fields = _drain_verdict(ROOT, name)
-            if fields:
-                detail = " ".join(f"{key}={fields[key]}" for key in sorted(fields))
-                print(f"RD_PRODUCTION_RD_DRAIN_V1 case={name} {detail}")
+        if not args.report_historical or name != "h_bridge":
+            failed |= _report_case(ROOT, name)
     return int(failed)
 
 

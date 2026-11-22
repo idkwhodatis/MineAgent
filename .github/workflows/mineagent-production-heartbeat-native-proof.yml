@@ -15,6 +15,8 @@ jobs:
     # Individual protected process deadlines remain unchanged.
     timeout-minutes: 160
     env:
+      # Keep historical qualification separate from this branch-only 032h run.
+      MINEAGENT_NATIVE_PROOF_SCOPE: current-032h
       POSTGRES_USER: tradegrad_ci
       POSTGRES_DB: tradegrad_ci
       DATA_PROVIDER_MODE: fixture
@@ -309,7 +311,7 @@ jobs:
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
       - name: Run exact 032h browser bridge and same-revision cold restore
         id: h_bridge
-        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'current-032h' }}
         timeout-minutes: 40
         shell: bash
         env:
@@ -337,7 +339,7 @@ jobs:
           python -m script.workflow_heartbeat_production_report --require-pass h_bridge
       - name: Confirm native unit containment after 032h bridge and cold restore
         id: h_bridge_clean
-        if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
+        if: ${{ always() && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'current-032h' && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -355,7 +357,7 @@ jobs:
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
       - name: Run unchanged current032g browser bridge and graph readback
         id: bridge
-        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' && steps.h_bridge_clean.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'historical' }}
         timeout-minutes: 40
         shell: bash
         env:
@@ -383,7 +385,7 @@ jobs:
           python -m script.workflow_heartbeat_production_report --require-pass bridge
       - name: Confirm native unit containment after bridge
         id: bridge_clean
-        if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
+        if: ${{ always() && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'historical' && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -434,7 +436,7 @@ jobs:
           python -m script.workflow_heartbeat_production_report --require-pass restore
       - name: Confirm native unit containment after restore
         id: restore_clean
-        if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
+        if: ${{ always() && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'historical' && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -474,6 +476,10 @@ jobs:
           timeout 30s docker rm --force --volumes "$id" >/dev/null
           test -z "$(timeout 15s docker ps --all --quiet --no-trunc --filter "id=$id")"
       - name: Report only closed native evidence after containment and PG cleanup
-        if: ${{ !cancelled() && steps.owner_first_before.outcome == 'success' && steps.heartbeat_clean.outcome == 'success' && steps.h_bridge_clean.outcome == 'success' && steps.bridge_clean.outcome == 'success' && steps.restore_clean.outcome == 'success' && steps.pg_cleanup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.owner_first_before.outcome == 'success' && steps.heartbeat_clean.outcome == 'success' && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'historical' && steps.bridge_clean.outcome == 'success' && steps.restore_clean.outcome == 'success' && steps.pg_cleanup.outcome == 'success' }}
         shell: bash
-        run: python -m script.workflow_heartbeat_production_report
+        run: python -m script.workflow_heartbeat_production_report --report-historical
+      - name: Report only closed 032h evidence after containment and PG cleanup
+        if: ${{ !cancelled() && env.MINEAGENT_NATIVE_PROOF_SCOPE == 'current-032h' && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' && steps.heartbeat.outcome == 'success' && steps.heartbeat_clean.outcome == 'success' && steps.h_bridge_clean.outcome == 'success' && steps.pg_cleanup.outcome == 'success' && (steps.h_bridge.outcome == 'success' || steps.h_bridge.outcome == 'failure') }}
+        shell: bash
+        run: python -m script.workflow_heartbeat_production_report --report-h-bridge
