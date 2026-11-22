@@ -52,6 +52,10 @@ on:
       - "runtimes/rdagent_provider/**"
       - "workers/research/oe_structured*"
       - "script/build_oe_structured_images.py"
+      - "frontend/src/features/oe-provider-results.tsx"
+      - "frontend/src/features/normal-oe-note-restore.tsx"
+      - "frontend/src/lib/normal-oe-execution-selection.ts"
+      - "frontend/tests/oe-normal-acceptance/**"
   workflow_dispatch:
 
 permissions:
