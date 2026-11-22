@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from itertools import pairwise
 from types import FunctionType, SimpleNamespace
 
 import pytest
@@ -317,3 +318,97 @@ def test_handler_failure_inventory_is_bounded(capsys):
     report = json.loads(output.removeprefix("RD_RPC_TIMING:"))
     assert len(report["failures"]) == 8
     assert "private" not in output
+
+
+def test_masked_controller_projection_requires_exact_owned_frame(monkeypatch):
+    from uuid import uuid4
+
+    from packages.research_runtime.fences import AttemptFence
+
+    module = _diagnostic()
+    original = ProcessError("analysis_process_claim")
+    masked = ProcessError("rd_provider_containment_unknown")
+    fence = AttemptFence(uuid4(), uuid4(), uuid4(), 1, uuid4())
+
+    def run(fence):
+        try:
+            raise original
+        except ProcessError as error:
+            failure = error
+        assert failure is original
+        raise masked
+
+    monkeypatch.setattr(worker, "_execute_controller", run)
+    with pytest.raises(ProcessError) as caught:
+        run(fence)
+    assert caught.value is masked and masked.__context__ is None
+    assert module._masked_controller_failure(caught.value, fence.run_id) == {
+        "chain": "single",
+        "masked_family": "process",
+        "masked_code": "analysis_process_claim",
+        "masked_stage": "unknown",
+        "masked_sqlstate": "none",
+        "state": "observed",
+    }
+    assert module._masked_controller_failure(caught.value, uuid4()) == {}
+    # Structurally equivalent code is not the live worker frame identity.
+    alternate = FunctionType(run.__code__.replace(), globals(), closure=run.__closure__)
+    monkeypatch.setattr(worker, "_execute_controller", alternate)
+    assert module._masked_controller_failure(caught.value, fence.run_id) == {}
+
+
+def test_masked_controller_projection_distinguishes_no_prior_failure(monkeypatch):
+    from uuid import uuid4
+
+    from packages.research_runtime.fences import AttemptFence
+
+    module = _diagnostic()
+    fence = AttemptFence(uuid4(), uuid4(), uuid4(), 1, uuid4())
+
+    def run(fence):
+        failure = None
+        assert failure is None
+        raise ProcessError("rd_provider_containment_unknown")
+
+    monkeypatch.setattr(worker, "_execute_controller", run)
+    with pytest.raises(ProcessError) as caught:
+        run(fence)
+    assert module._masked_controller_failure(caught.value, fence.run_id) == {
+        "state": "no_prior_failure"
+    }
+
+
+def test_masked_controller_projection_separates_unique_and_ambiguous_leaves():
+    from sqlalchemy.exc import DBAPIError
+
+    module = _diagnostic()
+
+    class DatabaseFailure(Exception):
+        sqlstate = "55P03"
+
+    database = DBAPIError("private-sql", {"secret": "sensitive"}, DatabaseFailure())
+    original = ProcessError("analysis_process_uncertain")
+    original.__context__ = database
+    result = module._masked_controller_summary(original)
+    assert result["chain"] == "unique_leaf"
+    assert result["masked_code"] == "analysis_process_uncertain"
+    assert result["nested_family"] == "database"
+    assert result["nested_sqlstate"] == "55P03"
+    assert "private" not in json.dumps(result)
+
+    original.__cause__ = PermissionError("hidden-path")
+    result = module._masked_controller_summary(original)
+    assert result["chain"] == "ambiguous"
+    assert not any(key.startswith("nested") for key in result)
+
+
+def test_masked_controller_projection_marks_cycle_and_overflow():
+    module = _diagnostic()
+    errors = [ValueError("private") for _ in range(9)]
+    errors[0].__context__ = errors[0]
+    assert module._masked_controller_summary(errors[0])["chain"] == "ambiguous"
+    for outer, inner in pairwise(errors):
+        outer.__context__ = inner
+    result = module._masked_controller_summary(errors[0])
+    assert result["chain"] == "overflow"
+    assert not any(key.startswith("nested") for key in result)

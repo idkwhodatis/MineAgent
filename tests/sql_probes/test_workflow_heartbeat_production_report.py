@@ -170,3 +170,71 @@ def test_projection_revalidates_properties_and_does_not_publish_passes(tmp_path)
     }
     _write(tmp_path, "bridge", properties)
     assert _drain_verdict(tmp_path, "bridge") == {}
+
+
+def test_masked_controller_never_projects_unbounded_or_ambiguous_nested_fields():
+    import json
+
+    def read(detail, code="rd_provider_containment_unknown"):
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps({"code": code, "masked_controller": detail})
+        )
+
+    detail = {
+        "state": "observed",
+        "chain": "unique_leaf",
+        "masked_code": "analysis_process_uncertain",
+        "masked_rpc_method": "execute_or_reuse",
+        "masked_docker_operation": "private",
+        "nested_analysis_stage": "read_journal",
+        "nested_sqlstate": "55P03",
+        "unexpected": "should not escape",
+    }
+    expected = {
+        "code": "rd_provider_containment_unknown",
+        "masked_state": "observed",
+        "masked_chain": "unique_leaf",
+        "masked_code": "analysis_process_uncertain",
+        "masked_rpc_method": "execute_or_reuse",
+        "nested_analysis_stage": "read_journal",
+        "nested_sqlstate": "55P03",
+    }
+    assert read(detail) == expected
+    assert read({**detail, "chain": "ambiguous"}) == {
+        **{
+            key: value
+            for key, value in expected.items()
+            if not key.startswith("nested")
+        },
+        "masked_chain": "ambiguous",
+    }
+    assert read(detail, "neutral_busy") == {"code": "neutral_busy"}
+    for state in ("unavailable", "no_prior_failure"):
+        assert read({**detail, "state": state}) == {
+            "code": "rd_provider_containment_unknown",
+            "masked_state": state,
+        }
+
+
+def test_junit_masked_fields_require_outer_code_and_consistent_causal_shape(tmp_path):
+    def read(code, chain, state):
+        properties = {
+            "proof_phase": "rd_waiting_release",
+            "rd_drain_code": code,
+            "rd_drain_masked_state": state,
+            "rd_drain_masked_chain": chain,
+            "rd_drain_masked_code": "analysis_process_claim",
+            "rd_drain_nested_sqlstate": "55P03",
+        }
+        props = "".join(
+            f'<property name="{k}" value="{v}"/>' for k, v in properties.items()
+        )
+        _write(tmp_path, "bridge", f"<properties>{props}</properties><failure/>")
+        return _drain_verdict(tmp_path, "bridge")
+
+    masked_code = "rd_provider_containment_unknown"
+    assert "nested_sqlstate" in read(masked_code, "unique_leaf", "observed")
+    assert "nested_sqlstate" not in read(masked_code, "ambiguous", "observed")
+    assert "masked_code" not in read(masked_code, "unique_leaf", "no_prior_failure")
+    assert "masked_state" not in read("neutral_busy", "unique_leaf", "observed")

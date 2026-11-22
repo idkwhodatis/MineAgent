@@ -211,6 +211,108 @@ _DRAIN_FIELDS = {
     **dict.fromkeys(_ROLES, _UNIT_STATES),
 }
 
+_MASKED_CONTROLLER_FIELDS = {
+    "family": _DRAIN_FIELDS["family"],
+    "code": _DRAIN_FIELDS["code"]
+    | {
+        "rd_controller_daemon_identity",
+        "rd_controller_peer",
+        "rd_controller_not_running",
+        "rd_controller_launch",
+        "rd_controller_receipts",
+        "rd_controller_peer_drift",
+        "original_controller_deadline",
+        "rd_controller_expired_before_create",
+        "rd_controller_expired_before_start",
+        "rd_controller_expired_peer",
+        "rd_controller_kernel_deadline_exceeded",
+        "rd_controller_absence_uncertain",
+        "numeric_process_command_cleanup",
+        "numeric_process_command_failed",
+        "numeric_process_command_output",
+        "analysis_process_authority",
+        "analysis_process_runtime_identity",
+        "analysis_process_kernel_identity",
+        "analysis_process_identity_unobserved",
+        "analysis_process_created_cleanup_uncertain",
+        "analysis_process_journal_identity",
+        "analysis_process_root_identity",
+        "analysis_process_claim",
+        "analysis_process_retained_input_drift",
+        "provider_secret_unavailable",
+        "provider_identity_receipt_unconfirmed",
+        "provider_stop_receipt_unconfirmed",
+    },
+    "stage": _DRAIN_FIELDS["stage"],
+    "sqlstate": _DRAIN_FIELDS["sqlstate"],
+    "rpc_method": _DRAIN_FIELDS["rpc_method"],
+    "analysis_stage": {
+        "worker",
+        "record_identity",
+        "record_containment",
+        "execute",
+        "verify_launch",
+        "verify_runtime",
+        "observe_identity",
+        "stop",
+        "cleanup_unobserved",
+        "observe_leader",
+        "verify_inspect",
+        "read_frame",
+        "live_frame",
+        "complete_stream",
+        "read_journal",
+        "read_record",
+        "docker_command",
+        "docker_inspect",
+    },
+    "docker_operation": {
+        "unknown",
+        "image_inspect",
+        "container_inspect",
+        "create",
+        "start",
+        "top",
+        "remove_force",
+    },
+}
+_DRAIN_FIELDS.update(
+    {
+        "masked_state": {"observed", "no_prior_failure", "unavailable"},
+        "masked_chain": {"single", "unique_leaf", "ambiguous", "overflow"},
+        **{
+            f"{scope}_{key}": values
+            for scope in ("masked", "nested")
+            for key, values in _MASKED_CONTROLLER_FIELDS.items()
+        },
+    }
+)
+
+
+def _masked_controller_observation(failure):
+    if failure.get("code") != "rd_provider_containment_unknown":
+        return {}
+    detail = failure.get("masked_controller")
+    if type(detail) is not dict:
+        return {}
+    state = _emit_value("masked_state", detail.get("state"))
+    if state == "unavailable":
+        return {"masked_state": state} if detail.get("state") == state else {}
+    result = {"masked_state": state}
+    if state != "observed":
+        return result
+    chain = _emit_value("masked_chain", detail.get("chain"))
+    if chain != "unavailable":
+        result["masked_chain"] = chain
+    scopes = ("masked", "nested") if chain == "unique_leaf" else ("masked",)
+    for scope in scopes:
+        for key in _MASKED_CONTROLLER_FIELDS:
+            field = f"{scope}_{key}"
+            value = _emit_value(field, detail.get(field))
+            if value != "unavailable":
+                result[field] = value
+    return result
+
 
 def _emit_value(name, value):
     return (
@@ -278,6 +380,7 @@ def _drain_observations(stdout):
                 for key in ("family", "code", "stage", "sqlstate", "rpc_method")
             }
         )
+        result.update(_masked_controller_observation(failures[0]))
     states = seen.get("RD_QUEUE_STATE:", [])
     if states:
         result["run"] = _emit_value("run", states[0].get("status"))
@@ -296,7 +399,11 @@ def _drain_observations(stdout):
                 ]
                 if values and len(set(values)) == 1:
                     result[role] = values[0]
-    return {key: val for key, val in result.items() if val != "unavailable"}
+    return {
+        key: val
+        for key, val in result.items()
+        if val != "unavailable" or key == "masked_state"
+    }
 
 
 def _bridge_phase(source, line):
@@ -339,6 +446,17 @@ def _drain_verdict(root, name):
         values = _properties(case, key)
         if len(values) == 1 and values[0] in allowed:
             fields[key.removeprefix("rd_drain_")] = values[0]
+    detail = {}
+    for key in list(fields):
+        if key.startswith(("masked_", "nested_")):
+            detail[{"masked_state": "state", "masked_chain": "chain"}.get(key, key)] = (
+                fields.pop(key)
+            )
+    fields.update(
+        _masked_controller_observation(
+            {"code": fields.get("code"), "masked_controller": detail}
+        )
+    )
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 

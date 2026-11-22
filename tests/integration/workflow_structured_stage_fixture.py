@@ -73,10 +73,22 @@ def diagnose_first_rd_drain(factory, engine, workflow_id):
     except Exception:  # noqa: BLE001, S110 -- diagnostic cannot block execution
         pass
     if run_id is not None:
+        project_masked = False
+        try:
+            from rd_neutral_holder_diagnostic import owned_current_fixture
+
+            project_masked = owned_current_fixture(engine, run_id)
+        except Exception:  # noqa: BLE001, S110 -- keep existing diagnostics independent
+            pass
         try:
             from rd_rpc_diagnostic import diagnose_rd_queue
 
-            observers.enter_context(diagnose_rd_queue(factory, run_id))
+            if project_masked is True:
+                observers.enter_context(
+                    diagnose_rd_queue(factory, run_id, project_masked=True)
+                )
+            else:
+                observers.enter_context(diagnose_rd_queue(factory, run_id))
         except Exception:  # noqa: BLE001, S110 -- retain the original drain behavior
             pass
         try:

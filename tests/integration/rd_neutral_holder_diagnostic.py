@@ -81,14 +81,18 @@ def _classify(pids, before, after, identity, observer_pid):
     return "workflow_heartbeat" if before[1].get(pid) == identity else "other"
 
 
-@contextmanager
-def observe_first_neutral_holder(engine, run_id):
-    if not (
+def owned_current_fixture(engine, run_id):
+    return (
         all(os.environ.get(k) == v for k, v in _EXPECTED.items())
         and engine.dialect.name == "postgresql"
-        and _DB.fullmatch(engine.url.database or "")
+        and _DB.fullmatch(engine.url.database or "") is not None
         and type(run_id) is UUID
-    ):
+    )
+
+
+@contextmanager
+def observe_first_neutral_holder(engine, run_id):
+    if not owned_current_fixture(engine, run_id):
         yield
         return
 

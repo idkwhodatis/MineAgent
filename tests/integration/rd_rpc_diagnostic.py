@@ -779,8 +779,94 @@ def _queue_state(factory, run_id):
         }
 
 
+def _masked_controller_failure(error, run_id):
+    """Recover only the original error retained by the owned controller frame."""
+    from packages.research_runtime.fences import AttemptFence
+    from packages.research_runtime.process_contracts import ProcessError
+    from workers.research.rdagent_operational import _execute_controller
+
+    if (
+        type(error) is not ProcessError
+        or error.code != "rd_provider_containment_unknown"
+    ):
+        return {}
+    trace = error.__traceback__
+    original = None
+    found = False
+    for _ in range(64):
+        if trace is None:
+            break
+        frame = trace.tb_frame
+        if frame.f_code is _execute_controller.__code__:
+            fence = frame.f_locals.get("fence")
+            if found or type(fence) is not AttemptFence or fence.run_id != run_id:
+                return {}
+            found = True
+            if "failure" not in frame.f_locals:
+                return {"state": "unavailable"}
+            original = frame.f_locals["failure"]
+        trace = trace.tb_next
+    if trace is not None or not found:
+        return {}
+    if original is None:
+        return {"state": "no_prior_failure"}
+    if not isinstance(original, BaseException) or original is error:
+        return {"state": "unavailable"}
+    return _masked_controller_summary(original)
+
+
+def _masked_controller_summary(original):
+    fields = (
+        "family",
+        "code",
+        "stage",
+        "sqlstate",
+        "rpc_method",
+        "analysis_stage",
+        "docker_operation",
+    )
+
+    def details(error, scope):
+        row = {**_queue_failure(error), **_analysis_trace_context(error)}
+        return {f"{scope}_{key}": row[key] for key in fields if key in row}
+
+    projected = {"state": "observed", **details(original, "masked")}
+    # Traverse both explicit causes and suppressed contexts. Do not pass off a
+    # traversal artifact as a root cause if there are multiple leaves/cycles.
+    active, done, leaves = set(), set(), []
+    pending = [(original, False)]
+    while pending:
+        current, exiting = pending.pop()
+        identity = id(current)
+        if exiting:
+            active.remove(identity)
+            done.add(identity)
+            continue
+        if identity in active:
+            return {**projected, "chain": "ambiguous"}
+        if identity in done:
+            continue
+        if len(active) + len(done) == 8:
+            return {**projected, "chain": "overflow"}
+        active.add(identity)
+        children = [
+            value
+            for value in (current.__cause__, current.__context__)
+            if isinstance(value, BaseException)
+        ]
+        if not children:
+            leaves.append(current)
+        pending.append((current, True))
+        pending.extend((child, False) for child in children)
+    if len(leaves) != 1:
+        return {**projected, "chain": "ambiguous"}
+    if leaves[0] is original:
+        return {**projected, "chain": "single"}
+    return {**projected, "chain": "unique_leaf", **details(leaves[0], "nested")}
+
+
 @contextmanager
-def diagnose_rd_queue(factory, run_id):
+def diagnose_rd_queue(factory, run_id, *, project_masked=False):
     """Observe the original queue callback; retain its exception and retry policy."""
     from workers.research import rdagent_queue
 
@@ -802,6 +888,13 @@ def diagnose_rd_queue(factory, run_id):
                         "stage": "unknown",
                         "sqlstate": "none",
                     }
+                if project_masked is True:
+                    try:
+                        detail = _masked_controller_failure(error, run_id)
+                        if detail:
+                            diagnostic["masked_controller"] = detail
+                    except BaseException:  # noqa: BLE001, S110 -- keep original error
+                        pass
                 try:
                     print(
                         "RD_QUEUE_FAILURE:" + json.dumps(diagnostic, sort_keys=True),
