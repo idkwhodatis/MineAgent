@@ -645,6 +645,54 @@ def _controller_limit(error):
     return None
 
 
+def _sdk_outcome_cut(error):
+    """Identify only a positively matched SDK wire/output exception boundary."""
+    from packages.rdagent_provider import transport
+
+    if (
+        type(error) is not transport.ProviderFailure
+        or error.code != "provider_outcome_unknown"
+        or error.contained is not True
+        or error.__cause__ is not None
+    ):
+        return {}
+    # The transport intentionally suppresses private error context. In this
+    # fixture, use only type/code-object identity; don't stringify the context.
+    source = error.__context__
+    if not isinstance(source, Exception):
+        return {}
+    parent_trace = error.__traceback__
+    matching = None
+    for _ in range(64):
+        if parent_trace is None:
+            break
+        if parent_trace.tb_frame.f_code is transport.execute.__code__:
+            if matching is not None:
+                return {}
+            matching = parent_trace.tb_frame
+        parent_trace = parent_trace.tb_next
+    if parent_trace is not None or matching is None:
+        return {}
+    trace = source.__traceback__
+    wire = False
+    anchored = False
+    for _ in range(64):
+        if trace is None:
+            break
+        anchored = anchored or trace.tb_frame is matching
+        wire = wire or trace.tb_frame.f_code is transport._wire_exchange.__code__
+        trace = trace.tb_next
+    if trace is not None or not anchored:
+        return {}
+    if wire:
+        cut = "wire_deadline" if type(source) is TimeoutError else "wire_error"
+    elif type(matching.f_locals.get("output")) is bytes:
+        cut = "output_rejected"
+    else:
+        return {}
+    return {"sdk_outcome_cut": cut}
+
+
 def _queue_failure(error):
     """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
     from pydantic import ValidationError
@@ -792,6 +840,7 @@ def _queue_failure(error):
         "stage": stage,
         "sqlstate": sqlstate,
         **_closed_trace_context(error),
+        **_sdk_outcome_cut(error),
         **_neutral_busy_cut(error, controller_limit=_controller_limit(error)),
     }
 

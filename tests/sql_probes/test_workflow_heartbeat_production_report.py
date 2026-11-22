@@ -934,3 +934,41 @@ def test_032h_workflow_scoped_report_still_requires_containment_and_pg_cleanup()
     assert "steps.bridge" not in lines[0]
     assert "steps.restore" not in lines[0]
     assert lines[2].endswith("workflow_heartbeat_production_report --report-h-bridge")
+
+
+def test_h_bridge_projects_closed_sdk_outcome_at_both_boundaries(tmp_path):
+    import json
+
+    item = {
+        "family": "provider",
+        "code": "provider_outcome_unknown",
+        "stage": "provider",
+        "sqlstate": "none",
+        "rpc_method": "submit_embedding",
+        "sdk_outcome_cut": "wire_deadline",
+        "secret_canary": "not projected",
+    }
+    for method, value, expected in (
+        ("submit_embedding", "wire_deadline", "wire_deadline"),
+        ("submit_embedding", "private-canary", None),
+        ("submit_chat", "wire_deadline", None),
+    ):
+        item.update(rpc_method=method, sdk_outcome_cut=value)
+        projected = _drain_observations("RD_QUEUE_FAILURE:" + json.dumps(item))
+        assert projected["code"] == "provider_outcome_unknown"
+        assert projected.get("sdk_outcome_cut") == expected
+        assert "secret_canary" not in projected
+        # Independently validate on the XML side, including an extraneous but
+        # valid-looking field not emitted by the original stdout projector.
+        projected["sdk_outcome_cut"] = value
+        props = "".join(
+            f'<property name="rd_drain_{key}" value="{val}"/>'
+            for key, val in projected.items()
+        )
+        _write(
+            tmp_path,
+            "h_bridge",
+            '<failure/><properties><property name="proof_phase" '
+            f'value="rd_waiting_release"/>{props}</properties>',
+        )
+        assert _drain_verdict(tmp_path, "h_bridge").get("sdk_outcome_cut") == expected

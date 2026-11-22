@@ -197,6 +197,7 @@ _DRAIN_FIELDS = {
         "http_503",
         "other",
     },
+    "sdk_outcome_cut": {"wire_deadline", "wire_error", "output_rejected"},
     "first_lock_scope": {"owner", "resource", "unobserved"},
     "first_holder": {"workflow_heartbeat", "other", "unstable", "unobserved"},
     "first_caller": {
@@ -245,6 +246,10 @@ _DRAIN_FIELDS = {
             "rd_controller_daemon_stop_uncertain",
             "rd_provider_containment_unknown",
             "provider_timeout",
+            "original_controller_deadline",
+            "provider_secret_unavailable",
+            "provider_identity_receipt_unconfirmed",
+            "provider_stop_receipt_unconfirmed",
             "provider_containment_unconfirmed",
             "provider_input_rejected",
             "provider_admission_unconfirmed",
@@ -780,6 +785,15 @@ def _rpc_deadline_timing(stdout, fields):
     return result
 
 
+def _sdk_outcome(fields):
+    return (
+        fields.get("family") == "provider"
+        and fields.get("code") == "provider_outcome_unknown"
+        and fields.get("stage") == "provider"
+        and fields.get("rpc_method") == "submit_embedding"
+    )
+
+
 def _drain_observations(stdout):
     """Only exact fixed vocabulary from the original fixture's private capture."""
     if type(stdout) is not str or len(stdout) > 4_000_000:
@@ -819,6 +833,10 @@ def _drain_observations(stdout):
         if result.get("code") == "neutral_busy":
             for key in ("neutral_busy_origin", "receipt_boundary"):
                 result[key] = _emit_value(key, failures[0].get(key))
+        if _sdk_outcome(result):
+            result["sdk_outcome_cut"] = _emit_value(
+                "sdk_outcome_cut", failures[0].get("sdk_outcome_cut")
+            )
         result.update(_masked_controller_observation(failures[0]))
     result.update(_rpc_deadline_timing(stdout, result))
     states = seen.get("RD_QUEUE_STATE:", [])
@@ -916,6 +934,8 @@ def _drain_verdict(root, name):
             {"code": fields.get("code"), "masked_controller": detail}
         )
     )
+    if fields.get("proof_phase") not in _DRAIN_PHASES or not _sdk_outcome(fields):
+        fields.pop("sdk_outcome_cut", None)
     if fields.get("stage") != "observer":
         fields.pop("observer_failure", None)
     if fields.get("code") != "neutral_busy":
