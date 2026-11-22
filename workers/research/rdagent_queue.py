@@ -203,8 +203,10 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
 def execute(run_id, generation, *, settings):
     """Queue callback; a duplicate cannot rerun a claimed or terminal generation."""
     import socket
+    from contextlib import nullcontext
 
     from backend.app.core.db import create_db_engine, session_factory
+    from backend.app.rdagent_workflow_coordination import registered
     from workers.research.rdagent_configured import execute_configured_controller
     from workers.research.rdagent_workflow_lease import configured_rd_lease
 
@@ -236,11 +238,12 @@ def execute(run_id, generation, *, settings):
             lease = configured_rd_lease(
                 factory, settings, fence, worker_id, workflow=workflow
             )
-            lease.start()
-            try:
-                return execute_configured_controller(factory, fence, settings)
-            finally:
-                lease.close()
+            with registered(factory, fence) if workflow else nullcontext():
+                lease.start()
+                try:
+                    return execute_configured_controller(factory, fence, settings)
+                finally:
+                    lease.close()
 
     finally:
         engine.dispose()

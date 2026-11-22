@@ -295,7 +295,9 @@ def _neutral_transaction_once(factory, fence: AttemptFence, *, resource_scope="n
     # session on rejection would silently roll back unrelated pending work.
     if not isinstance(factory, sessionmaker):
         raise _neutral_error("neutral_factory_required")
-    with factory() as session:
+    from backend.app.rdagent_workflow_coordination import neutral as coordinate_rd
+
+    with coordinate_rd(factory, fence), factory() as session:
         if session.in_transaction():
             raise _neutral_error("neutral_transaction_nested")
         with session.begin() as transaction:

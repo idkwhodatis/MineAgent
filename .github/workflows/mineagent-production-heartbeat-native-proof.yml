@@ -258,7 +258,7 @@ jobs:
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
-      - name: Run exact production heartbeat holder case
+      - name: Run production heartbeat holder and RD RPC coordination cases
         id: heartbeat
         if: ${{ !cancelled() && steps.owner_first_before.outcome == 'success' }}
         timeout-minutes: 15
@@ -281,8 +281,14 @@ jobs:
           python -m pytest -q -p no:cacheprovider -p script.workflow_heartbeat_production_report \
             tests/integration/test_workflow_heartbeat_production.py::test_actual_workflow_heartbeat_waits_and_times_out_without_renewal \
             --junitxml=var/numeric-private/heartbeat.xml >var/numeric-private/heartbeat.log 2>&1 || status=$?
+          coordination_status=0
+          python -m pytest -q -p no:cacheprovider \
+            tests/integration/test_workflow_heartbeat_rpc_coordination.py::test_exact_workflow_rpc_coordinates_with_heartbeat \
+            --junitxml=var/numeric-private/coordination.xml >var/numeric-private/coordination.log 2>&1 || coordination_status=$?
           test "$status" = 0
+          test "$coordination_status" = 0
           python -m script.workflow_heartbeat_production_report --require-pass heartbeat
+          python -m script.workflow_heartbeat_production_report --require-pass coordination
       - name: Confirm native unit containment after heartbeat
         id: heartbeat_clean
         if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}

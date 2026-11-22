@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import uuid4
@@ -125,7 +126,7 @@ def test_claim_reports_verified_mode_only_after_commit(
     ("seconds", "original_ms", "bound"),
     [
         (8, 1250, "1250ms"),
-        (8, 0, "5000ms"),
+        (8, 0, "4000ms"),
         (2, 1250, "1000ms"),
     ],
 )
@@ -228,3 +229,37 @@ def test_advisory_timeout_rolls_back_without_committing_authority(monkeypatch, f
     heartbeat.assert_not_called()
     assert instance.last_pulse == 0
     assert instance.lost.is_set() and instance.cancelled.is_set()
+
+
+def test_close_while_heartbeat_is_waiting_never_starts_write(monkeypatch, fence):
+    from backend.app import rdagent_workflow_coordination as coord
+
+    factory = Factory()
+    instance = workflow.WorkflowAttemptLease(factory, None, fence, "worker")
+    parked = Event()
+
+    def pulse():
+        with pytest.raises(FenceLost):
+            instance.pulse(force=True)
+
+    worker = Thread(target=pulse, daemon=True)
+    with coord.registered(factory, fence) as gate:
+        wait = gate._condition.wait
+
+        def observe_wait(timeout):
+            parked.set()
+            return wait(timeout)
+
+        monkeypatch.setattr(gate._condition, "wait", observe_wait)
+        try:
+            with coord.neutral(factory, fence):
+                worker.start()
+                assert parked.wait(2)
+                # This direct-pulse test owns its thread, not AttemptLease's.
+                instance.close()
+        finally:
+            worker.join(timeout=3)
+    assert not worker.is_alive()
+    assert instance.lost.is_set()
+    assert instance.cancelled.is_set()
+    assert [entry[0] for entry in factory.trace] == ["connection", "read"]

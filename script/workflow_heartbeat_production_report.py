@@ -22,6 +22,13 @@ CASES = {
         "test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore",
     ),
 }
+_COORDINATION_CLASS = "tests.integration.test_workflow_heartbeat_rpc_coordination"
+_COORDINATION_TEST = "test_exact_workflow_rpc_coordinates_with_heartbeat"
+_COORDINATION_CASES = {
+    "heartbeat-commits-first": "heartbeat_commits_first",
+    "rpc-commits-first": "rpc_commits_first",
+    "rpc-rolls-back-first": "rpc_rolls_back_first",
+}
 # Source anchors are exact statements in the unchanged integration helpers.
 # Only a known source frame and the last crossed statement determine a phase.
 BRIDGE = {
@@ -415,13 +422,17 @@ def _properties(case, key):
     ]
 
 
-def _case(path, module, test):
+def _read_cases(path):
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 20_000_000:
-            return None
-        cases = list(ET.fromstring(path.read_bytes()).iter("testcase"))
+            return []
+        return list(ET.fromstring(path.read_bytes()).iter("testcase"))
     except (OSError, ET.ParseError):
-        return None
+        return []
+
+
+def _case(path, module, test):
+    cases = _read_cases(path)
     if len(cases) != 1:
         return None
     case = cases[0]
@@ -431,6 +442,31 @@ def _case(path, module, test):
     ):
         return None
     return case
+
+
+def coordination(root):
+    expected = {
+        f"{_COORDINATION_TEST}[{parameter}]": field
+        for parameter, field in _COORDINATION_CASES.items()
+    }
+    unavailable = dict.fromkeys(expected.values(), "unavailable")
+    cases = _read_cases(root / "coordination.xml")
+    if len(cases) != len(expected) or any(
+        case.get("classname") != _COORDINATION_CLASS for case in cases
+    ):
+        return unavailable
+    actual = {}
+    for case in cases:
+        field = expected.get(case.get("name"))
+        if field is None or field in actual:
+            return unavailable
+        statuses = [
+            s for s in ("failure", "error", "skipped") if case.find(s) is not None
+        ]
+        if len(statuses) > 1:
+            return unavailable
+        actual[field] = statuses[0] if statuses else "passed"
+    return {field: actual[field] for field in expected.values()}
 
 
 def outcome(root, name):
@@ -457,11 +493,16 @@ def outcome(root, name):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--require-pass", choices=CASES)
+    parser.add_argument("--require-pass", choices=(*CASES, "coordination"))
     args = parser.parse_args()
+    if args.require_pass == "coordination":
+        return int(any(value != "passed" for value in coordination(ROOT).values()))
     if args.require_pass:
         return int(outcome(ROOT, args.require_pass)[0] != "passed")
-    failed = False
+    outcomes = coordination(ROOT)
+    fields = " ".join(f"{key}={value}" for key, value in outcomes.items())
+    print(f"RD_PRODUCTION_RPC_COORDINATION_V1 {fields}")
+    failed = any(value != "passed" for value in outcomes.values())
     for name in CASES:
         status, phase, code = outcome(ROOT, name)
         print(f"RD_PRODUCTION_HEARTBEAT_V1 {name}={status} phase={phase} code={code}")

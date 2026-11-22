@@ -41,6 +41,7 @@ from backend.app.rdagent_operational_admission import (
 from backend.app.rdagent_operational_handler import OperationalHandler
 from backend.app.rdagent_protected_controller import authenticate_current_controller
 from backend.app.rdagent_services import _scope, bind_research_attempt
+from backend.app.rdagent_workflow_coordination import controller_deadline
 from backend.app.research_broker_models import (
     ResearchBudgetControl,
     ResearchBudgetReservation,
@@ -427,13 +428,14 @@ def _execute_controller(factory, fence, settings, *, handler_type):
 
             sequence = 0
             while not handler.returned:
-                sequence = serve_one(
-                    channel,
-                    sequence=sequence,
-                    deadline=running.deadline,
-                    authenticate=authorize,
-                    handle=handler,
-                )
+                with controller_deadline(factory, fence, running.deadline):
+                    sequence = serve_one(
+                        channel,
+                        sequence=sequence,
+                        deadline=running.deadline,
+                        authenticate=authorize,
+                        handle=handler,
+                    )
             running.finish(on_stopped=stopped)
         except BaseException as error:  # noqa: BLE001 - retain containment on cancellation too
             failure = error

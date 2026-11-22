@@ -10,6 +10,7 @@ from script.workflow_heartbeat_production_report import (
     _bridge_phase,
     _drain_observations,
     _drain_verdict,
+    coordination,
     outcome,
 )
 
@@ -85,6 +86,45 @@ def test_projection_fails_closed_on_mismatched_inventory_and_skip(tmp_path):
 def test_projection_only_accepts_exact_pass(tmp_path):
     _write(tmp_path, "restore", "")
     assert outcome(tmp_path, "restore") == ("passed", "complete", "unavailable")
+
+
+def test_coordination_projection_requires_exact_distinct_cases(tmp_path):
+    classname = "tests.integration.test_workflow_heartbeat_rpc_coordination"
+    expected = {
+        "heartbeat-commits-first": "heartbeat_commits_first",
+        "rpc-commits-first": "rpc_commits_first",
+        "rpc-rolls-back-first": "rpc_rolls_back_first",
+    }
+    path = tmp_path / "coordination.xml"
+
+    def write(parameters):
+        records = "".join(
+            f'<testcase classname="{classname}" '
+            f'name="test_exact_workflow_rpc_coordinates_with_heartbeat[{param}]">'
+            f"{detail}</testcase>"
+            for param, detail in parameters
+        )
+        path.write_text(f"<testsuite>{records}</testsuite>")
+
+    write([(key, "") for key in expected])
+    assert coordination(tmp_path) == dict.fromkeys(expected.values(), "passed")
+    write(
+        [
+            ("heartbeat-commits-first", ""),
+            ("rpc-commits-first", ""),
+            ("rpc-rolls-back-first", "<skipped>private-canary</skipped>"),
+        ]
+    )
+    assert coordination(tmp_path) == {
+        "heartbeat_commits_first": "passed",
+        "rpc_commits_first": "passed",
+        "rpc_rolls_back_first": "skipped",
+    }
+    write([("heartbeat-commits-first", "")] * 3)
+    assert coordination(tmp_path) == dict.fromkeys(expected.values(), "unavailable")
+    path.unlink()
+    path.symlink_to("not-a-real-report.xml")
+    assert coordination(tmp_path) == dict.fromkeys(expected.values(), "unavailable")
 
 
 def test_waiting_release_checkpoint_and_worker_drain_do_not_collapse():

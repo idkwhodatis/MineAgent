@@ -10,12 +10,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.app.models import WorkerHeartbeat, utcnow
+from backend.app.rdagent_workflow_coordination import OWNER_WAIT_SECONDS, heartbeat
 from backend.app.services import FenceLost, advisory_lock
 from packages.research_runtime.fences import AttemptFence
 from workers.research import lease as lease_module
 from workers.research.lease import AttemptLease
 
-_MAX_OWNER_WAIT_MS = 5000
+_MAX_OWNER_WAIT_MS = int(OWNER_WAIT_SECONDS * 1000)
 _IDENTITY = """
  FROM execution_attempts a JOIN research_runs r ON r.id=a.run_id
  WHERE r.owner_id=:owner_id AND r.id=:run_id
@@ -93,6 +94,7 @@ class WorkflowAttemptLease(AttemptLease):
     def __init__(self, factory, settings, fence, worker_id):
         self._params = _parameters(fence, worker_id)
         self._owner_scope = f"submit:{fence.owner_id}"
+        self._fence = fence
         super().__init__(
             factory,
             settings,
@@ -110,24 +112,34 @@ class WorkflowAttemptLease(AttemptLease):
             raise FenceLost()
         # Anchor at read start, so network/connection time can only reduce wait.
         cutoff = started + float(seconds)
-        with self.factory.begin() as session:
-            original, original_ms = session.execute(_TIMEOUT).one()
-            left = cutoff - monotonic()
-            if left <= 0:
+        # The configured worker factory uses a 5s PostgreSQL lock timeout.
+        # Local admission and the SQL wait share that single budget. A stricter
+        # per-session lock_timeout still bounds the SQL wait below.
+        owner_cutoff = min(cutoff, started + OWNER_WAIT_SECONDS)
+        with heartbeat(self.factory, self._fence, deadline=owner_cutoff):
+            if self.done.is_set():
                 raise FenceLost()
-            bound_ms = min(
-                int(left * 1000), original_ms or _MAX_OWNER_WAIT_MS, _MAX_OWNER_WAIT_MS
-            )
-            if bound_ms <= 0:
-                raise FenceLost()
-            session.execute(_SET_TIMEOUT, {"timeout": f"{bound_ms}ms"})
-            advisory_lock(session, self._owner_scope)
-            session.execute(_SET_TIMEOUT, {"timeout": original})
-            if monotonic() >= cutoff:
-                raise FenceLost()
-            # The committed observation is only a ceiling; the unchanged
-            # heartbeat now takes Run -> Attempt and rechecks the live fence.
-            yield session
+            with self.factory.begin() as session:
+                self._lock_owner(session, owner_cutoff)
+                yield session
+
+    def _lock_owner(self, session, cutoff):
+        original, original_ms = session.execute(_TIMEOUT).one()
+        left = cutoff - monotonic()
+        if left <= 0:
+            raise FenceLost()
+        bound_ms = min(
+            int(left * 1000), original_ms or _MAX_OWNER_WAIT_MS, _MAX_OWNER_WAIT_MS
+        )
+        if bound_ms <= 0:
+            raise FenceLost()
+        session.execute(_SET_TIMEOUT, {"timeout": f"{bound_ms}ms"})
+        advisory_lock(session, self._owner_scope)
+        session.execute(_SET_TIMEOUT, {"timeout": original})
+        if monotonic() >= cutoff:
+            raise FenceLost()
+        # The committed observation is only a ceiling; the unchanged
+        # heartbeat now takes Run -> Attempt and rechecks the live fence.
 
     def pulse(self, force=False):
         # Generic leases are a separately pinned legacy runtime input. Retain
