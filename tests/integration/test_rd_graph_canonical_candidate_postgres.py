@@ -38,10 +38,28 @@ def _diagnostic(record_property):
 
     try:
         yield mark
+    except _TempDDLFailure as error:
+        record_property("canonical_sqlstate", error.sqlstate)
+        raise
     finally:
         record_property("canonical_phase", phase)
         if ordinal is not None:
             record_property("canonical_ordinal", str(ordinal))
+
+
+class _TempDDLFailure(RuntimeError):
+    def __init__(self, sqlstate):
+        self.sqlstate = sqlstate
+        super().__init__("Canonical diagnostic temporary DDL failed")
+
+
+def _create_temp(connection, source):
+    try:
+        connection.exec_driver_sql(source)
+    except DBAPIError as error:
+        raise _TempDDLFailure(
+            probe.closed_sqlstate(getattr(error.orig, "sqlstate", None))
+        ) from None
 
 
 def _temp_scope(connection, mark):
@@ -50,8 +68,9 @@ def _temp_scope(connection, mark):
     mark("temp_scope")
     # Initialize only a per-connection temp namespace. Outer caller rolls back
     # all helper DDL; no installed graph or encoder is modified.
-    connection.exec_driver_sql(
-        "CREATE TEMP TABLE rd_canonical_probe_scope (unused boolean) ON COMMIT DROP"
+    _create_temp(
+        connection,
+        "CREATE TEMP TABLE rd_canonical_probe_scope (unused boolean) ON COMMIT DROP",
     )
     return schema
 
@@ -137,8 +156,8 @@ def _exercise_encoder_corpus(migrated_engine, mark):
             schema = _temp_scope(connection, mark)
             for candidate in (False, True):
                 mark("temp_candidate" if candidate else "temp_baseline")
-                connection.exec_driver_sql(
-                    probe.temp_bytes_source(schema, candidate=candidate)
+                _create_temp(
+                    connection, probe.temp_bytes_source(schema, candidate=candidate)
                 )
             for index, (value, expected) in enumerate(corpus):
                 mark("corpus", case=index)
@@ -383,7 +402,7 @@ def _exercise_populated_graph(
                 schema = _temp_scope(connection, mark)
                 assert schema == "public"
                 mark("temp_candidate")
-                connection.exec_driver_sql(probe.temp_graph_source(schema))
+                _create_temp(connection, probe.temp_graph_source(schema))
                 mark("persisted_evidence")
                 with Session(bind=connection) as session:
                     rid = _persisted_default_child(

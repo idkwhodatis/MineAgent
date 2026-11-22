@@ -504,7 +504,8 @@ jobs:
           diagnostics=project_diagnostic_cases(ET.parse(source).getroot())
           outcomes={name: entry[0] for name, entry in diagnostics.items()}
           print('QLIB_CANONICAL_GRAPH_V1 '+str(outcomes))
-          print('QLIB_CANONICAL_GRAPH_PHASE_V1 '+str(diagnostics))
+          print('QLIB_CANONICAL_GRAPH_PHASE_V1 '+str({name: row[:3] for name, row in diagnostics.items()}))
+          print('QLIB_CANONICAL_GRAPH_SQLSTATE_V1 '+str({name: row[3] for name, row in diagnostics.items()}))
           assert set(outcomes.values())=={'passed'}
           PYCANONICAL
           test "$status" = 0

@@ -22,7 +22,7 @@ def test_only_ascii_assignment_inside_exact_current_per_operation_graph_changes(
     assert candidate.index("request_utf8:=") < candidate.index(
         "octet_length(request_utf8)"
     )
-    assert 'position(chr(127) in request_utf8 COLLATE "C")=0' in candidate
+    assert 'position(chr(127) in (request_utf8 COLLATE "C"))=0' in candidate
     assert candidate.count("mineagent_rd_canonical_json(op.request,true)") == 1
     assert candidate.index("    ELSE\n     request_ascii:=") < candidate.index(
         "mineagent_rd_canonical_json(op.request,true)"
@@ -75,7 +75,7 @@ def test_default_workflow_call_supplies_exact_required_inputs_by_name():
     assert args["pytestconfig"].id == "pytestconfig"
 
 
-def _diagnostic_xml(phase="corpus", ordinal="24"):
+def _diagnostic_xml(phase="corpus", ordinal="24", sqlstate=None):
     from xml.etree import ElementTree as ET
 
     root = ET.Element("testsuites")
@@ -87,6 +87,8 @@ def _diagnostic_xml(phase="corpus", ordinal="24"):
     ET.SubElement(props, "property", name="canonical_phase", value=phase)
     if ordinal is not None:
         ET.SubElement(props, "property", name="canonical_ordinal", value=ordinal)
+    if sqlstate is not None:
+        ET.SubElement(props, "property", name="canonical_sqlstate", value=sqlstate)
     ET.SubElement(props, "property", name="private", value="unsafe-xml-property")
     ET.SubElement(case, "failure", message="unsafe-log-message").text = "unsafe-body"
     setup = ET.SubElement(
@@ -105,11 +107,13 @@ def test_canonical_diagnostic_projects_allowlist_only_including_fixture_error():
             "error",
             "fixture",
             None,
+            None,
         ),
         "test_installed032g_request_encoding_bytes_and_errors": (
             "failure",
             "corpus",
             24,
+            None,
         ),
     }
 
@@ -128,3 +132,26 @@ def test_canonical_diagnostic_rejects_free_form_phase_or_ordinal():
         with pytest.raises(ValueError, match="^Unexpected|^Ordinal") as error:
             probe.project_diagnostic_cases(_diagnostic_xml(phase, ordinal))
         assert "unsafe-value" not in str(error.value)
+
+
+def test_ddl_sqlstate_is_closed_and_tied_to_temp_failures():
+    import pytest
+
+    name = "test_installed032g_request_encoding_bytes_and_errors"
+    for state in ("42601", None, "private", ["42601"]):
+        expected = "42601" if state == "42601" else "other"
+        assert probe.closed_sqlstate(state) == expected
+        result = probe.project_diagnostic_cases(
+            _diagnostic_xml("temp_candidate", None, expected)
+        )
+        assert result[name] == ("failure", "temp_candidate", None, expected)
+
+    for input_xml in (
+        _diagnostic_xml("temp_candidate", None, "private"),
+        _diagnostic_xml("corpus", "12", "42601"),
+    ):
+        with pytest.raises(
+            ValueError, match="^Unexpected canonical diagnostic SQLSTATE"
+        ) as error:
+            probe.project_diagnostic_cases(input_xml)
+        assert "private" not in str(error.value)

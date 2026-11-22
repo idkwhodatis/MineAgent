@@ -18,7 +18,7 @@ BASELINE = """    request_utf8:=mineagent_rd_canonical_json(op.request,false);
 """
 CANDIDATE = """    request_utf8:=mineagent_rd_canonical_json(op.request,false);
     IF octet_length(request_utf8)=char_length(request_utf8)
-    AND position(chr(127) in request_utf8 COLLATE "C")=0 THEN
+    AND position(chr(127) in (request_utf8 COLLATE "C"))=0 THEN
      request_ascii:=request_utf8;
     ELSE
      request_ascii:=mineagent_rd_canonical_json(op.request,true);
@@ -130,8 +130,16 @@ BEGIN
 END $$;"""
 
 
+_TEMP_PHASES = {"temp_scope", "temp_baseline", "temp_candidate"}
+_SQLSTATES = {"42601", "42501", "42883", "42P01", "3F000", "57014"}
+
+
+def closed_sqlstate(value):
+    return value if type(value) is str and value in _SQLSTATES else "other"
+
+
 def project_diagnostic_cases(root):
-    """Return only closed outcomes, phase names and bounded case ordinals."""
+    """Return only closed outcomes, phases, bounded ordinals, and allowed temp DDL SQLSTATEs."""
     phases = {
         "test_installed032g_request_encoding_bytes_and_errors": {
             "startup",
@@ -173,7 +181,7 @@ def project_diagnostic_cases(root):
         properties = {}
         for prop in case.findall("./properties/property"):
             key = prop.get("name")
-            if key in ("canonical_phase", "canonical_ordinal"):
+            if key in ("canonical_phase", "canonical_ordinal", "canonical_sqlstate"):
                 if key in properties:
                     raise ValueError("Duplicate canonical diagnostic property")
                 properties[key] = prop.get("value")
@@ -193,9 +201,16 @@ def project_diagnostic_cases(root):
             if "canonical_ordinal" in properties:
                 raise ValueError("Ordinal is only allowed for the canonical corpus")
             ordinal = None
+        sqlstate = properties.get("canonical_sqlstate")
+        if "canonical_sqlstate" in properties and (
+            sqlstate not in _SQLSTATES | {"other"}
+            or phase not in _TEMP_PHASES
+            or status not in {"failure", "error"}
+        ):
+            raise ValueError("Unexpected canonical diagnostic SQLSTATE")
         if status == "passed" and phase != "complete":
             raise ValueError("Missing canonical diagnostic completion")
-        results[name] = (status, phase, ordinal)
+        results[name] = (status, phase, ordinal, sqlstate)
     if results.keys() != phases.keys():
         raise ValueError("Missing exact canonical diagnostic testcase inventory")
     return dict(sorted(results.items()))
