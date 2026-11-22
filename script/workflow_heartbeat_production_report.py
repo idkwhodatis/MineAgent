@@ -74,6 +74,17 @@ _UNIT_STATES = frozenset(
     {"launch_intended", "uncertain", "running", "stopped", "unknown"}
 )
 _DRAIN_FIELDS = {
+    "first_lock_scope": {"owner", "resource", "unobserved"},
+    "first_holder": {"workflow_heartbeat", "other", "unstable", "unobserved"},
+    "first_caller": {
+        "recovery",
+        "stop_callback",
+        "rpc_auth",
+        "rpc_dispatch",
+        "admission_callback",
+        "controller",
+        "other",
+    },
     "family": frozenset(
         [
             "rpc",
@@ -209,6 +220,25 @@ def _strict_object(pairs):
     return result
 
 
+def _holder_observation(stdout):
+    prefix = "RD_NEUTRAL_HOLDER_V1:"
+    rows = [
+        line[len(prefix) :] for line in stdout.splitlines() if line.startswith(prefix)
+    ]
+    if len(rows) != 1 or len(rows[0]) > 300:
+        return {}
+    try:
+        row = json.loads(rows[0], object_pairs_hook=_strict_object)
+    except (ValueError, RecursionError):
+        return {}
+    if type(row) is not dict or row.keys() != {"lock_scope", "holder", "caller"}:
+        return {}
+    fields = {
+        f"first_{key}": _emit_value(f"first_{key}", val) for key, val in row.items()
+    }
+    return fields if "unavailable" not in fields.values() else {}
+
+
 def _drain_observations(stdout):
     """Only exact fixed vocabulary from the original fixture's private capture."""
     if type(stdout) is not str or len(stdout) > 4_000_000:
@@ -230,6 +260,9 @@ def _drain_observations(stdout):
             return {}
         rows.append(row)
     result = {}
+    holder = _holder_observation(stdout)
+    if holder:
+        result.update(holder)
     failures = seen.get("RD_QUEUE_FAILURE:", [])
     if failures:
         result.update(

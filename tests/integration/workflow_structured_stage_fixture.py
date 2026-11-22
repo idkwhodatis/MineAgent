@@ -79,6 +79,12 @@ def diagnose_first_rd_drain(factory, engine, workflow_id):
             observers.enter_context(diagnose_rd_queue(factory, run_id))
         except Exception:  # noqa: BLE001, S110 -- retain the original drain behavior
             pass
+        try:
+            from rd_neutral_holder_diagnostic import observe_first_neutral_holder
+
+            observers.enter_context(observe_first_neutral_holder(engine, run_id))
+        except Exception:  # noqa: BLE001, S110 -- retain unchanged drain behavior
+            pass
     try:
         yield
     finally:
