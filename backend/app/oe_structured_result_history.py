@@ -556,6 +556,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
             ["032g_schema_keyset_cost"],
+            ["032h_workflow_oe_run_guard"],
         ) or capabilities_for(
             versions[0]
         ).oe_structured_closure_schema != _closure_schema_for_research(
@@ -596,6 +597,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
                 ["032g_schema_keyset_cost"],
+                ["032h_workflow_oe_run_guard"],
             ):
                 fail()
             from backend.app.oe_workflow_models import OEWorkflowSubmission
@@ -622,6 +624,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
             ["032g_schema_keyset_cost"],
+            ["032h_workflow_oe_run_guard"],
         ):
             workflow_context = {}
         attempts = list(
@@ -758,6 +761,7 @@ def read_result_in_session(session, settings, *, owner_id, execution_id):
                     ["032e_rd_workflow_cost"],
                     ["032f_shared_validation_cost"],
                     ["032g_schema_keyset_cost"],
+                    ["032h_workflow_oe_run_guard"],
                 )
                 else {}
             ),

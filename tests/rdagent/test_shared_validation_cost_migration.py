@@ -36,9 +36,11 @@ def test_frozen_shared_migration_reconstructs_only_reviewed_functions():
     scripts = ScriptDirectory.from_config(Config("backend/alembic.ini"))
     assert scripts.get_revision(value.revision).down_revision == value.down_revision
     assert scripts.get_heads() == [REQUIRED_SCHEMA_REVISION]
+    keyset_revision = "032g_schema_keyset_cost"
     assert (
-        scripts.get_revision(REQUIRED_SCHEMA_REVISION).down_revision == value.revision
+        scripts.get_revision(REQUIRED_SCHEMA_REVISION).down_revision == keyset_revision
     )
+    assert scripts.get_revision(keyset_revision).down_revision == value.revision
     renderers = (raw_sql, schema_sql, guard_sql)
     assert value.UPGRADE_SQL == "\n".join(
         module.render_upgrade_sql() for module in renderers

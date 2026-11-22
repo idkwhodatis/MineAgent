@@ -108,6 +108,7 @@ def provider_config_in_session(session):
         "032e_rd_workflow_cost",
         "032f_shared_validation_cost",
         "032g_schema_keyset_cost",
+        "032h_workflow_oe_run_guard",
     }:
         raise ValueError("Unsupported historical snapshot revision")
     return revisions[0] in {
@@ -128,6 +129,7 @@ def provider_config_in_session(session):
         "032e_rd_workflow_cost",
         "032f_shared_validation_cost",
         "032g_schema_keyset_cost",
+        "032h_workflow_oe_run_guard",
     }
 
 
@@ -157,6 +159,7 @@ def workflow_config_in_session(session):
         "032e_rd_workflow_cost",
         "032f_shared_validation_cost",
         "032g_schema_keyset_cost",
+        "032h_workflow_oe_run_guard",
     }:
         raise ValueError("Unsupported workflow snapshot revision")
     return revisions in (
@@ -171,6 +174,7 @@ def workflow_config_in_session(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     )
 
 
@@ -193,6 +197,7 @@ def composed_controller_in_session(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     )
 
 
@@ -208,6 +213,7 @@ def declared_upload_in_session(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     )
 
 
@@ -227,4 +233,5 @@ def seeded_controller_in_session(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     )

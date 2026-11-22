@@ -36,6 +36,7 @@ def controls_for(session, run):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         return DisabledActions()
     receipt = session.scalar(
@@ -89,6 +90,7 @@ def request_cancel(session, owner_id, run_id):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         raise DomainError(
             "engine_control_not_enabled", "RD control schema is unavailable", 409

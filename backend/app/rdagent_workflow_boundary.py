@@ -23,6 +23,7 @@ def workflow_boundary_id(session, run, revisions):
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
             ["032g_schema_keyset_cost"],
+            ["032h_workflow_oe_run_guard"],
         )
         or run.config.get("schema_version") != "mineagent.factor-research.v3"
     ):

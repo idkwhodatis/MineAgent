@@ -50,6 +50,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                 "032e_rd_workflow_cost",
                 "032f_shared_validation_cost",
                 "032g_schema_keyset_cost",
+                "032h_workflow_oe_run_guard",
             } and (
                 selected.controller_profile is None
                 or schema_revision
@@ -70,6 +71,7 @@ def runtime_catalog(settings=None, schema_revision=None, *, owner_id=None):
                     "032e_rd_workflow_cost",
                     "032f_shared_validation_cost",
                     "032g_schema_keyset_cost",
+                    "032h_workflow_oe_run_guard",
                 )
             ):
                 enabled, code = True, "configured_fixture_profile_available"

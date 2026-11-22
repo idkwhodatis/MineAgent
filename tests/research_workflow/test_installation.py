@@ -28,7 +28,7 @@ def literal():
 def test_literal_exact_verified_renderer_and_single_successor():
     value = literal()
     assert value["revision"] == "029_research_workflow"
-    assert REQUIRED_SCHEMA_REVISION == "032g_schema_keyset_cost"
+    assert REQUIRED_SCHEMA_REVISION == "032h_workflow_oe_run_guard"
     successor = ast.parse(
         Path("backend/alembic/versions/030_declared_upload_basket.py").read_text()
     )
@@ -66,7 +66,9 @@ def test_literal_exact_verified_renderer_and_single_successor():
     from alembic.script import ScriptDirectory
 
     scripts = ScriptDirectory.from_config(Config("backend/alembic.ini"))
-    maintenance = scripts.get_revision(REQUIRED_SCHEMA_REVISION)
+    successor = scripts.get_revision(REQUIRED_SCHEMA_REVISION)
+    assert successor.down_revision == "032g_schema_keyset_cost"
+    maintenance = scripts.get_revision(successor.down_revision)
     assert maintenance.down_revision == "032f_shared_validation_cost"
     maintenance = scripts.get_revision(maintenance.down_revision)
     assert maintenance.down_revision == "032e_rd_workflow_cost"

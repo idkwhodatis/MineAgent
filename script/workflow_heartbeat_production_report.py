@@ -17,10 +17,20 @@ CASES = {
         "test_workflow_current_head_baseline",
         "test_actual_current032g_workflow_completes_with_readonly_graph_checks",
     ),
+    "h_bridge": (
+        "test_workflow_032h_composed",
+        "test_actual_032h_workflow_completes_with_cold_restore",
+    ),
     "restore": (
         "test_workflow_structured_stage_flow",
         "test_actual_final_rd_checkpoint_drives_one_oe_stage_and_exact031_restore",
     ),
+}
+_H_MILESTONES = ("current_032h_bridge", "current_032h_cold_restore")
+H_BRIDGE = {
+    "completed = run_bridge(env, source, tmp_path)": "bridge",
+    "call_counts = (len(env.rd_calls), len(env.oe_calls))": "current_graph_readback",
+    "assert_restore(": "current_cold_restore",
 }
 _COORDINATION_CLASS = "tests.integration.test_workflow_heartbeat_rpc_coordination"
 _COORDINATION_TEST = "test_exact_workflow_rpc_coordinates_with_heartbeat"
@@ -64,6 +74,7 @@ PHASES = frozenset(
         "current_graph_readback",
         "rd_waiting_release",
         *BRIDGE.values(),
+        *H_BRIDGE.values(),
         *RESTORE.values(),
     }
 )
@@ -978,6 +989,8 @@ def _phase(item, call):
             line = frame.lineno - frame.frame.code.firstlineno + 1
             if module == CASES["restore"][0]:
                 return _anchored_phase(source, line, RESTORE, "before_bridge")
+            if module == CASES["h_bridge"][0]:
+                return _anchored_phase(source, line, H_BRIDGE, "before_bridge")
             return _anchored_phase(
                 source,
                 line,
@@ -1213,10 +1226,19 @@ def outcome(root, name):
     if len(statuses) > 1:
         return "unavailable", "unavailable", "unavailable"
     status = statuses[0] if statuses else "passed"
+    if (
+        name == "h_bridge"
+        and status == "passed"
+        and any(
+            _properties(case, milestone) != ["passed"] for milestone in _H_MILESTONES
+        )
+    ):
+        return "unavailable", "unavailable", "unavailable"
     phase = "complete" if status == "passed" else "unavailable"
     code = "unavailable"
     if status in {"failure", "error"}:
-        for key, allowed in (("proof_phase", PHASES), ("proof_code", CODES)):
+        phases = PHASES if name == "h_bridge" else PHASES - {"current_cold_restore"}
+        for key, allowed in (("proof_phase", phases), ("proof_code", CODES)):
             values = _properties(case, key)
             if len(values) == 1 and values[0] in allowed:
                 if key == "proof_phase":
@@ -1242,7 +1264,7 @@ def main():
         status, phase, code = outcome(ROOT, name)
         print(f"RD_PRODUCTION_HEARTBEAT_V1 {name}={status} phase={phase} code={code}")
         failed |= status != "passed"
-        if name in {"bridge", "restore"}:
+        if name in {"bridge", "h_bridge", "restore"}:
             fields = _drain_verdict(ROOT, name)
             if fields:
                 detail = " ".join(f"{key}={fields[key]}" for key in sorted(fields))

@@ -111,6 +111,7 @@ def require_maintained_revision(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         raise ProcessError("rd_controller_revision")
 
@@ -250,6 +251,7 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
                 ["032g_schema_keyset_cost"],
+                ["032h_workflow_oe_run_guard"],
             ):
                 raise ProcessError("rd_controller_seeded_revision")
             if controller_profile(
@@ -273,6 +275,7 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
                 ["032g_schema_keyset_cost"],
+                ["032h_workflow_oe_run_guard"],
             ):
                 raise ProcessError("rd_controller_composed_revision")
         from backend.app.rdagent_workflow_controller import (

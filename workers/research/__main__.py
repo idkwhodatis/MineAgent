@@ -42,6 +42,7 @@ def dispatch_workflow_tick(factory, settings):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         return ()
     from workers.research.workflow_tick import tick_workflows

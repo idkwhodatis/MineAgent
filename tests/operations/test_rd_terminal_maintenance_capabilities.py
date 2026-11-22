@@ -16,11 +16,15 @@ EARLIER = "032d_rd_validation_cost"
 OLD = "032e_rd_workflow_cost"
 SHARED = "032f_shared_validation_cost"
 CURRENT = "032g_schema_keyset_cost"
+SUCCESSOR = "032h_workflow_oe_run_guard"
 
 
 def test_maintenance_preserves_every_existing_capability():
     assert (
-        capabilities_for(CURRENT) == capabilities_for(SHARED) == capabilities_for(OLD)
+        capabilities_for(SUCCESSOR)
+        == capabilities_for(CURRENT)
+        == capabilities_for(SHARED)
+        == capabilities_for(OLD)
     )
     assert (
         capabilities_for(CURRENT).research_input_schema
@@ -33,7 +37,8 @@ def test_maintenance_preserves_every_existing_capability():
 
 
 @pytest.mark.parametrize(
-    "revision", [PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, SHARED, CURRENT]
+    "revision",
+    [PREVIOUS, LEGACY, OLDER, PENULTIMATE, EARLIER, OLD, SHARED, CURRENT, SUCCESSOR],
 )
 def test_normal_note_gate_accepts_exact_known_maintenance(revision):
     session = SimpleNamespace(scalars=lambda _: SimpleNamespace(all=lambda: [revision]))
@@ -47,6 +52,9 @@ def test_normal_note_gate_accepts_exact_known_maintenance(revision):
         ["032b_future"],
         ["032g"],
         [CURRENT + "_future"],
+        [SUCCESSOR + "_future"],
+        [CURRENT, SUCCESSOR],
+        [SUCCESSOR, SUCCESSOR],
         ["033_safe_workflow_branches"],
         [PREVIOUS, LEGACY],
         [LEGACY, LEGACY],
@@ -98,10 +106,12 @@ def test_every_backend_predecessor_gate_preserves_exact_append_maintenance():
                     values.append(None)
             old = [SHARED] if [SHARED] in values else SHARED
             current = [CURRENT] if old == [SHARED] else CURRENT
+            successor = [SUCCESSOR] if old == [SHARED] else SUCCESSOR
             if old not in values or len(values) == 1:
                 continue
-            assert values.count(current) == 1, path
+            assert values.count(current) == values.count(successor) == 1, path
             assert values.index(current) == values.index(old) + 1, path
+            assert values.index(successor) == values.index(current) + 1, path
             assert "033_safe_workflow_branches" not in values, path
             assert ["033_safe_workflow_branches"] not in values, path
             assert [OLD, CURRENT] not in values, path
@@ -124,7 +134,7 @@ def test_maintenance_receipt_and_contract_grammar_agree_exactly():
     from backend.app.operations_schemas import BackupReceipt
 
     actual = get_args(BackupReceipt.model_fields["schema_revision"].annotation)
-    assert actual[-2:] == (SHARED, CURRENT)
+    assert actual[-3:] == (SHARED, CURRENT, SUCCESSOR)
     assert set(actual) == REVISIONS
     openapi = json.loads(Path("packages/contracts/openapi.json").read_text())
     enum = openapi["components"]["schemas"]["BackupReceipt"]["properties"][

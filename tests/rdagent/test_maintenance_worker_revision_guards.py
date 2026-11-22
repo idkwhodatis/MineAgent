@@ -19,11 +19,15 @@ EARLIER = "032d_rd_validation_cost"
 OLD = "032e_rd_workflow_cost"
 SHARED = "032f_shared_validation_cost"
 CURRENT = "032g_schema_keyset_cost"
+SUCCESSOR = "032h_workflow_oe_run_guard"
 INVALID = (
     [],
     ["032b_future"],
     ["032g"],
     [CURRENT + "_future"],
+    [SUCCESSOR + "_future"],
+    [CURRENT, SUCCESSOR],
+    [SUCCESSOR, SUCCESSOR],
     ["033_safe_workflow_branches"],
     [PREVIOUS, LEGACY],
     [LEGACY, LEGACY],
@@ -64,6 +68,7 @@ def test_configured_profiles_inherit_exact_maintenance_and_reject_unknown_heads(
             OLD,
             SHARED,
             CURRENT,
+            SUCCESSOR,
         ):
             require_controller_revision(session([revision]), config)
         for versions in INVALID:
@@ -81,6 +86,7 @@ def test_maintained_controller_inherits_exact_maintenance_only():
         OLD,
         SHARED,
         CURRENT,
+        SUCCESSOR,
     ):
         require_maintained_revision(session([revision]))
     for versions in INVALID:
@@ -126,9 +132,11 @@ def test_every_worker_predecessor_gate_preserves_closed_maintenance_membership()
             )
             previous = [SHARED] if [SHARED] in values else SHARED
             current = [CURRENT] if previous == [SHARED] else CURRENT
+            successor = [SUCCESSOR] if previous == [SHARED] else SUCCESSOR
             older = [OLD] if previous == [SHARED] else OLD
-            assert values.count(current) == 1
+            assert values.count(current) == values.count(successor) == 1
             assert values.index(current) == values.index(previous) + 1
+            assert values.index(successor) == values.index(current) + 1
             assert current in values and previous in values and older in values
             assert all(versions not in values for versions in INVALID)
             found[path.name] = found.get(path.name, 0) + 1
@@ -140,7 +148,7 @@ def test_recovery_queue_membership_preserves_both_exact_successor_families():
     from workers.research.queue_recovery import OE_REVISIONS, RD_REVISIONS
 
     for revisions in (OE_REVISIONS, RD_REVISIONS):
-        assert revisions[-3:] == (OLD, SHARED, CURRENT)
+        assert revisions[-4:] == (OLD, SHARED, CURRENT, SUCCESSOR)
         assert len(revisions) == len(set(revisions))
         assert "032g" not in revisions and CURRENT + "_future" not in revisions
 
@@ -157,6 +165,7 @@ def test_oe_dispatch_maintenance_reaches_existing_binding_check():
         OLD,
         SHARED,
         CURRENT,
+        SUCCESSOR,
     ):
         with pytest.raises(DomainError) as caught:
             require_dispatch_binding(session([revision]), None, None, None)
@@ -179,7 +188,7 @@ def test_workflow_tick_maintenance_reaches_only_existing_bounded_tick(monkeypatc
         "tick_workflows",
         lambda factory, settings, limit: calls.append(limit) or ("sentinel",),
     )
-    for versions in ([OLD], [SHARED], [CURRENT], *INVALID):
+    for versions in ([OLD], [SHARED], [CURRENT], [SUCCESSOR], *INVALID):
 
         @contextmanager
         def factory(versions=versions):
@@ -187,7 +196,7 @@ def test_workflow_tick_maintenance_reaches_only_existing_bounded_tick(monkeypatc
 
         before = len(calls)
         result = main.dispatch_workflow_tick(factory, object())
-        if versions in ([OLD], [SHARED], [CURRENT]):
+        if versions in ([OLD], [SHARED], [CURRENT], [SUCCESSOR]):
             assert result == ("sentinel",) and calls[-1] == 4
             assert len(calls) == before + 1
         else:

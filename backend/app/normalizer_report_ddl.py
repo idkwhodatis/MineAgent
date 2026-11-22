@@ -67,6 +67,7 @@ def require_report_capability(session):
         "032e_rd_workflow_cost": (2, 3, 16),
         "032f_shared_validation_cost": (2, 3, 16),
         "032g_schema_keyset_cost": (2, 3, 16),
+        "032h_workflow_oe_run_guard": (2, 3, 16),
     }
     versions = versions_by_revision.get(revisions[0])
     if versions is None:

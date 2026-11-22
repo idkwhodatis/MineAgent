@@ -40,6 +40,7 @@ def require_structured_workflow_schema(session):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         fail("workflow_structured_schema_unavailable")
 

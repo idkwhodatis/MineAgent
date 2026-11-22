@@ -66,6 +66,7 @@ def _current(session, fence, settings):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         fail()
     require_native_storage_guard(settings.storage_root)

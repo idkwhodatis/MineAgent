@@ -219,7 +219,7 @@ def test_maintenance_and_catalog_preflight_are_fail_closed():
 def test_scope_has_no_head_wiring_and_no_new_function_signature():
     from backend.app.core.db import REQUIRED_SCHEMA_REVISION
 
-    assert REQUIRED_SCHEMA_REVISION == "032g_schema_keyset_cost"
+    assert REQUIRED_SCHEMA_REVISION == "032h_workflow_oe_run_guard"
     assert m.PREDECESSOR == "032f_shared_validation_cost"
     assert not list(m.VERSIONS.glob("*row_validation_invariant*"))
     probe = (ROOT / "tests/integration/test_row_validation_invariants.py").read_text()

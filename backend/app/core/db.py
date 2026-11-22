@@ -6,7 +6,7 @@ from backend.app.core.config import Settings
 
 # This executable requires the complete increment schema, not merely a prior
 # supported backup revision. An offline contract test pins this to Alembic head.
-REQUIRED_SCHEMA_REVISION = "032g_schema_keyset_cost"
+REQUIRED_SCHEMA_REVISION = "032h_workflow_oe_run_guard"
 
 
 def create_db_engine(settings: Settings):

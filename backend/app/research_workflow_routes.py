@@ -194,6 +194,7 @@ async def availability(request: Request, user: CurrentUser):
                     ["032e_rd_workflow_cost"],
                     ["032f_shared_validation_cost"],
                     ["032g_schema_keyset_cost"],
+                    ["032h_workflow_oe_run_guard"],
                 )
             ),
             reason_code="per_request_runtime_preflight_required",

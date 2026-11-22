@@ -112,6 +112,7 @@ def historical_session(factory, owner_id, settings):
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
                 ["032g_schema_keyset_cost"],
+                ["032h_workflow_oe_run_guard"],
             ):
                 fail()
             yield session
@@ -380,6 +381,7 @@ def check_configured_history(session, publication, settings):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         return
     from backend.app.factor_analysis_history import retained_reader, row_document

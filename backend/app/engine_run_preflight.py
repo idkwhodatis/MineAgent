@@ -246,6 +246,7 @@ def preflight(session, owner_id, request, settings):
             ["032e_rd_workflow_cost"],
             ["032f_shared_validation_cost"],
             ["032g_schema_keyset_cost"],
+            ["032h_workflow_oe_run_guard"],
         ) and (
             selected_profile.controller_profile is None
             or session.scalars(text("SELECT version_num FROM alembic_version")).all()
@@ -266,6 +267,7 @@ def preflight(session, owner_id, request, settings):
                 ["032e_rd_workflow_cost"],
                 ["032f_shared_validation_cost"],
                 ["032g_schema_keyset_cost"],
+                ["032h_workflow_oe_run_guard"],
             )
         ):
             runtime_available = True

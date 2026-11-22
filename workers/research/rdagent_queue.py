@@ -90,6 +90,7 @@ def _claim(session, run_id, generation, worker_id, settings, runtime, installed_
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409
@@ -279,6 +280,7 @@ def require_dispatch_binding(session, run, event, settings):
         ["032e_rd_workflow_cost"],
         ["032f_shared_validation_cost"],
         ["032g_schema_keyset_cost"],
+        ["032h_workflow_oe_run_guard"],
     ):
         raise DomainError(
             "engine_submission_not_enabled", "RD queue schema unavailable", 409

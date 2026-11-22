@@ -30,6 +30,7 @@ def test_executable_schema_requirement_is_exactly_the_only_alembic_head():
         (["006_provider_connections"], False),
         (["009_independent_evaluations"], False),
         (["010_research_notes"], False),
+        (["032g_schema_keyset_cost"], False),
         (["012_future_schema"], False),
         ([REQUIRED_SCHEMA_REVISION, "unrecognized_branch"], False),
         ([REQUIRED_SCHEMA_REVISION, REQUIRED_SCHEMA_REVISION], False),

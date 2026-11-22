@@ -809,3 +809,61 @@ def test_embedding_uses_exact_handler_return_and_unique_fenced_commit(tmp_path):
         _drain_verdict(tmp_path, "bridge")["rpc_late_commit_unit"]
         == "provider_publication"
     )
+
+
+def test_032h_gate_requires_both_explicit_milestones(tmp_path, monkeypatch, capsys):
+    from script import workflow_heartbeat_production_report as report
+
+    passed = ("passed", "complete", "unavailable")
+    unavailable = ("unavailable",) * 3
+    a = '<property name="current_032h_bridge" value="passed"/>'
+    b = '<property name="current_032h_cold_restore" value="passed"/>'
+    monkeypatch.setattr(report, "ROOT", tmp_path)
+    monkeypatch.setattr("sys.argv", ["projector", "--require-pass", "h_bridge"])
+
+    for contents in ("", a, b, a + b + b, a + b.replace("passed", "private-canary")):
+        _write(tmp_path, "h_bridge", f"<properties>{contents}</properties>")
+        assert outcome(tmp_path, "h_bridge") == unavailable
+        assert report.main() == 1
+
+    path = _write(tmp_path, "h_bridge", f"<properties>{a}{b}</properties>")
+    assert outcome(tmp_path, "h_bridge") == passed
+    assert report.main() == 0
+    path.write_text(path.read_text().replace(CASES["h_bridge"][1], CASES["bridge"][1]))
+    assert report.main() == 1
+    for value in ("failure", "error", "skipped"):
+        _write(
+            tmp_path,
+            "h_bridge",
+            f"<{value}>private-canary</{value}><properties>{a}{b}</properties>",
+        )
+        assert outcome(tmp_path, "h_bridge")[0] == value
+        assert report.main() == 1
+    assert capsys.readouterr().out == ""
+
+
+def test_032h_full_report_preserves_historical_case_labels(
+    tmp_path, monkeypatch, capsys
+):
+    from script import workflow_heartbeat_production_report as report
+
+    for name in ("heartbeat", "bridge", "restore"):
+        _write(tmp_path, name, "")
+    _write(
+        tmp_path,
+        "h_bridge",
+        "<failure>private-canary</failure><properties>"
+        '<property name="proof_phase" value="current_cold_restore"/>'
+        '<property name="proof_code" value="private-canary"/>'
+        "</properties>",
+    )
+    monkeypatch.setattr(report, "ROOT", tmp_path)
+    monkeypatch.setattr("sys.argv", ["projector"])
+    assert report.main() == 1
+    rows = capsys.readouterr().out.splitlines()
+    assert rows[1:] == [
+        "RD_PRODUCTION_HEARTBEAT_V1 heartbeat=passed phase=complete code=unavailable",
+        "RD_PRODUCTION_HEARTBEAT_V1 bridge=passed phase=complete code=unavailable",
+        "RD_PRODUCTION_HEARTBEAT_V1 h_bridge=failure phase=current_cold_restore code=unavailable",
+        "RD_PRODUCTION_HEARTBEAT_V1 restore=passed phase=complete code=unavailable",
+    ]

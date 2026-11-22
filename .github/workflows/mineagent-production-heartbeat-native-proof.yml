@@ -307,9 +307,55 @@ jobs:
           test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
           ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
           test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
+      - name: Run exact 032h browser bridge and same-revision cold restore
+        id: h_bridge
+        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' }}
+        timeout-minutes: 40
+        shell: bash
+        env:
+          MINEAGENT_WORKFLOW_032H_REQUIRED: "1"
+          MINEAGENT_RD_WORKFLOW_BROWSER_REQUIRED: "1"
+          MINEAGENT_OE_STRUCTURED_NORMAL_REQUIRED: "1"
+          MINEAGENT_OE_NORMAL_BROWSER_REQUIRED: "1"
+        run: |
+          set -euo pipefail
+          test "$DATA_PROVIDER_MODE" = fixture
+          test "$MODEL_PROFILES_ENABLED" = false
+          test "$E2E_LIVE_PROVIDERS" = 0
+          umask 077
+          export MINEAGENT_CANDIDATE_IMAGE="$(cat var/numeric-proof/candidate.iid)"
+          export MINEAGENT_NORMALIZER_IMAGE="$(cat var/numeric-proof/normalizer.iid)"
+          export MINEAGENT_ORCHESTRATOR_IMAGE="$(cat var/numeric-proof/orchestrator.iid)"
+          export MINEAGENT_ANALYSIS_IMAGE="$(cat var/numeric-proof/analysis.iid)"
+          export MINEAGENT_QLIB_INSTALLED_IMAGE="$(cat var/numeric-proof/qlib-installed.iid)"
+          export MINEAGENT_OE_STRUCTURED_RUNTIME_PROFILE="$(cat var/numeric-proof/oe-normal/oe-structured-runtime-profile.json)"
+          status=0
+          python -m pytest -q -p no:cacheprovider -p script.workflow_heartbeat_production_report \
+            tests/integration/test_workflow_032h_composed.py::test_actual_032h_workflow_completes_with_cold_restore \
+            --junitxml=var/numeric-private/h_bridge.xml >var/numeric-private/h_bridge.log 2>&1 || status=$?
+          test "$status" = 0
+          python -m script.workflow_heartbeat_production_report --require-pass h_bridge
+      - name: Confirm native unit containment after 032h bridge and cold restore
+        id: h_bridge_clean
+        if: ${{ always() && steps.native_setup.outcome == 'success' && steps.owner_first_before.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-oe-structured-orchestrator-v1)
+          test -z "$ids" || { echo 'Normal OE controller containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.structured.admission)
+          test -z "$ids" || { echo 'Structured engine containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.numeric.admission)
+          test -z "$ids" || { echo 'Numeric unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.analysis.admission)
+          test -z "$ids" || { echo 'Analysis unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter label=io.mineagent.managed=mineagent-rdagent-orchestrator-v2)
+          test -z "$ids" || { echo 'Controller unit containment is not confirmed' >&2; exit 1; }
+          ids=$(timeout 15s docker ps --all --quiet --no-trunc --filter 'name=^/mineagent-qlib-direct-installation-proof$')
+          test -z "$ids" || { echo 'Installed parent proof cleanup is not confirmed' >&2; exit 1; }
       - name: Run unchanged current032g browser bridge and graph readback
         id: bridge
-        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.heartbeat_clean.outcome == 'success' && steps.heartbeat.outcome == 'success' && steps.h_bridge_clean.outcome == 'success' }}
         timeout-minutes: 40
         shell: bash
         env:
@@ -428,6 +474,6 @@ jobs:
           timeout 30s docker rm --force --volumes "$id" >/dev/null
           test -z "$(timeout 15s docker ps --all --quiet --no-trunc --filter "id=$id")"
       - name: Report only closed native evidence after containment and PG cleanup
-        if: ${{ !cancelled() && steps.owner_first_before.outcome == 'success' && steps.heartbeat_clean.outcome == 'success' && steps.bridge_clean.outcome == 'success' && steps.restore_clean.outcome == 'success' && steps.pg_cleanup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.owner_first_before.outcome == 'success' && steps.heartbeat_clean.outcome == 'success' && steps.h_bridge_clean.outcome == 'success' && steps.bridge_clean.outcome == 'success' && steps.restore_clean.outcome == 'success' && steps.pg_cleanup.outcome == 'success' }}
         shell: bash
         run: python -m script.workflow_heartbeat_production_report

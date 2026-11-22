@@ -574,8 +574,20 @@ def run_bridge(env, engine, tmp_path):
     )
 
 
-def assert_restore(drill_databases, tmp_path, source, env, completed):
-    """Exact031 same actual graph roundtrip, with all live operators disabled."""
+def assert_restore(
+    drill_databases,
+    tmp_path,
+    source,
+    env,
+    completed,
+    *,
+    expected_revision="031_workflow_structured_stage",
+):
+    """Exact installed-revision graph roundtrip with all live operators disabled."""
+    assert expected_revision in (
+        "031_workflow_structured_stage",
+        "032h_workflow_oe_run_guard",
+    )
     import pytest
     import test_backup_restore as legacy
     from oe_structured_restore_replay import _disabled_settings, _inventory
@@ -634,7 +646,7 @@ def assert_restore(drill_databases, tmp_path, source, env, completed):
     manifest = _roundtrip(
         drill_databases, tmp_path, source, env.settings.storage_root, target
     )
-    assert manifest["schema_revision"] == "031_workflow_structured_stage"
+    assert manifest["schema_revision"] == expected_revision
     assert _files(target) == files
     expected = {
         "research_closure": "mineagent.research-restore-closure.v16",
@@ -646,6 +658,12 @@ def assert_restore(drill_databases, tmp_path, source, env, completed):
         assert before[key]["schema_version"] == schema
     restored = legacy._engine(drill_databases.restored)
     try:
+        if expected_revision == "032h_workflow_oe_run_guard":
+            with restored.begin() as connection:
+                connection.exec_driver_sql("SET TRANSACTION READ ONLY")
+                assert connection.exec_driver_sql(
+                    "SELECT version_num FROM alembic_version"
+                ).all() == [(expected_revision,)]
         settings = _disabled_settings(env.settings, restored, target)
         factory = sessionmaker(restored, expire_on_commit=False)
         after = PostgresDatabase(
