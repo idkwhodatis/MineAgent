@@ -220,6 +220,20 @@ _DRAIN_FIELDS = {
             "unknown",
         }
     ),
+    "neutral_busy_origin": frozenset(
+        {
+            "gate_expired",
+            "gate_expired_controller",
+            "gate_expired_local",
+            "gate_same_thread_or_closed",
+            "gate_closed_while_waiting",
+            "postgres_owner",
+            "postgres_resource",
+        }
+    ),
+    "receipt_boundary": frozenset(
+        {"reserve", "publication_prepare", "publication_finalize", "bind"}
+    ),
     **dict.fromkeys(_ROLES, _UNIT_STATES),
 }
 
@@ -258,6 +272,8 @@ _MASKED_CONTROLLER_FIELDS = {
     "stage": _DRAIN_FIELDS["stage"],
     "sqlstate": _DRAIN_FIELDS["sqlstate"],
     "rpc_method": _DRAIN_FIELDS["rpc_method"],
+    "neutral_busy_origin": _DRAIN_FIELDS["neutral_busy_origin"],
+    "receipt_boundary": _DRAIN_FIELDS["receipt_boundary"],
     "analysis_stage": {
         "worker",
         "record_identity",
@@ -320,6 +336,11 @@ def _masked_controller_observation(failure):
     for scope in scopes:
         for key in _MASKED_CONTROLLER_FIELDS:
             field = f"{scope}_{key}"
+            if (
+                key in {"neutral_busy_origin", "receipt_boundary"}
+                and detail.get(f"{scope}_code") != "neutral_busy"
+            ):
+                continue
             value = _emit_value(field, detail.get(field))
             if value != "unavailable":
                 result[field] = value
@@ -396,6 +417,9 @@ def _drain_observations(stdout):
             result["observer_failure"] = _emit_value(
                 "observer_failure", failures[0].get("observer_failure")
             )
+        if result.get("code") == "neutral_busy":
+            for key in ("neutral_busy_origin", "receipt_boundary"):
+                result[key] = _emit_value(key, failures[0].get(key))
         result.update(_masked_controller_observation(failures[0]))
     states = seen.get("RD_QUEUE_STATE:", [])
     if states:
@@ -475,6 +499,9 @@ def _drain_verdict(root, name):
     )
     if fields.get("stage") != "observer":
         fields.pop("observer_failure", None)
+    if fields.get("code") != "neutral_busy":
+        fields.pop("neutral_busy_origin", None)
+        fields.pop("receipt_boundary", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 

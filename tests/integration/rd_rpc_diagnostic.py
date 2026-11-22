@@ -554,6 +554,97 @@ def _closed_trace_context(error):
     return result
 
 
+def _neutral_busy_cut(error, *, controller_limit=None):
+    """Project the exact rejecting function and stopped-receipt boundary, never values."""
+    from inspect import unwrap
+
+    from backend.app import (
+        rdagent_provider_broker,
+        rdagent_workflow_coordination,
+        research_lifecycle,
+        research_object_services,
+    )
+    from backend.app.services import DomainError
+    from packages.rdagent_provider.process_receipts import SDKStopped
+
+    if type(error) is not DomainError or error.code != "neutral_busy":
+        return {}
+    trace = error.__traceback__
+    origin = receipt = None
+    for _ in range(64):
+        if trace is None:
+            break
+        frame = trace.tb_frame
+        code, values = frame.f_code, frame.f_locals
+        if code is unwrap(rdagent_workflow_coordination._Gate.hold).__code__:
+            remaining = values.get("remaining")
+            if type(remaining) not in (int, float):
+                origin = "gate_same_thread_or_closed"
+            elif remaining <= 0:
+                deadline = values.get("deadline")
+                origin = "gate_expired"
+                if controller_limit is not None and type(deadline) in (int, float):
+                    if deadline == controller_limit:
+                        origin = "gate_expired_controller"
+                    elif deadline < controller_limit:
+                        origin = "gate_expired_local"
+            else:
+                origin = "gate_closed_while_waiting"
+        elif code is research_lifecycle._try_neutral_lock.__code__:
+            scope = values.get("scope")
+            if type(scope) is str:
+                origin = (
+                    "postgres_owner"
+                    if scope.startswith("submit:")
+                    else "postgres_resource"
+                )
+        if (
+            code is rdagent_provider_broker._retain_receipt.__code__
+            and type(values.get("document")) is SDKStopped
+        ):
+            receipt = "bind" if "object_id" in values else "reserve"
+        elif (
+            receipt == "reserve"
+            and code is research_object_services.publish_reserved_object.__code__
+        ):
+            receipt = (
+                "publication_finalize"
+                if "journal_key" in values
+                else "publication_prepare"
+            )
+        trace = trace.tb_next
+    if trace is not None:
+        return {}
+    result = {}
+    if origin is not None:
+        result["neutral_busy_origin"] = origin
+    if receipt is not None:
+        result["receipt_boundary"] = receipt
+    return result
+
+
+def _controller_limit(error):
+    from runtimes.rdagent_operational.rpc import serve_one
+
+    trace = error.__traceback__
+    limit = None
+    for _ in range(64):
+        if trace is None:
+            return limit
+        frame = trace.tb_frame
+        if frame.f_code is serve_one.__code__:
+            value = frame.f_locals.get("deadline")
+            if (
+                limit is not None
+                or type(value) not in (int, float)
+                or not math.isfinite(value)
+            ):
+                return None
+            limit = value
+        trace = trace.tb_next
+    return None
+
+
 def _queue_failure(error):
     """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
     from pydantic import ValidationError
@@ -701,6 +792,7 @@ def _queue_failure(error):
         "stage": stage,
         "sqlstate": sqlstate,
         **_closed_trace_context(error),
+        **_neutral_busy_cut(error, controller_limit=_controller_limit(error)),
     }
 
 
@@ -824,10 +916,16 @@ def _masked_controller_summary(original):
         "rpc_method",
         "analysis_stage",
         "docker_operation",
+        "neutral_busy_origin",
+        "receipt_boundary",
     )
 
     def details(error, scope):
-        row = {**_queue_failure(error), **_analysis_trace_context(error)}
+        row = {
+            **_queue_failure(error),
+            **_analysis_trace_context(error),
+            **_neutral_busy_cut(error, controller_limit=_controller_limit(original)),
+        }
         return {f"{scope}_{key}": row[key] for key in fields if key in row}
 
     projected = {"state": "observed", **details(original, "masked")}

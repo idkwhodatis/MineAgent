@@ -207,6 +207,52 @@ def test_observer_cut_projects_only_the_first_closed_observer_stage(tmp_path):
     assert "observer_failure" not in _drain_verdict(tmp_path, "bridge")
 
 
+def test_provider_stop_cut_is_bound_to_neutral_busy_and_fixed_labels(tmp_path):
+    import json
+
+    detail = {
+        "state": "observed",
+        "chain": "unique_leaf",
+        "masked_code": "provider_stop_receipt_unconfirmed",
+        "nested_code": "neutral_busy",
+        "nested_neutral_busy_origin": "gate_expired_controller",
+        "nested_receipt_boundary": "reserve",
+    }
+
+    def read():
+        return _drain_observations(
+            "RD_QUEUE_FAILURE:"
+            + json.dumps(
+                {"code": "rd_provider_containment_unknown", "masked_controller": detail}
+            )
+        )
+
+    assert read()["nested_neutral_busy_origin"] == "gate_expired_controller"
+    assert read()["nested_receipt_boundary"] == "reserve"
+    detail["nested_receipt_boundary"] = "private-canary"
+    assert "nested_receipt_boundary" not in read()
+    detail["nested_code"] = "neutral_transaction_lost"
+    assert "nested_neutral_busy_origin" not in read()
+    properties = (
+        '<properties><property name="proof_phase" value="rd_waiting_release"/>'
+        '<property name="rd_drain_code" value="rd_provider_containment_unknown"/>'
+        '<property name="rd_drain_masked_state" value="observed"/>'
+        '<property name="rd_drain_masked_chain" value="unique_leaf"/>'
+        '<property name="rd_drain_nested_code" value="neutral_busy"/>'
+        '<property name="rd_drain_nested_neutral_busy_origin" value="postgres_owner"/>'
+        '<property name="rd_drain_nested_receipt_boundary" value="bind"/></properties>'
+    )
+    _write(tmp_path, "bridge", properties + "<failure>private</failure>")
+    assert _drain_verdict(tmp_path, "bridge")["nested_receipt_boundary"] == "bind"
+    _write(
+        tmp_path,
+        "bridge",
+        properties.replace('value="neutral_busy"', 'value="private-canary"')
+        + "<failure>private</failure>",
+    )
+    assert "nested_neutral_busy_origin" not in _drain_verdict(tmp_path, "bridge")
+
+
 def test_masked_controller_never_projects_unbounded_or_ambiguous_nested_fields():
     import json
 
@@ -224,6 +270,8 @@ def test_masked_controller_never_projects_unbounded_or_ambiguous_nested_fields()
         "masked_docker_operation": "private",
         "nested_analysis_stage": "read_journal",
         "nested_sqlstate": "55P03",
+        "nested_neutral_busy_origin": "gate_expired_controller",
+        "nested_receipt_boundary": "bind",
         "unexpected": "should not escape",
     }
     expected = {

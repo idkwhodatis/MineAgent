@@ -412,3 +412,60 @@ def test_masked_controller_projection_marks_cycle_and_overflow():
     result = module._masked_controller_summary(errors[0])
     assert result["chain"] == "overflow"
     assert not any(key.startswith("nested") for key in result)
+
+
+@pytest.mark.parametrize(
+    ("controller_limit", "expected"),
+    [
+        (9, "gate_expired_controller"),
+        (10, "gate_expired_local"),
+        (None, "gate_expired"),
+    ],
+)
+def test_expired_stop_receipt_gate_reports_exact_origin_and_boundary(
+    monkeypatch, controller_limit, expected
+):
+    from backend.app import rdagent_provider_broker as broker
+    from backend.app import rdagent_workflow_coordination as coordination
+    from backend.app.services import DomainError
+    from packages.rdagent_provider.process_receipts import SDKStopped
+
+    gate = coordination._Gate()
+    monkeypatch.setattr(coordination, "monotonic", lambda: 9)
+    monkeypatch.setattr(broker, "receipt_bytes", lambda _: b"private-receipt")
+    monkeypatch.setattr(broker, "_publish", lambda *_: object())
+    monkeypatch.setattr(broker, "neutral_transaction", lambda *_, **__: gate.hold(9))
+    document = SDKStopped.model_construct()
+    module = _diagnostic()
+    with pytest.raises(DomainError) as failure:
+        broker._retain_receipt(object(), object(), object(), document, "private-key")
+    cut = module._neutral_busy_cut(failure.value, controller_limit=controller_limit)
+    assert cut == {"neutral_busy_origin": expected, "receipt_boundary": "bind"}
+
+
+def test_same_thread_gate_rejection_and_postgres_scope_are_distinct():
+    from backend.app import rdagent_workflow_coordination as coordination
+    from backend.app.research_lifecycle import _try_neutral_lock
+    from backend.app.services import DomainError
+
+    module = _diagnostic()
+    gate = coordination._Gate()
+    deadline = coordination.monotonic() + 60
+    with (
+        gate.hold(deadline),
+        pytest.raises(DomainError) as failure,
+        gate.hold(deadline),
+    ):
+        pytest.fail("reentrant acquisition unexpectedly admitted")
+    assert module._neutral_busy_cut(failure.value) == {
+        "neutral_busy_origin": "gate_same_thread_or_closed",
+    }
+    for scope, category in (
+        ("submit:private-identifier", "postgres_owner"),
+        ("storage", "postgres_resource"),
+    ):
+        with pytest.raises(DomainError) as rejected:
+            _try_neutral_lock(SimpleNamespace(scalar=lambda *_: False), scope)
+        assert module._neutral_busy_cut(rejected.value) == {
+            "neutral_busy_origin": category
+        }
