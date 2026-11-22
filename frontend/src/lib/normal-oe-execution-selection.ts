@@ -28,6 +28,22 @@ export function normalOEExecutionSelection(
   return { kind: "execution", candidateId: matches[0].candidate_id };
 }
 
+/** An explicit click can navigate only to one exact, owned execution. */
+export function normalOEExecutionSearchForCandidate(
+  candidateId: string,
+  records: NormalExecutionRecord[],
+) {
+  const record = records.find((row) => row.candidate_id === candidateId);
+  if (!record?.execution_id) return undefined;
+  const selection = normalOEExecutionSelection(
+    new URLSearchParams({ execution_id: record.execution_id }).toString(),
+    records,
+  );
+  return selection.kind === "execution" && selection.candidateId === candidateId
+    ? `?execution_id=${record.execution_id}`
+    : undefined;
+}
+
 /** Explicit React identity: owner/run changes discard all selection and release UI state. */
 export function normalOEResultScopeKey(ownerId: string, runId: string) {
   return JSON.stringify([ownerId, runId]);

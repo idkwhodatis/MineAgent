@@ -404,14 +404,13 @@ test("actual normal results require separate releases and preserve owner isolati
   }
   await signIn(page);
   const calls = mutations(page);
-  await page.goto(base);
-  const inspect = () =>
-    page
-      .getByRole("button", {
-        name: `Inspect execution ${input.execution_ids[1]}`,
-        exact: true,
-      })
-      .click();
+  await page.goto(`${base}?execution_id=${input.execution_ids[1]}`);
+  const executionButton = (index: number) =>
+    page.getByRole("button", {
+      name: `Inspect execution ${input.execution_ids[index]}`,
+      exact: true,
+    });
+  const inspect = () => executionButton(1).click();
   const lineage = page.getByRole("region", {
     name: "Structured candidate version lineage",
     exact: true,
@@ -422,13 +421,35 @@ test("actual normal results require separate releases and preserve owner isolati
     await expect(lineage).toContainText(record.candidate_id);
     await expect(lineage).toContainText(record.program_version_id);
   }
-  await inspect();
+  await expect(executionButton(1)).toHaveAttribute("aria-pressed", "true");
+  const childAcknowledgement = page.getByLabel(
+    "I explicitly authorize child factor and market result exposure.",
+    { exact: true },
+  );
+  await childAcknowledgement.check();
+  // Inspect is an intentional history navigation, not a release or a fallback
+  // from the exact execution already named by the deep link.
+  await executionButton(0).click();
+  await expect(executionButton(0)).toHaveAttribute("aria-pressed", "true");
   await expect(
-    lineage.getByRole("button", {
-      name: `Inspect execution ${input.execution_ids[1]}`,
+    page.getByRole("button", {
+      name: `Release selected execution ${input.execution_ids[0]}`,
       exact: true,
     }),
-  ).toHaveAttribute("aria-pressed", "true");
+  ).toBeDisabled();
+  await expect(page).toHaveURL(
+    `${base}?execution_id=${input.execution_ids[0]}`,
+  );
+  await page.goBack();
+  await expect(executionButton(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(childAcknowledgement).not.toBeChecked();
+  await page.goForward();
+  await expect(executionButton(0)).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(executionButton(0)).toHaveAttribute("aria-pressed", "true");
+  await inspect();
+  await expect(executionButton(1)).toHaveAttribute("aria-pressed", "true");
+  expect(calls).toEqual([]);
   await expect(
     page.getByRole("button", { name: /^Prepare guidance from this released/ }),
   ).toHaveCount(0);

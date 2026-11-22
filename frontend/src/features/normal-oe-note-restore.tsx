@@ -18,11 +18,15 @@ export function NormalOENoteRestoration({
   ownerId,
   runId,
   records,
+  pathname,
+  search,
   onSelected,
 }: {
   ownerId: string;
   runId: string;
   records: NormalExecutionRecord[];
+  pathname: string;
+  search: string;
   onSelected: (candidate: string) => void;
 }) {
   const [token] = useState(() => readSession()?.accessToken);
@@ -34,21 +38,9 @@ export function NormalOENoteRestoration({
       }),
     [token],
   );
-  const location = () => {
-    if (
-      typeof window === "undefined" ||
-      !new URLSearchParams(window.location.search).has("normal_note_version")
-    )
-      return null;
-    const path = window.location.pathname;
-    return `${APP_SUBPATH && path.startsWith(APP_SUBPATH + "/") ? path.slice(APP_SUBPATH.length) : path}${window.location.search}`;
-  };
-  const [requested, setRequested] = useState(location);
-  useEffect(() => {
-    const changed = () => setRequested(location());
-    window.addEventListener("popstate", changed);
-    return () => window.removeEventListener("popstate", changed);
-  }, []);
+  const requested = new URLSearchParams(search).has("normal_note_version")
+    ? `${APP_SUBPATH && pathname.startsWith(APP_SUBPATH + "/") ? pathname.slice(APP_SUBPATH.length) : pathname}${search}`
+    : null;
   const safe = safeNormalOENoteHref(requested);
   const requestedQuery = safe
     ? new URL(safe, "https://normal-notes.invalid").searchParams
