@@ -36,6 +36,14 @@ BRIDGE = {
     "with diagnose_first_rd_drain(env.factory, engine, wid):": "rd_drain",
     "checkpoint = session.get(ResearchWorkflowCheckpoint, root.latest_checkpoint_id)": "rd_checkpoint_readback",
     'for path in (f"execution-snapshots/{rd.snapshot_id}", f"analyses/{rd.analysis_id}"):': "rd_result_release",
+    "unreleased = env.client.get(": "rd_release_unreleased",
+    'env.client.post(route + "/release", headers=env.foreign).status_code == 404': "rd_release_foreign",
+    'released = env.client.post(route + "/release", headers=env.headers)': "rd_release_owner",
+    '== "structured_child_queued"': "oe_claim",
+    "attached = session.scalars(": "oe_child_readback",
+    'paused = command(env.client, env.headers, wid, "pause_after_stage")': "oe_pause",
+    'premature = command(env.client, env.headers, wid, "resume")': "oe_premature_resume",
+    '== "child_owned_by_engine_worker"': "oe_queue_boundary",
     "drain(env.factory, env.settings)": "oe_drain",
     "with historical_session(env.factory, owner, env.settings) as session:": "oe_terminal",
 }
@@ -66,11 +74,19 @@ CODES = frozenset(
         "provider_outcome_unknown",
         "lease_fence_lost",
         "deadline_exceeded",
+        "workflow_oe_claim_changed",
+        "workflow_structured_release_required",
+        "workflow_input_capacity_exceeded",
+        "engine_result_inconsistent",
+        "engine_result_release_required",
+        "not_found",
     }
 )
 
 
 _DRAIN_PHASES = {"rd_drain", "rd_waiting_release", "rd_checkpoint_readback"}
+_RELEASE_PHASES = {"rd_release_unreleased", "rd_release_foreign", "rd_release_owner"}
+_OUTCOME_DETAIL_PHASES = _DRAIN_PHASES | _RELEASE_PHASES
 _ROLES = (
     "rd_orchestrator",
     "factor_cutoff_candidate",
@@ -81,6 +97,19 @@ _UNIT_STATES = frozenset(
     {"launch_intended", "uncertain", "running", "stopped", "unknown"}
 )
 _DRAIN_FIELDS = {
+    "release_resource": {"snapshot", "analysis"},
+    "release_status": {
+        "http_200",
+        "http_401",
+        "http_403",
+        "http_404",
+        "http_409",
+        "http_422",
+        "http_429",
+        "http_500",
+        "http_503",
+        "other",
+    },
     "first_lock_scope": {"owner", "resource", "unobserved"},
     "first_holder": {"workflow_heartbeat", "other", "unstable", "unobserved"},
     "first_caller": {
@@ -454,9 +483,30 @@ def _bridge_phase(source, line):
         "bridge",
         occurrences={"drain(env.factory, env.settings)": 2},
     )
-    if phase != "rd_drain":
+    if phase not in {
+        "rd_drain",
+        "rd_release_unreleased",
+        "rd_release_owner",
+        "oe_premature_resume",
+    }:
         return phase
     records = [entry.strip() for entry in source.splitlines()]
+    if phase == "rd_release_unreleased":
+        if records[line - 1 : line + 2] == [
+            "assert (",
+            'env.client.post(route + "/release", headers=env.foreign).status_code == 404',
+            ")",
+        ]:
+            return "rd_release_foreign"
+        return phase
+    # A multiline assert starts before its comparison line. Mark the call
+    # boundary from the exact four-line source statement, not exception text.
+    comparisons = {
+        "rd_drain": ("waiting_release", "rd_waiting_release"),
+        "rd_release_owner": ("structured_child_queued", "oe_claim"),
+        "oe_premature_resume": ("child_owned_by_engine_worker", "oe_queue_boundary"),
+    }
+    state, target = comparisons[phase]
     release_checks = [
         i
         for i in range(len(records) - 3)
@@ -464,12 +514,12 @@ def _bridge_phase(source, line):
         == [
             "assert (",
             "drive_one(env.factory, env.settings, owner_id=owner, workflow_id=wid).state",
-            '== "waiting_release"',
+            f'== "{state}"',
             ")",
         ]
     ]
     if len(release_checks) == 1 and line >= release_checks[0] + 1:
-        return "rd_waiting_release"
+        return target
     return phase
 
 
@@ -480,7 +530,7 @@ def _drain_verdict(root, name):
         return {}
     fields = {}
     for key, allowed in (
-        ("proof_phase", _DRAIN_PHASES),
+        ("proof_phase", _OUTCOME_DETAIL_PHASES),
         *((f"rd_drain_{key}", allowed) for key, allowed in _DRAIN_FIELDS.items()),
     ):
         values = _properties(case, key)
@@ -502,6 +552,9 @@ def _drain_verdict(root, name):
     if fields.get("code") != "neutral_busy":
         fields.pop("neutral_busy_origin", None)
         fields.pop("receipt_boundary", None)
+    if fields.get("proof_phase") not in _RELEASE_PHASES:
+        fields.pop("release_resource", None)
+        fields.pop("release_status", None)
     return fields if "proof_phase" in fields and len(fields) > 1 else {}
 
 
@@ -554,6 +607,47 @@ def _phase(item, call):
     return "before_bridge"
 
 
+def _release_details(line, values):
+    path = values.get("path")
+    if type(path) is not str:
+        return {}
+    root, sep, suffix = path.partition("/")
+    resource = {"execution-snapshots": "snapshot", "analyses": "analysis"}.get(root)
+    if not sep or len(suffix) != 36 or resource is None:
+        return {}
+    result = {"release_resource": resource}
+    # Only an exact status assertion may observe a finalized response. In
+    # particular, a pre-response exception cannot use an earlier loop result.
+    assertion = {
+        "assert unreleased.status_code == 409, unreleased.text": "unreleased",
+        "assert released.status_code == 200, released.text": "released",
+    }.get(line)
+    if assertion:
+        from httpx import Response
+
+        response = values.get(assertion)
+        if type(response) is Response and type(response.status_code) is int:
+            code = f"http_{response.status_code}"
+            result["release_status"] = (
+                code if code in _DRAIN_FIELDS["release_status"] else "other"
+            )
+    return result
+
+
+def _release_observation(call):
+    for frame in reversed(call.excinfo.traceback):
+        if (
+            Path(frame.path).name == "workflow_structured_stage_fixture.py"
+            and frame.name == "run_bridge"
+        ):
+            source = str(frame.frame.code.source())
+            line = frame.lineno - frame.frame.code.firstlineno
+            records = source.splitlines()
+            if 0 <= line < len(records):
+                return _release_details(records[line].strip(), frame.locals)
+    return {}
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item, call):
     report = yield
@@ -567,6 +661,12 @@ def pytest_runtest_makereport(item, call):
         if phase in _DRAIN_PHASES and call.when == "call":
             for key, value in _drain_observations(report.capstdout).items():
                 item.user_properties.append((f"rd_drain_{key}", value))
+        if phase in _RELEASE_PHASES and call.when == "call":
+            try:
+                for key, value in _release_observation(call).items():
+                    item.user_properties.append((f"rd_drain_{key}", value))
+            except (OSError, TypeError, ValueError, AttributeError):
+                pass  # Preserve the original failed assertion.
         error = call.excinfo.value
         if type(error).__module__ == "backend.app.services" and type(
             error

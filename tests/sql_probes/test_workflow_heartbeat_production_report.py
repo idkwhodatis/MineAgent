@@ -10,6 +10,7 @@ from script.workflow_heartbeat_production_report import (
     _bridge_phase,
     _drain_observations,
     _drain_verdict,
+    _release_details,
     coordination,
     outcome,
 )
@@ -137,6 +138,49 @@ def test_waiting_release_checkpoint_and_worker_drain_do_not_collapse():
     assert _bridge_phase(source, release - 3) == "rd_drain"
     assert _bridge_phase(source, release - 2) == "rd_waiting_release"
     assert _bridge_phase(source, release + 4) == "rd_checkpoint_readback"
+
+
+def test_oe_claim_call_is_distinct_from_release_assertion():
+    source = Path("tests/integration/workflow_structured_stage_fixture.py").read_text()
+    source = source.split("def run_bridge(", 1)[1].split("def assert_restore(", 1)[0]
+    for state, cut in (
+        ("structured_child_queued", "oe_claim"),
+        ("child_owned_by_engine_worker", "oe_queue_boundary"),
+    ):
+        comparison = next(
+            i
+            for i, line in enumerate(source.splitlines(), 1)
+            if line.strip() == f'== "{state}"'
+        )
+        assert _bridge_phase(source, comparison - 2) == cut
+
+
+def test_only_exact_release_assertion_can_report_closed_http_status(tmp_path):
+    from httpx import Response
+
+    values = {
+        "path": "analyses/" + "x" * 36,
+        "released": Response(409, content=b"private-canary"),
+    }
+    assert _release_details(
+        "assert released.status_code == 200, released.text", values
+    ) == {"release_resource": "analysis", "release_status": "http_409"}
+    assert _release_details(
+        'released = env.client.post(route + "/release", headers=env.headers)', values
+    ) == {"release_resource": "analysis"}
+    _write(
+        tmp_path,
+        "bridge",
+        '<properties><property name="proof_phase" value="rd_release_owner"/>'
+        '<property name="rd_drain_release_resource" value="analysis"/>'
+        '<property name="rd_drain_release_status" value="http_409"/></properties>'
+        "<failure>private</failure>",
+    )
+    assert _drain_verdict(tmp_path, "bridge") == {
+        "proof_phase": "rd_release_owner",
+        "release_resource": "analysis",
+        "release_status": "http_409",
+    }
 
 
 def test_only_closed_first_error_and_exact_known_roles_escape_private_stdout():
