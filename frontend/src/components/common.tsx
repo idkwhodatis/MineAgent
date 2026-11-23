@@ -14,7 +14,7 @@ export function NativeWindowNotice() {
 }
 
 export function PageHeader({
-  eyebrow = "RESEARCH WORKSPACE",
+  eyebrow = "Research workspace",
   title,
   subtitle,
   children,

@@ -2,16 +2,7 @@ import { OperationsPanel } from "./operations-panel";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Activity,
-  ArrowRight,
-  Braces,
-  CheckCheck,
-  Database,
-  FlaskConical,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, FlaskConical, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ErrorState,
@@ -126,25 +117,21 @@ export function OverviewPage() {
       label: "Active in recent runs",
       value: recent.filter((run) => !terminalStatuses.has(run.status)).length,
       note: "Durable queue & execution",
-      icon: Activity,
     },
     {
       label: "Dataset snapshots",
       value: datasets.data?.count ?? 0,
       note: "Immutable · explicit provenance",
-      icon: Database,
     },
     {
       label: "Strategy versions",
       value: strategies.data?.count ?? 0,
       note: "Immutable source and lineage",
-      icon: Braces,
     },
     {
       label: "Completed in recent runs",
       value: recent.filter((run) => run.status === "succeeded").length,
       note: "Persisted execution outcomes",
-      icon: CheckCheck,
     },
   ];
   return (
@@ -167,8 +154,8 @@ export function OverviewPage() {
       </PageHeader>
       <section className="hero">
         <div>
-          <div className="eyebrow">YOUR RESEARCH, TRACEABLE BY DESIGN</div>
-          <h2>From a fixed seed to a reproducible result.</h2>
+          <div className="eyebrow">Inputs / Experiments / Evidence</div>
+          <h2>From a fixed seed to a reproducible result</h2>
           <p>
             Freeze your data, windows and execution rules. Follow upstream
             TradeGrad candidate iterations and durable checkpoints, then inspect
@@ -176,20 +163,16 @@ export function OverviewPage() {
           </p>
         </div>
         <div className="hero-tag">
-          <FlaskConical size={25} />
-          <strong className="block mt-3 text-sm font-medium">
+          <strong className="block text-sm font-medium">
             Research preview
           </strong>
           <span>Fixture optimization · no paid model calls</span>
         </div>
       </section>
       <div className="stats">
-        {stats.map(({ label, value, note, icon: Icon }) => (
+        {stats.map(({ label, value, note }) => (
           <div className="stat" key={label}>
-            <div className="stat-head">
-              {label}
-              <Icon />
-            </div>
+            <div className="stat-head">{label}</div>
             <strong className="stat-value">{value}</strong>
             <span className="stat-note">{note}</span>
           </div>
@@ -212,11 +195,8 @@ export function OverviewPage() {
         <div className="stack">
           <Panel title="Evidence boundaries">
             <div className="flex items-start gap-3">
-              <div className="catalog-icon !mb-0 !h-9 !w-9 shrink-0">
-                <Sparkles size={17} />
-              </div>
               <div>
-                <h3>Persisted results, explicit limits.</h3>
+                <h3>Persisted results, explicit limits</h3>
                 <p className="mt-2 text-xs leading-6 muted">
                   Native strategy and engine share a process. Validated native
                   output is not an independent trusted ledger or a trading
