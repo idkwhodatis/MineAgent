@@ -23,6 +23,45 @@ def _raise_label(error):
     return None
 
 
+# SQLSTATE only, except the fixed English PostgreSQL timeout primary label to
+# avoid claiming that every 57014 originated in our statement_timeout budget.
+_ATTACHMENT_SQLSTATES = {
+    "P0002": "probe_strict_missing_row",
+    "P0003": "probe_strict_multiple_rows",
+    "42601": "probe_sql_definition",
+    "42702": "probe_sql_definition",
+    "42703": "probe_sql_definition",
+    "42804": "probe_sql_definition",
+    "42883": "probe_sql_definition",
+    "42P01": "probe_schema",
+    "3F000": "probe_schema",
+}
+
+
+def _attachment_label(outcome):
+    if type(outcome) is list:
+        if len(outcome) == 1:
+            return "accepted"
+        return "probe_result_multiple" if outcome else "probe_result_missing"
+    known = _raise_label(outcome)
+    if known in _OE_ATTACHMENT_PROBE:
+        return known
+    if isinstance(outcome, DBAPIError):
+        sqlstate = getattr(outcome.orig, "sqlstate", None)
+        if type(sqlstate) is not str:
+            return "unknown"
+        if sqlstate == "57014":
+            diagnostic = getattr(outcome.orig, "diag", None)
+            primary = getattr(diagnostic, "message_primary", None)
+            return (
+                "probe_statement_timeout"
+                if primary == "canceling statement due to statement timeout"
+                else "probe_query_cancelled"
+            )
+        return _ATTACHMENT_SQLSTATES.get(sqlstate, "unknown")
+    return "unknown"
+
+
 def _observe_savepoint(session, callback):
     """Always roll back the observer's transaction-local timeout and reads."""
     try:
@@ -106,13 +145,7 @@ def _observe_claim(session, owner_id, command, receipt):
         ).all()
 
     outcome = _observe_savepoint(session, attachment)
-    if type(outcome) is list and len(outcome) == 1:
-        label = "accepted"
-    else:
-        label = _raise_label(outcome)
-        if label not in _OE_ATTACHMENT_PROBE:
-            label = "unknown"
-    result["oe_reverse_attachment"] = label
+    result["oe_reverse_attachment"] = _attachment_label(outcome)
     return result
 
 

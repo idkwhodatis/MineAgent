@@ -1101,6 +1101,99 @@ def test_oe_reverse_probe_is_hard_commit_gate_only(tmp_path):
     ):
         for key in ("oe_reverse_attachment", "oe_reverse_root"):
             assert key not in project(**changes)
+    for label in (
+        "probe_statement_timeout",
+        "probe_query_cancelled",
+        "probe_strict_missing_row",
+        "probe_strict_multiple_rows",
+        "probe_sql_definition",
+        "probe_schema",
+        "probe_result_missing",
+        "probe_result_multiple",
+    ):
+        assert (
+            project(rd_drain_oe_reverse_attachment=label)["oe_reverse_attachment"]
+            == label
+        )
+    for private in ("P0002", "confidential text", "42P01"):
+        assert "oe_reverse_attachment" not in project(
+            rd_drain_oe_reverse_attachment=private
+        )
     sibling = project(rd_drain_oe_reverse_root="sibling")
     assert sibling["oe_reverse_root"] == "sibling"
     assert "oe_reverse_attachment" not in sibling
+
+
+def test_oe_reverse_attachment_classifies_after_local_rollback(monkeypatch):
+    import runpy
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import DBAPIError
+
+    fixture = runpy.run_path("tests/integration/workflow_oe_reverse_fixture.py")
+    classify = fixture["_attachment_label"]
+    observe = fixture["_observe_savepoint"]
+    effects = []
+
+    def database(sqlstate, message="private canary"):
+        return DBAPIError(
+            "private statement",
+            {"secret": "private arguments"},
+            SimpleNamespace(
+                sqlstate=sqlstate, diag=SimpleNamespace(message_primary=message)
+            ),
+        )
+
+    def nested():
+        effects.append("begin")
+        return SimpleNamespace(rollback=lambda: effects.append("rollback"))
+
+    def execute(statement):
+        effects.append(str(statement))
+
+    session = SimpleNamespace(begin_nested=nested, execute=execute)
+    variants = [
+        (
+            "57014",
+            "canceling statement due to statement timeout",
+            "probe_statement_timeout",
+        ),
+        ("57014", "canceling statement due to user request", "probe_query_cancelled"),
+        ("P0002", "strict row missing", "probe_strict_missing_row"),
+        ("P0003", "strict rows duplicated", "probe_strict_multiple_rows"),
+        ("42601", "bad syntax", "probe_sql_definition"),
+        ("42702", "ambiguous column", "probe_sql_definition"),
+        ("42703", "missing column", "probe_sql_definition"),
+        ("42804", "mistyped expression", "probe_sql_definition"),
+        ("42883", "unknown function", "probe_sql_definition"),
+        ("42P01", "table unavailable", "probe_schema"),
+        ("3F000", "schema unavailable", "probe_schema"),
+        ("42501", "permission denied", "unknown"),
+        ("P0001", "unallowlisted raise", "unknown"),
+        ("private canary", "private message", "unknown"),
+        (None, "private message", "unknown"),
+    ]
+    for sqlstate, detail, label in variants:
+        error = database(sqlstate, detail)
+
+        def fail(error=error):
+            effects.append("probe")
+            raise error
+
+        effects.clear()
+        assert classify(observe(session, fail)) == label
+        assert effects == [
+            "begin",
+            "SET LOCAL statement_timeout = '750ms'",
+            "probe",
+            "rollback",
+        ]
+    assert classify([]) == "probe_result_missing"
+    assert classify([(None,), (None,)]) == "probe_result_multiple"
+    assert classify([(None,)]) == "accepted"
+    assert classify(None) == "unknown"
+
+    monkeypatch.setitem(
+        classify.__globals__, "_raise_label", lambda _: "predecessor_input_graph"
+    )
+    assert classify(database("P0001")) == "predecessor_input_graph"

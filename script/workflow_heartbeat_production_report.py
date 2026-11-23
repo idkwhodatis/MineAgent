@@ -113,9 +113,21 @@ _OE_ATTACHMENT_PROBE = frozenset(_OE_CLAIM_TRIGGER_LABELS.values()) - {
     "root_graph",
     "reverse_graph",
 }
+_OE_ATTACHMENT_FAILURES = {
+    "probe_statement_timeout",
+    "probe_query_cancelled",
+    "probe_strict_missing_row",
+    "probe_strict_multiple_rows",
+    "probe_sql_definition",
+    "probe_schema",
+    "probe_result_missing",
+    "probe_result_multiple",
+}
 _OE_REVERSE_FIELDS = {
     "oe_reverse_root": {"active", "sibling", "active_and_sibling", "all_consistent"},
-    "oe_reverse_attachment": _OE_ATTACHMENT_PROBE | {"accepted", "unknown"},
+    "oe_reverse_attachment": _OE_ATTACHMENT_PROBE
+    | _OE_ATTACHMENT_FAILURES
+    | {"accepted", "unknown"},
 }
 _OE_CLAIM_FIELDS = {
     "oe_claim_boundary": {"tick_call", "tick_result", "readback_enter"},
