@@ -142,6 +142,7 @@ def case(monkeypatch, tmp_path):
             states=states,
             contained=contained,
             recover=recover,
+            serve=serve,
         )
 
 
@@ -192,3 +193,34 @@ def test_unknown_containment_does_not_publish_terminal_failure(case, uncertainty
     assert case.run.updated_at == original_updated_at
     assert case.attempt.finished_at is None
     assert "terminal" not in case.session.info[_NEUTRAL_KEY]
+
+
+@pytest.mark.parametrize("resource", ["connection", "listener", "reader"])
+@pytest.mark.parametrize("recovery_fails", [False, True])
+def test_failed_detach_still_attempts_exact_recovery(case, resource, recovery_fails):
+    operation_error = RuntimeError("original RPC failure")
+    case.handler.returned = False
+    case.serve.side_effect = operation_error
+    getattr(case.running, resource).close.side_effect = OSError("detach failure")
+    case.states.clear()
+    cleanup_error = ProcessError("uncertain_cleanup")
+
+    def recover(*_args):
+        for item in ("connection", "listener", "reader"):
+            getattr(case.running, item).close.assert_called_once_with()
+        if recovery_fails:
+            raise cleanup_error
+        case.states.append(NS(status="stopped"))
+
+    case.recover.side_effect = recover
+    with pytest.raises(RuntimeError) as caught:
+        case.execute()
+    assert caught.value is operation_error
+    case.recover.assert_called_once()
+    if recovery_fails:
+        assert caught.value.__cause__ is cleanup_error
+        assert case.run.status == case.attempt.status == "running"
+        assert "terminal" not in case.session.info[_NEUTRAL_KEY]
+    else:
+        assert case.run.status == case.attempt.status == "failed"
+        assert case.session.info[_NEUTRAL_KEY]["terminal"][0] == "rd_controller_failed"
