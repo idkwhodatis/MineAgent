@@ -205,7 +205,9 @@ _RPC_TIMING_FIELDS = {
     "rpc_send_elapsed": _RPC_DURATION,
     "rpc_send_remaining": _RPC_REMAINING,
 }
+_PROVIDER_DEADLINE_SITES = {"pre_request_publish", "post_sdk_pre_response_publish"}
 _DRAIN_FIELDS = {
+    "provider_deadline_site": _PROVIDER_DEADLINE_SITES,
     **_RPC_TIMING_FIELDS,
     "release_resource": {"snapshot", "analysis"},
     "release_status": {
@@ -818,6 +820,15 @@ def _sdk_outcome(fields):
     )
 
 
+def _provider_deadline_site(fields):
+    return (
+        fields.get("family") == "provider"
+        and fields.get("code") == "original_controller_deadline"
+        and fields.get("stage") == "provider"
+        and fields.get("rpc_method") in {"submit_chat", "submit_embedding"}
+    )
+
+
 def _drain_observations(stdout):
     """Only exact fixed vocabulary from the original fixture's private capture."""
     if type(stdout) is not str or len(stdout) > 4_000_000:
@@ -860,6 +871,10 @@ def _drain_observations(stdout):
         if _sdk_outcome(result):
             result["sdk_outcome_cut"] = _emit_value(
                 "sdk_outcome_cut", failures[0].get("sdk_outcome_cut")
+            )
+        if _provider_deadline_site(result):
+            result["provider_deadline_site"] = _emit_value(
+                "provider_deadline_site", failures[0].get("provider_deadline_site")
             )
         result.update(_masked_controller_observation(failures[0]))
     result.update(_rpc_deadline_timing(stdout, result))
@@ -960,6 +975,10 @@ def _drain_verdict(root, name):
     )
     if fields.get("proof_phase") not in _DRAIN_PHASES or not _sdk_outcome(fields):
         fields.pop("sdk_outcome_cut", None)
+    if fields.get("proof_phase") not in _DRAIN_PHASES or not _provider_deadline_site(
+        fields
+    ):
+        fields.pop("provider_deadline_site", None)
     if fields.get("stage") != "observer":
         fields.pop("observer_failure", None)
     if fields.get("code") != "neutral_busy":

@@ -1197,3 +1197,52 @@ def test_oe_reverse_attachment_classifies_after_local_rollback(monkeypatch):
         classify.__globals__, "_raise_label", lambda _: "predecessor_input_graph"
     )
     assert classify(database("P0001")) == "predecessor_input_graph"
+
+
+def test_provider_deadline_sites_require_exact_rd_failure_and_closed_anchor(tmp_path):
+    import json
+
+    base = {
+        "family": "provider",
+        "code": "original_controller_deadline",
+        "stage": "provider",
+        "sqlstate": "none",
+        "rpc_method": "submit_chat",
+        "provider_deadline_site": "pre_request_publish",
+    }
+    for override, phase, expected in (
+        ({}, "rd_waiting_release", "pre_request_publish"),
+        (
+            {
+                "provider_deadline_site": "post_sdk_pre_response_publish",
+                "rpc_method": "submit_embedding",
+            },
+            "rd_waiting_release",
+            "post_sdk_pre_response_publish",
+        ),
+        ({"code": "provider_timeout"}, "rd_waiting_release", None),
+        ({"family": "rpc"}, "rd_waiting_release", None),
+        ({"stage": "rpc_send"}, "rd_waiting_release", None),
+        ({"rpc_method": "finish_evaluation"}, "rd_waiting_release", None),
+        ({"provider_deadline_site": "private-canary"}, "rd_waiting_release", None),
+        ({}, "oe_claim", None),
+    ):
+        item = {**base, **override}
+        projected = _drain_observations("RD_QUEUE_FAILURE:" + json.dumps(item))
+        if phase == "rd_waiting_release":
+            assert projected.get("provider_deadline_site") == expected
+        props = "".join(
+            f'<property name="rd_drain_{key}" value="{value}"/>'
+            for key, value in item.items()
+        )
+        _write(
+            tmp_path,
+            "h_bridge",
+            f'<failure/><properties><property name="proof_phase" value="{phase}"/>'
+            + props
+            + "</properties>",
+        )
+        assert (
+            _drain_verdict(tmp_path, "h_bridge").get("provider_deadline_site")
+            == expected
+        )

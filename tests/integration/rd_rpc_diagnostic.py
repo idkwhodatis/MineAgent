@@ -693,6 +693,70 @@ def _sdk_outcome_cut(error):
     return {"sdk_outcome_cut": cut}
 
 
+def _provider_deadline_site(error, row):
+    """Classify the exact terminal broker raise without instrumenting execution."""
+    from dis import get_instructions
+    from inspect import getsourcelines
+
+    from backend.app import rdagent_provider_broker as broker
+    from packages.rdagent_provider.transport import ProviderFailure
+
+    if (
+        type(error) is not ProviderFailure
+        or error.code != "original_controller_deadline"
+        or row["family"] != "provider"
+        or row["code"] != "original_controller_deadline"
+        or row["stage"] != "provider"
+        or row.get("rpc_method") not in {"submit_chat", "submit_embedding"}
+    ):
+        return {}
+    function = broker.submit_provider_request
+    trace = error.__traceback__
+    matching = None
+    for _ in range(64):
+        if trace is None:
+            break
+        if trace.tb_frame.f_code is function.__code__:
+            if matching is not None or trace.tb_next is not None:
+                return {}
+            matching = trace
+        trace = trace.tb_next
+    if trace is not None or matching is None:
+        return {}
+    try:
+        source, start = getsourcelines(function)
+    except (OSError, TypeError):
+        return {}
+    targets = (
+        (False, "pre_request_publish", '    key = f"rd-provider:'),
+        (True, "post_sdk_pre_response_publish", "        response_id = _publish("),
+    )
+    cut = None
+    for contained, label, following in targets:
+        anchor = f'raise ProviderFailure("original_controller_deadline", contained={contained})'
+        hits = [i for i, line in enumerate(source) if line.strip() == anchor]
+        if len(hits) != 1:
+            return {}
+        index = hits[0]
+        if (
+            index < 1
+            or index + 1 >= len(source)
+            or source[index - 1].strip() != "if time.monotonic() >= original_deadline:"
+            or not source[index + 1].startswith(following)
+        ):
+            return {}
+        if start + index == matching.tb_lineno and error.contained is contained:
+            cut = label
+    if cut is None or not any(
+        instruction.offset == matching.tb_lasti
+        and instruction.opname == "RAISE_VARARGS"
+        and instruction.arg == 1
+        for instruction in get_instructions(function)
+    ):
+        return {}
+    return {"provider_deadline_site": cut}
+
+
 def _queue_failure(error):
     """Closed diagnostic vocabulary; never stringify arbitrary exceptions."""
     from pydantic import ValidationError
@@ -834,7 +898,7 @@ def _queue_failure(error):
         key = (trace.tb_frame.f_globals.get("__name__"), trace.tb_frame.f_code.co_name)
         stage = stages.get(key, stage)
         trace = trace.tb_next
-    return {
+    row = {
         "family": family,
         "code": code,
         "stage": stage,
@@ -843,6 +907,7 @@ def _queue_failure(error):
         **_sdk_outcome_cut(error),
         **_neutral_busy_cut(error, controller_limit=_controller_limit(error)),
     }
+    return {**row, **_provider_deadline_site(error, row)}
 
 
 def _queue_state(factory, run_id):
