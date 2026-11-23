@@ -8,6 +8,7 @@ issuer and never executes source outside the separately contained numeric units.
 import hashlib
 import json
 import secrets
+from contextlib import suppress
 from datetime import date, timedelta
 from uuid import UUID, uuid4
 
@@ -441,10 +442,16 @@ def _execute_controller(factory, fence, settings, *, handler_type):
                 if running is not None:
                     # An abort has no output authority. Detach readers before
                     # forced exact-unit cleanup so daemon logging cannot block.
-                    if running.connection is not None:
-                        running.connection.close()
-                    running.listener.close()
-                    running.reader.close()
+                    for transport in (
+                        running.connection,
+                        running.listener,
+                        running.reader,
+                    ):
+                        if transport is not None:
+                            # Detachment failure is not a containment verdict.
+                            # Continue to recovery's exact identity/absence checks.
+                            with suppress(OSError):
+                                transport.close()
                 _recover_and_record(
                     factory, settings.storage_root, admission, supervisor
                 )
